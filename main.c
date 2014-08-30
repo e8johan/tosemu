@@ -1,25 +1,22 @@
-/* - In your host program, be sure to call m68k_pulse_reset() once before calling
-  any of the other functions as this initializes the core.
-
-- Use m68k_execute() to execute instructions and m68k_set_irq() to cause an
-  interrupt.
-
-  - In m68kconf.h, set M68K_EMULATE_INT_ACK to OPT_SPECIFY_HANDLER
-
-- In m68kconf.h, set M68K_INT_ACK_CALLBACK(A) to your interrupt acknowledge
-  routine
-
-- Your interrupt acknowledge routine must return an interrupt vector,
-  M68K_INT_ACK_AUTOVECTOR, or M68K_INT_ACK_SPURIOUS.  most m68k
-  implementations just use autovectored interrupts.
-
-- When the interrupting device is satisfied, you must call m68k_set_irq(0) to
-  remove the interrupt request.
-
-  - In your host program, call m68k_set_cpu_type() and then call
-  m68k_pulse_reset().  Valid CPU types are:
-    M68K_CPU_TYPE_68000,
-*/
+/*
+ * TOSEMU - and emulated environment for TOS applications
+ * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
