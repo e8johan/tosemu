@@ -1,6 +1,6 @@
 TOSEMU
 An emulated environment to TOS applications.
-Copyright (C) 2014 Johan Thelin
+Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
 
 Introduction
 ============
