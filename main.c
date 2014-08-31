@@ -36,12 +36,14 @@ int main(int argc, char **argv)
     struct stat sb;
     struct tos_environment te;
     
+    /* Program usage */
     if(argc != 2)
     {
         printf("Usage: tosemu <binary>\n\n\t<binary> name of binary to execute\n");
         return -1;
     }
 
+    /* Open the provided file */
     binary_file = open(argv[1], O_RDONLY);
     if (binary_file == -1)
     {
@@ -49,8 +51,10 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    /* Determine the file size */
     fstat(binary_file, &sb);
     
+    /* Mmap the file into memory */
     binary_data = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, binary_file, 0);
     if (!binary_data)
     {
@@ -59,6 +63,7 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    /* Check that the binary starts with the magix 0x601a sequence */
     if( ((char*)binary_data)[0] != 0x60 && ((char*)binary_data)[1] == 0x1a)
     {
         printf("Error: invalid magic in '%s'\n", argv[1]);
@@ -66,6 +71,7 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    /* Setup a TOS environment for the binary */
     if (init_tos_environment(&te, binary_data, sb.st_size))
     {
         printf("Error: failed to initialize TOS environment\n");
@@ -73,7 +79,13 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    /* Start execution */
+    /* TODO init cpu */
+    /* TODO exec */
+    
+    /* Clean up */
     close(binary_file);
+    free_tos_environment(&te);
     
     return 0; 
 }

@@ -23,6 +23,8 @@
 
 #include <stdint.h>
 
+struct basepage;
+
 struct tos_environment {
     uint64_t size;
     void *binary;
@@ -32,8 +34,10 @@ struct tos_environment {
              bsize, 
              ssize;
 
+    struct basepage *bp;
 };
 
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t binary_size);
+void free_tos_environment(struct tos_environment *te);
 
 #endif /* TOSSYSTEM_H */
