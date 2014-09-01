@@ -26,8 +26,22 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-    
+
+#include "m68k.h"
+
 #include "tossystem.h"
+
+void cpu_instr_callback()
+{
+    static char buff[100];
+    static unsigned int pc;
+
+    pc = m68k_get_reg(NULL, M68K_REG_PC);
+    m68k_disassemble(buff, pc, M68K_CPU_TYPE_68000);
+    printf("E %03x: %s\n", pc, buff);
+    fflush(stdout);
+}
+
     
 int main(int argc, char **argv)
 {
@@ -35,6 +49,7 @@ int main(int argc, char **argv)
     void *binary_data;
     struct stat sb;
     struct tos_environment te;
+    int i;
     
     /* Program usage */
     if(argc != 2)
@@ -55,7 +70,7 @@ int main(int argc, char **argv)
     fstat(binary_file, &sb);
     
     /* Mmap the file into memory */
-    binary_data = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, binary_file, 0);
+    binary_data = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, binary_file, 0);
     if (!binary_data)
     {
         printf("Error: failed to mmap '%s'\n", argv[1]);
@@ -80,8 +95,21 @@ int main(int argc, char **argv)
     }
     
     /* Start execution */
+
     /* TODO init cpu */
+    m68k_init();
+    m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+    m68k_pulse_reset();
+
+    m68k_set_reg(M68K_REG_A7, 0x800-4);
+    m68k_set_reg(M68K_REG_PC, 0x900);
+    
     /* TODO exec */
+    for (i=0; i<6; ++i)
+    {
+        m68k_execute(1);
+        printf("PC: 0x%x, A2: 0x%x, A7: 0x%x\n", m68k_get_reg(0, M68K_REG_PC), m68k_get_reg(0, M68K_REG_A2), m68k_get_reg(0, M68K_REG_A7));
+    }
     
     /* Clean up */
     close(binary_file);

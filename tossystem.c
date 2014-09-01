@@ -62,6 +62,19 @@ struct exec_header {
 };
 #pragma pack(pop)
 
+/* Memory area configuration (for the read/write */
+struct _memarea {
+    uint32_t base;
+    uint32_t len;
+    void *ptr;
+    int r;
+    int w;
+};
+
+#define MAXAREAS (3)
+
+struct _memarea memareas[MAXAREAS];
+
 uint16_t endianize_16(uint16_t in)
 {
     uint16_t out;
@@ -95,6 +108,7 @@ uint32_t endianize_32(uint32_t in)
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
     struct exec_header *header;
+    int i;
     
     /* Record size and base address of binary */
     te->size = size;
@@ -184,6 +198,27 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
      * http://code.metager.de/source/xref/haiku/docs/develop/ports/m68k/atari/atariexe.txt
      */
     
+    /* Setup memory areas */
+    memareas[0].base = 0x800;
+    memareas[0].len = 0x100;
+    memareas[0].ptr = te->bp;
+    memareas[0].r = 1;
+    memareas[0].w = 0;
+
+    memareas[1].base = 0x900;
+    memareas[1].len = te->tsize + te->dsize + te->bsize;
+    memareas[1].ptr = (uint8_t*)binary+sizeof(struct exec_header);
+    memareas[1].r = 1;
+    memareas[1].w = 1;
+
+    memareas[2].r = 0;
+    memareas[2].w = 0;
+    
+    for(i=0; i<MAXAREAS; ++i)
+    {
+        printf("1: 0x%x [0x%x]\n", memareas[i].base, memareas[i].len);
+    }
+    
     return 0;
 }
 
@@ -193,22 +228,49 @@ void free_tos_environment(struct tos_environment *te)
     te->bp = 0;
 }
 
+
 /* These are the real read/write functions */
 
 uint8_t tos_read(uint32_t address)
 {
-    /* Handle mapping */
-    /* If applicable read */
-    /* Otherwise, throw an "exception" */
+    int i=0;
     
+    for(i=0; i<MAXAREAS; ++i) {
+        if (address >= memareas[i].base && address < memareas[i].base + memareas[i].len) {
+            if (memareas[i].r)
+                return ((uint8_t*)memareas[i].ptr)[address-memareas[i].base];
+            else {
+                /* TODO throw an "exception" */
+                printf("Attempted to read non-readable memory at 0x%x\n", address);
+                return 0;
+            }
+        }
+    }
+
+    /* TODO throw an "exception" */
+    printf("Attempted to read non-readable memory at 0x%x\n", address);
+
     return 0;
 }
 
 void tos_write(uint32_t address, uint8_t value)
 {
-    /* Handle mapping */
-    /* If applicable write */
-    /* Otherwise, throw an "exception" */
+    int i=0;
+    
+    for(i=0; i<MAXAREAS; ++i) {
+        if (address >= memareas[i].base && address < memareas[i].base + memareas[i].len) {
+            if (memareas[i].w)
+                ((uint8_t*)memareas[i].ptr)[address-memareas[i].base] = value;
+            else {
+                /* TODO throw an "exception" */
+                printf("Attempted to write to non-writeable memory at 0x%x\n", address);
+                return;
+            }
+        }
+    }
+
+    /* TODO throw an "exception" */
+    printf("Attempted to write to non-writeable memory at 0x%x\n", address);
 }
 
 /* These are the read/write functions used by Musashi */
@@ -226,6 +288,8 @@ unsigned int  m68k_read_disassembler_16(unsigned int address)
         res = res << 8;
         res |= tos_read(address+i);
     }
+
+    printf("read16: 0x%x\n", res);
     
     return res;
 }
