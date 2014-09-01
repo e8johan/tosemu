@@ -193,41 +193,87 @@ void free_tos_environment(struct tos_environment *te)
     te->bp = 0;
 }
 
+/* These are the real read/write functions */
+
+uint8_t tos_read(uint32_t address)
+{
+    /* Handle mapping */
+    /* If applicable read */
+    /* Otherwise, throw an "exception" */
+    
+    return 0;
+}
+
+void tos_write(uint32_t address, uint8_t value)
+{
+    /* Handle mapping */
+    /* If applicable write */
+    /* Otherwise, throw an "exception" */
+}
+
+/* These are the read/write functions used by Musashi */
+
 unsigned int  m68k_read_disassembler_8(unsigned int address)
 {
-    return 0;
+    return tos_read(address);
 }
 unsigned int  m68k_read_disassembler_16(unsigned int address)
 {
-    return 0;
+    unsigned int res = 0;
+    int i;
+    
+    for(i=0; i<2; ++i) {
+        res = res << 8;
+        res |= tos_read(address+i);
+    }
+    
+    return res;
 }
 unsigned int  m68k_read_disassembler_32(unsigned int address)
 {
-    return 0;
+    unsigned int res = 0;
+    int i;
+    
+    for(i=0; i<4; ++i) {
+        res = res << 8;
+        res |= tos_read(address+i);
+    }
+    
+    return res;
 }
 
 unsigned int  m68k_read_memory_8(unsigned int address)
 {
-    return 0;
+    return m68k_read_disassembler_8(address);
 }
 unsigned int  m68k_read_memory_16(unsigned int address)
 {
-    return 0;
+    return m68k_read_disassembler_16(address);
 }
 unsigned int  m68k_read_memory_32(unsigned int address)
 {
-    return 0;
+    return m68k_read_disassembler_32(address);
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
-    return;
+    tos_write(address, value);
 }
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
-    return;
+    int i;
+    
+    for(i=0; i<2; ++i) {
+        tos_write(address+i, value&0xff);        
+        value = value >> 8;
+    }
 }
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-    return;
+    int i;
+    
+    for(i=0; i<4; ++i) {
+        tos_write(address+i, value&0xff);        
+        value = value >> 8;
+    }
 }
