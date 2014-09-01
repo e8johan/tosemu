@@ -109,17 +109,17 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
 {
     struct exec_header *header;
     int i;
-    
-    /* Record size and base address of binary */
-    te->size = size;
-    te->binary = binary;
-    
+        
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
     {
         printf("Error: Too small binary\n");
         return -1;
     }
+    
+    /* Setup a maximum size user RAM */
+    te->size = 0x0fffff-0x000900;
+    te->appmem = malloc(te->size);
     
     /* Copy segment sizes from header */
     header = (struct exec_header*)binary;
@@ -128,11 +128,8 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->bsize = endianize_32(header->bsize); 
     te->ssize = endianize_32(header->ssize);
     
-    printf("HEADER\n  TEXT: 0x%x\n  DATA: 0x%x\n  BSS:  0x%x\n  SYMS: 0x%x\n",
-           te->tsize,
-           te->dsize,
-           te->bsize,
-           te->ssize);
+    /* Copy segments into app memory */
+    memcpy(te->appmem, ((uint8_t*)binary) + sizeof(struct exec_header), te->tsize + te->dsize + te->ssize);
     
     /* Allocate basepage */
     te->bp = malloc(sizeof(struct basepage));
@@ -206,8 +203,8 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     memareas[0].w = 0;
 
     memareas[1].base = 0x900;
-    memareas[1].len = te->tsize + te->dsize + te->bsize;
-    memareas[1].ptr = (uint8_t*)binary+sizeof(struct exec_header);
+    memareas[1].len = te->size;
+    memareas[1].ptr = te->appmem;
     memareas[1].r = 1;
     memareas[1].w = 1;
 
@@ -226,6 +223,9 @@ void free_tos_environment(struct tos_environment *te)
 {
     free(te->bp);
     te->bp = 0;
+    
+    free(te->appmem);
+    te->appmem = 0;
 }
 
 
@@ -241,7 +241,7 @@ uint8_t tos_read(uint32_t address)
                 return ((uint8_t*)memareas[i].ptr)[address-memareas[i].base];
             else {
                 /* TODO throw an "exception" */
-                printf("Attempted to read non-readable memory at 0x%x\n", address);
+                printf("Attempted to read non-readable memory (%d) at 0x%x\n", i, address);
                 return 0;
             }
         }
@@ -259,11 +259,12 @@ void tos_write(uint32_t address, uint8_t value)
     
     for(i=0; i<MAXAREAS; ++i) {
         if (address >= memareas[i].base && address < memareas[i].base + memareas[i].len) {
-            if (memareas[i].w)
+            if (memareas[i].w) {
                 ((uint8_t*)memareas[i].ptr)[address-memareas[i].base] = value;
-            else {
+                return;
+            } else {
                 /* TODO throw an "exception" */
-                printf("Attempted to write to non-writeable memory at 0x%x\n", address);
+                printf("Attempted to write to non-writeable memory (%d) at 0x%x\n", i, address);
                 return;
             }
         }
@@ -271,6 +272,13 @@ void tos_write(uint32_t address, uint8_t value)
 
     /* TODO throw an "exception" */
     printf("Attempted to write to non-writeable memory at 0x%x\n", address);
+}
+
+/* Invoked upon trap instructions */
+
+void m68k_trap(uint vector)
+{
+    printf("TRAP 0x%x\n", vector);
 }
 
 /* These are the read/write functions used by Musashi */
@@ -288,8 +296,6 @@ unsigned int  m68k_read_disassembler_16(unsigned int address)
         res = res << 8;
         res |= tos_read(address+i);
     }
-
-    printf("read16: 0x%x\n", res);
     
     return res;
 }

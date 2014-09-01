@@ -94,6 +94,9 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    /* Close the binary file */
+    close(binary_file);
+
     /* Start execution */
 
     /* TODO init cpu */
@@ -101,18 +104,17 @@ int main(int argc, char **argv)
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
     m68k_pulse_reset();
 
-    m68k_set_reg(M68K_REG_A7, 0x800-4);
+    m68k_set_reg(M68K_REG_A7, te.size-4);
+    m68k_write_memory_32(te.size, 0x0080000); // big endian 0x800
     m68k_set_reg(M68K_REG_PC, 0x900);
     
     /* TODO exec */
-    for (i=0; i<6; ++i)
+    for (i=0; i<20; ++i)
     {
         m68k_execute(1);
-        printf("PC: 0x%x, A2: 0x%x, A7: 0x%x\n", m68k_get_reg(0, M68K_REG_PC), m68k_get_reg(0, M68K_REG_A2), m68k_get_reg(0, M68K_REG_A7));
     }
-    
+  
     /* Clean up */
-    close(binary_file);
     free_tos_environment(&te);
     
     return 0; 

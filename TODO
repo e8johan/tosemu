@@ -1,6 +1,3 @@
-- Setup a large memory area with the stack pointer at the top, holding the address to the basepage
-- Copy the binary data into the large memory area
-- Catch the trap calls, turning them into host calls
 - Avoid reading from 0x0 addresses at the very start
 - Make the execution loop infinite, but keep an "exception" flag to terminate it
 - Move the whole execution loop into the tossystem module
