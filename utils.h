@@ -18,9 +18,12 @@
  *
  */
 
-#ifndef GEMDOS_H
-#define GEMDOS_H
+#ifndef UTILS_H
+#define UTILS_H
 
-void gemdos_trap();
+#include <stdint.h>
 
-#endif /* GEMDOS_H */
+uint16_t endianize_16(uint16_t in);
+uint32_t endianize_32(uint32_t in);
+
+#endif /* UTILS_H */

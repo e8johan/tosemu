@@ -17,11 +17,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
+#include "tossystem.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "tossystem.h"
+#include "utils.h"
+#include "gemdos.h"
+
+#include "m68k.h"
 
 /* Basepage, as defined here:
  * http://www.yardley.cc/atari/compendium/atari-compendium-chapter-2-GEMDOS.htm#gdprocess
@@ -75,35 +80,6 @@ struct _memarea {
 
 struct _memarea memareas[MAXAREAS];
 
-uint16_t endianize_16(uint16_t in)
-{
-    uint16_t out;
-    int i;
-    
-    for(i=0; i<2; ++i)
-    {
-        out = out << 8;
-        out = out | (0xff&in);
-        in = in >> 8;
-    }
-    
-    return out;
-}
-
-uint32_t endianize_32(uint32_t in)
-{
-    uint32_t out;
-    int i;
-    
-    for(i=0; i<4; ++i)
-    {
-        out = out << 8;
-        out = out | (0xff&in);
-        in = in >> 8;
-    }
-    
-    return out;
-}
 
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
@@ -274,13 +250,6 @@ void tos_write(uint32_t address, uint8_t value)
     printf("Attempted to write to non-writeable memory at 0x%x\n", address);
 }
 
-/* Invoked upon trap instructions */
-
-void m68k_trap(uint vector)
-{
-    printf("TRAP 0x%x\n", vector);
-}
-
 /* These are the read/write functions used by Musashi */
 
 unsigned int  m68k_read_disassembler_8(unsigned int address)
@@ -345,5 +314,19 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
     for(i=0; i<4; ++i) {
         tos_write(address+i, value&0xff);        
         value = value >> 8;
+    }
+}
+
+/* Invoked upon trap instructions */
+
+void m68k_trap(uint vector)
+{
+    switch(vector)
+    {
+        case 0x21:
+            gemdos_trap();
+            break;
+        default:
+            printf("Invoked unsupported trap 0x%x\n", vector);
     }
 }

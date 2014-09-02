@@ -17,3 +17,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
+
+#include "gemdos.h"
+
+#include <stdio.h>
+
+#include "m68k.h"
+#include "utils.h"
+
+void gemdos_trap()
+{
+    printf("GEMDOS 0x%x\n", endianize_16(m68k_read_disassembler_16(m68k_get_reg(0,
+M68K_REG_A7))));
+}

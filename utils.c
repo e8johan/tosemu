@@ -18,9 +18,34 @@
  *
  */
 
-#ifndef GEMDOS_H
-#define GEMDOS_H
+#include "utils.h"
 
-void gemdos_trap();
+uint16_t endianize_16(uint16_t in)
+{
+    uint16_t out;
+    int i;
+    
+    for(i=0; i<2; ++i)
+    {
+        out = out << 8;
+        out = out | (0xff&in);
+        in = in >> 8;
+    }
+    
+    return out;
+}
 
-#endif /* GEMDOS_H */
+uint32_t endianize_32(uint32_t in)
+{
+    uint32_t out;
+    int i;
+    
+    for(i=0; i<4; ++i)
+    {
+        out = out << 8;
+        out = out | (0xff&in);
+        in = in >> 8;
+    }
+    
+    return out;
+}
