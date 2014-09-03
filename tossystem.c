@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "memory.h"
 #include "utils.h"
 #include "gemdos.h"
 
@@ -67,24 +68,9 @@ struct exec_header {
 };
 #pragma pack(pop)
 
-/* Memory area configuration (for the read/write */
-struct _memarea {
-    uint32_t base;
-    uint32_t len;
-    void *ptr;
-    int r;
-    int w;
-};
-
-#define MAXAREAS (3)
-
-struct _memarea memareas[MAXAREAS];
-
-
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
     struct exec_header *header;
-    int i;
         
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
@@ -171,26 +157,9 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
      * http://code.metager.de/source/xref/haiku/docs/develop/ports/m68k/atari/atariexe.txt
      */
     
-    /* Setup memory areas */
-    memareas[0].base = 0x800;
-    memareas[0].len = 0x100;
-    memareas[0].ptr = te->bp;
-    memareas[0].r = 1;
-    memareas[0].w = 0;
-
-    memareas[1].base = 0x900;
-    memareas[1].len = te->size;
-    memareas[1].ptr = te->appmem;
-    memareas[1].r = 1;
-    memareas[1].w = 1;
-
-    memareas[2].r = 0;
-    memareas[2].w = 0;
-    
-    for(i=0; i<MAXAREAS; ++i)
-    {
-        printf("1: 0x%x [0x%x]\n", memareas[i].base, memareas[i].len);
-    }
+    reset_memory();
+    add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
+    add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     
     return 0;
 }
@@ -202,119 +171,8 @@ void free_tos_environment(struct tos_environment *te)
     
     free(te->appmem);
     te->appmem = 0;
-}
-
-
-/* These are the real read/write functions */
-
-uint8_t tos_read(uint32_t address)
-{
-    int i=0;
     
-    for(i=0; i<MAXAREAS; ++i) {
-        if (address >= memareas[i].base && address < memareas[i].base + memareas[i].len) {
-            if (memareas[i].r)
-                return ((uint8_t*)memareas[i].ptr)[address-memareas[i].base];
-            else {
-                /* TODO throw an "exception" */
-                printf("Attempted to read non-readable memory (%d) at 0x%x\n", i, address);
-                return 0;
-            }
-        }
-    }
-
-    /* TODO throw an "exception" */
-    printf("Attempted to read non-readable memory at 0x%x\n", address);
-
-    return 0;
-}
-
-void tos_write(uint32_t address, uint8_t value)
-{
-    int i=0;
-    
-    for(i=0; i<MAXAREAS; ++i) {
-        if (address >= memareas[i].base && address < memareas[i].base + memareas[i].len) {
-            if (memareas[i].w) {
-                ((uint8_t*)memareas[i].ptr)[address-memareas[i].base] = value;
-                return;
-            } else {
-                /* TODO throw an "exception" */
-                printf("Attempted to write to non-writeable memory (%d) at 0x%x\n", i, address);
-                return;
-            }
-        }
-    }
-
-    /* TODO throw an "exception" */
-    printf("Attempted to write to non-writeable memory at 0x%x\n", address);
-}
-
-/* These are the read/write functions used by Musashi */
-
-unsigned int  m68k_read_disassembler_8(unsigned int address)
-{
-    return tos_read(address);
-}
-unsigned int  m68k_read_disassembler_16(unsigned int address)
-{
-    unsigned int res = 0;
-    int i;
-    
-    for(i=0; i<2; ++i) {
-        res = res << 8;
-        res |= tos_read(address+i);
-    }
-    
-    return res;
-}
-unsigned int  m68k_read_disassembler_32(unsigned int address)
-{
-    unsigned int res = 0;
-    int i;
-    
-    for(i=0; i<4; ++i) {
-        res = res << 8;
-        res |= tos_read(address+i);
-    }
-    
-    return res;
-}
-
-unsigned int  m68k_read_memory_8(unsigned int address)
-{
-    return m68k_read_disassembler_8(address);
-}
-unsigned int  m68k_read_memory_16(unsigned int address)
-{
-    return m68k_read_disassembler_16(address);
-}
-unsigned int  m68k_read_memory_32(unsigned int address)
-{
-    return m68k_read_disassembler_32(address);
-}
-
-void m68k_write_memory_8(unsigned int address, unsigned int value)
-{
-    tos_write(address, value);
-}
-void m68k_write_memory_16(unsigned int address, unsigned int value)
-{
-    int i;
-    
-    for(i=0; i<2; ++i) {
-        tos_write(address+i, value&0xff);        
-        value = value >> 8;
-    }
-}
-void m68k_write_memory_32(unsigned int address, unsigned int value)
-{
-    int i;
-    
-    for(i=0; i<4; ++i) {
-        tos_write(address+i, value&0xff);        
-        value = value >> 8;
-    }
+    reset_memory();
 }
 
 /* Invoked upon trap instructions */
