@@ -19,7 +19,7 @@
  */
 
 #ifndef MEMORY_H
-#define MEMORY_h
+#define MEMORY_H
 
 #include <stdint.h>
 

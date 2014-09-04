@@ -130,6 +130,8 @@
 /* If ON, CPU will call the instruction hook callback before every
  * instruction.
  */
+void cpu_instr_callback(); /* from main.c */
+
 #define M68K_INSTRUCTION_HOOK       OPT_SPECIFY_HANDLER
 #define M68K_INSTRUCTION_CALLBACK() cpu_instr_callback()
 /* #define M68K_INSTRUCTION_HOOK       OPT_OFF */

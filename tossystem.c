@@ -177,7 +177,7 @@ void free_tos_environment(struct tos_environment *te)
 
 /* Invoked upon trap instructions */
 
-void m68k_trap(uint vector)
+void m68k_trap(unsigned int vector)
 {
     switch(vector)
     {
