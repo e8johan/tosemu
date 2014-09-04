@@ -4,3 +4,4 @@
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
+- Have a long good look at supervisor mode and how to handle it. For instance, XBIOS Supexec is scary.
