@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     m68k_pulse_reset();
 
     m68k_set_reg(M68K_REG_A7, te.size-4);
-    m68k_write_memory_32(te.size, 0x0080000); // big endian 0x800
+    m68k_write_memory_32(te.size, 0x0080000); /* big endian 0x800 */
     m68k_set_reg(M68K_REG_PC, 0x900);
     
     /* TODO exec */
