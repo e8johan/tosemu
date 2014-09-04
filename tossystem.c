@@ -181,8 +181,17 @@ void m68k_trap(unsigned int vector)
 {
     switch(vector)
     {
-        case 0x21:
+        case 0x21: /* trap #$1, GEMDOS */
             gemdos_trap();
+            break;
+        case 0x22: /* trap #$2, AES / VDI */
+            printf("AES / VDI not yet implemented\n");
+            break;
+        case 0x2d: /* trap #$d, BIOS */
+            printf("BIOS not yet implemented\n");
+            break;
+        case 0x2e: /* trap #$e, XBIOS */
+            printf("XBIOS not yet implemented\n");
             break;
         default:
             printf("Invoked unsupported trap 0x%x\n", vector);
