@@ -28,6 +28,7 @@ struct basepage;
 struct tos_environment {
     uint64_t size;
     void *appmem;
+    void *supermem;
     
     uint32_t tsize, 
              dsize, 

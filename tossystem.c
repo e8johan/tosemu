@@ -68,6 +68,8 @@ struct exec_header {
 };
 #pragma pack(pop)
 
+#define SUPERMEMSIZE (1024)
+
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
     struct exec_header *header;
@@ -82,6 +84,9 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     /* Setup a maximum size user RAM */
     te->size = 0x0fffff-0x000900;
     te->appmem = malloc(te->size);
+    
+    /* Create 1kB of supervisor memory for a stack */
+    te->supermem = malloc(SUPERMEMSIZE);
     
     /* Copy segment sizes from header */
     header = (struct exec_header*)binary;
@@ -160,6 +165,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     reset_memory();
     add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
+    add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x400, SUPERMEMSIZE, te->supermem);
     
     return 0;
 }
@@ -171,6 +177,9 @@ void free_tos_environment(struct tos_environment *te)
     
     free(te->appmem);
     te->appmem = 0;
+    
+    free(te->supermem);
+    te->supermem = 0;
     
     reset_memory();
 }

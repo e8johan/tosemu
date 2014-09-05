@@ -104,9 +104,12 @@ int main(int argc, char **argv)
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
     m68k_pulse_reset();
 
-    m68k_set_reg(M68K_REG_A7, te.size-4);
+    /* TODO is this really correct, or should it be the MSP? If so, why does that not work? */
+    m68k_set_reg(M68K_REG_ISP, 0x400); /* supervisor stack pointer */
+    m68k_set_reg(M68K_REG_USP, te.size-4); /* user stack pointer */
     m68k_write_memory_32(te.size, 0x0080000); /* big endian 0x800 */
-    m68k_set_reg(M68K_REG_PC, 0x900);
+    m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
+    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in user mode */
     
     /* TODO exec */
     for (i=0; i<20; ++i)
