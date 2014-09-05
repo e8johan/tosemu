@@ -23,6 +23,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "m68k.h"
+
 /* Memory area linked list head */
 static struct _memarea *head = 0;
 
@@ -116,15 +118,22 @@ struct _memarea *find_memarea(uint32_t address)
 uint8_t tos_read(uint32_t address)
 {
     struct _memarea *area = find_memarea(address);
+    uint8_t mask;
     
     if (!area) {
         /* TODO throw an "exception" */
-        printf("Attempted to read non-readable memory at 0x%x\n", address);
+        printf("Attempted to read non-existing memory at 0x%x\n", address);
         return 0;
     }
     
+    /* Is the CPU in supervisor mode? */
+    if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000)
+        mask = MEMORY_READ | MEMORY_SUPERREAD;
+    else
+        mask = MEMORY_READ;
+    
     /* TODO do we want to have memory protection based on supervisor mode? */
-    if (area->flags & (MEMORY_READ|MEMORY_SUPERREAD))
+    if ((area->flags & mask) != 0)
         return area->read(area, address);
     else {
         /* TODO throw an "exception" */
@@ -136,15 +145,22 @@ uint8_t tos_read(uint32_t address)
 void tos_write(uint32_t address, uint8_t value)
 {
     struct _memarea *area = find_memarea(address);
+    uint8_t mask;
     
     if (!area) {
         /* TODO throw an "exception" */
-        printf("Attempted to write to non-writeable memory at 0x%x\n", address);
+        printf("Attempted to write to non-existing memory at 0x%x\n", address);
         return;
     }
     
+        /* Is the CPU in supervisor mode? */
+    if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000)
+        mask = MEMORY_WRITE | MEMORY_SUPERWRITE;
+    else
+        mask = MEMORY_WRITE;
+    
     /* TODO do we want to have memory protection based on supervisor mode? */
-    if (area->flags & (MEMORY_WRITE|MEMORY_SUPERWRITE))
+    if ((area->flags & mask) != 0)
         area->write(area, address, value);
     else {
         /* TODO throw an "exception" */
