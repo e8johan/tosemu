@@ -149,6 +149,8 @@ void gemdos_trap()
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
     uint16_t fnct;
     
+    uint32_t lv0;
+    
     fnct = endianize_16(m68k_read_disassembler_16(sp));
     printf("GEMDOS 0x%x\n", fnct);
     
@@ -159,6 +161,23 @@ void gemdos_trap()
         return;
     case  GEMDOS_Pterm0:
         exit(0);
+        break;
+    case  GEMDOS_Super:
+        lv0 = endianize_32(m68k_read_disassembler_32(sp+2));
+        
+        if (lv0 == 0) { /* Set CPU in supervisor mode */
+            m68k_set_reg(M68K_REG_D0, m68k_get_reg(0, M68K_REG_A7));
+            m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
+        } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
+            if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000) {
+                m68k_set_reg(M68K_REG_D0, 1);
+            } else {
+                m68k_set_reg(M68K_REG_D0, 0);
+            }
+        } else { /* Set CPU in user mode, set SP to lv0 */
+            m68k_set_reg(M68K_REG_USP, lv0);
+            m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in user mode */
+        }
         break;
         
     case  GEMDOS_Cauxin:
@@ -263,7 +282,6 @@ void gemdos_trap()
     case  GEMDOS_Pwait3:
     case  GEMDOS_Pwaitpid:
     case  GEMDOS_Salert:
-    case  GEMDOS_Super:
     case  GEMDOS_Sversion:
     case  GEMDOS_Pyield:
     case  GEMDOS_Sysconf:
