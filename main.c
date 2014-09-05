@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     m68k_pulse_reset();
 
     /* TODO is this really correct, or should it be the MSP? If so, why does that not work? */
-    m68k_set_reg(M68K_REG_ISP, 0x400); /* supervisor stack pointer */
+    m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
     m68k_set_reg(M68K_REG_USP, te.size-4); /* user stack pointer */
     m68k_write_memory_32(te.size, 0x0080000); /* big endian 0x800 */
     m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
