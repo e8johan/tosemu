@@ -42,6 +42,7 @@ void cpu_instr_callback()
     fflush(stdout);
 }
 
+extern int keepongoing;
     
 int main(int argc, char **argv)
 {
@@ -49,7 +50,6 @@ int main(int argc, char **argv)
     void *binary_data;
     struct stat sb;
     struct tos_environment te;
-    int i;
     
     /* Program usage */
     if(argc != 2)
@@ -112,8 +112,7 @@ int main(int argc, char **argv)
     m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in user mode */
     
     /* TODO exec */
-    for (i=0; i<20; ++i)
-    {
+    while (keepongoing) {
         m68k_execute(1);
     }
   
