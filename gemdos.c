@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "tossystem.h"
 #include "m68k.h"
 #include "utils.h"
 
@@ -143,7 +144,6 @@
 #define GEMDOS_Tsetdate (0x2B)
 #define GEMDOS_Tsettime (0x2D)
 
-
 void gemdos_trap()
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
@@ -152,17 +152,18 @@ void gemdos_trap()
     uint32_t lv0;
     
     fnct = endianize_16(m68k_read_disassembler_16(sp));
-    printf("GEMDOS 0x%x\n", fnct);
     
     switch(fnct)
     {
-    case  GEMDOS_Pterm:
+    case GEMDOS_Pterm:
         exit(endianize_16(m68k_read_disassembler_16(sp+2)));
-        return;
-    case  GEMDOS_Pterm0:
+        break;
+        
+    case GEMDOS_Pterm0:
         exit(0);
         break;
-    case  GEMDOS_Super:
+        
+    case GEMDOS_Super:
         lv0 = endianize_32(m68k_read_disassembler_32(sp+2));
         
         if (lv0 == 0) { /* Set CPU in supervisor mode */
@@ -180,119 +181,125 @@ void gemdos_trap()
         }
         break;
         
-    case  GEMDOS_Cauxin:
-    case  GEMDOS_Cauxis:
-    case  GEMDOS_Cauxos:
-    case  GEMDOS_Cauxout:
-    case  GEMDOS_Cconin:
-    case  GEMDOS_Cconis:
-    case  GEMDOS_Cconos:
-    case  GEMDOS_Cconout:
-    case  GEMDOS_Cconrs:
-    case  GEMDOS_Cconws:
-    case  GEMDOS_Cnecin:
-    case  GEMDOS_Cprnos:
-    case  GEMDOS_Cprnout:
-    case  GEMDOS_Crawcin:
-    case  GEMDOS_Crawio:
-    case  GEMDOS_Dclosedir:
-    case  GEMDOS_Dcntl:
-    case  GEMDOS_Dcreate:
-    case  GEMDOS_Ddelete:
-    case  GEMDOS_Dfree:
-    case  GEMDOS_Dgetcwd:
-    case  GEMDOS_Dgetdrv:
-    case  GEMDOS_Dgetpath:
-    case  GEMDOS_Dlock:
-    case  GEMDOS_Dopendir:
-    case  GEMDOS_Dpathconf:
-    case  GEMDOS_Dreaddir:
-    case  GEMDOS_Drewinddir:
-    case  GEMDOS_Dsetdrv:
-    case  GEMDOS_Dsetpath:
-    case  GEMDOS_Fattrib:
-    case  GEMDOS_Fchmod:
-    case  GEMDOS_Fchown:
-    case  GEMDOS_Fclose:
-    case  GEMDOS_Fcntl:
-    case  GEMDOS_Fcreate:
-    case  GEMDOS_Fdatime:
-    case  GEMDOS_Fdelete:
-    case  GEMDOS_Fdup:
-    case  GEMDOS_Fforce:
-    case  GEMDOS_Fgetchar:
-    case  GEMDOS_Fgetdta:
-    case  GEMDOS_Finstat:
-    case  GEMDOS_Flink:
-    case  GEMDOS_Flock:
-    case  GEMDOS_Fmidipipe:
-    case  GEMDOS_Fopen:
-    case  GEMDOS_Foutstat:
-    case  GEMDOS_Fpipe:
-    case  GEMDOS_Fputchar:
-    case  GEMDOS_Fread:
-    case  GEMDOS_Freadlink:
-    case  GEMDOS_Frename:
-    case  GEMDOS_Fseek:
-    case  GEMDOS_Fselect:
-    case  GEMDOS_Fsetdta:
-    case  GEMDOS_Fsfirst:
-    case  GEMDOS_Fsnext:
-    case  GEMDOS_Fsymlink:
-    case  GEMDOS_Fwrite:
-    case  GEMDOS_Fxattr:
-    case  GEMDOS_Maddalt:
-    case  GEMDOS_Malloc:
-    case  GEMDOS_Mfree:
     case  GEMDOS_Mshrink:
-    case  GEMDOS_Mxalloc:
-    case  GEMDOS_Pause:
-    case  GEMDOS_Pdomain:
-    case  GEMDOS_Pexec:
-    case  GEMDOS_Pfork:
-    case  GEMDOS_Pgetegid:
-    case  GEMDOS_Pgeteuid:
-    case  GEMDOS_Pgetgid:
-    case  GEMDOS_Pgetpgrp:
-    case  GEMDOS_Pgetpid:
-    case  GEMDOS_Pgetppid:
-    case  GEMDOS_Pgetuid:
-    case  GEMDOS_Pkill:
-    case  GEMDOS_Pmsg:
-    case  GEMDOS_Pnice:
-    case  GEMDOS_Prenice:
-    case  GEMDOS_Prusage:
-    case  GEMDOS_Psemaphore:
-    case  GEMDOS_Psetgit:
-    case  GEMDOS_Psetlimit:
-    case  GEMDOS_Psetpgrp:
-    case  GEMDOS_Psetuid:
-    case  GEMDOS_Psigaction:
-    case  GEMDOS_Psigblock:
-    case  GEMDOS_Psignal:
-    case  GEMDOS_Psigpause:
-    case  GEMDOS_Psigpending:
-    case  GEMDOS_Psigreturn:
-    case  GEMDOS_Psigsetmask:
-    case  GEMDOS_Ptermres:
-    case  GEMDOS_Pumask:
-    case  GEMDOS_Pursval:
-    case  GEMDOS_Pvfork:
-    case  GEMDOS_Pwait:
-    case  GEMDOS_Pwait3:
-    case  GEMDOS_Pwaitpid:
-    case  GEMDOS_Salert:
-    case  GEMDOS_Sversion:
-    case  GEMDOS_Pyield:
-    case  GEMDOS_Sysconf:
-    case  GEMDOS_Talarm:
-    case  GEMDOS_Tgetdate:
-    case  GEMDOS_Tgettime:
-    case  GEMDOS_Tsetdate:
-    case  GEMDOS_Tsettime:
+        /* TODO currently, we do not react to this */
+        m68k_set_reg(M68K_REG_D0, 0);
+        break;
+        
+    case GEMDOS_Cauxin:
+    case GEMDOS_Cauxis:
+    case GEMDOS_Cauxos:
+    case GEMDOS_Cauxout:
+    case GEMDOS_Cconin:
+    case GEMDOS_Cconis:
+    case GEMDOS_Cconos:
+    case GEMDOS_Cconout:
+    case GEMDOS_Cconrs:
+    case GEMDOS_Cconws:
+    case GEMDOS_Cnecin:
+    case GEMDOS_Cprnos:
+    case GEMDOS_Cprnout:
+    case GEMDOS_Crawcin:
+    case GEMDOS_Crawio:
+    case GEMDOS_Dclosedir:
+    case GEMDOS_Dcntl:
+    case GEMDOS_Dcreate:
+    case GEMDOS_Ddelete:
+    case GEMDOS_Dfree:
+    case GEMDOS_Dgetcwd:
+    case GEMDOS_Dgetdrv:
+    case GEMDOS_Dgetpath:
+    case GEMDOS_Dlock:
+    case GEMDOS_Dopendir:
+    case GEMDOS_Dpathconf:
+    case GEMDOS_Dreaddir:
+    case GEMDOS_Drewinddir:
+    case GEMDOS_Dsetdrv:
+    case GEMDOS_Dsetpath:
+    case GEMDOS_Fattrib:
+    case GEMDOS_Fchmod:
+    case GEMDOS_Fchown:
+    case GEMDOS_Fclose:
+    case GEMDOS_Fcntl:
+    case GEMDOS_Fcreate:
+    case GEMDOS_Fdatime:
+    case GEMDOS_Fdelete:
+    case GEMDOS_Fdup:
+    case GEMDOS_Fforce:
+    case GEMDOS_Fgetchar:
+    case GEMDOS_Fgetdta:
+    case GEMDOS_Finstat:
+    case GEMDOS_Flink:
+    case GEMDOS_Flock:
+    case GEMDOS_Fmidipipe:
+    case GEMDOS_Fopen:
+    case GEMDOS_Foutstat:
+    case GEMDOS_Fpipe:
+    case GEMDOS_Fputchar:
+    case GEMDOS_Fread:
+    case GEMDOS_Freadlink:
+    case GEMDOS_Frename:
+    case GEMDOS_Fseek:
+    case GEMDOS_Fselect:
+    case GEMDOS_Fsetdta:
+    case GEMDOS_Fsfirst:
+    case GEMDOS_Fsnext:
+    case GEMDOS_Fsymlink:
+    case GEMDOS_Fwrite:
+    case GEMDOS_Fxattr:
+    case GEMDOS_Maddalt:
+    case GEMDOS_Malloc:
+    case GEMDOS_Mfree:
+    case GEMDOS_Mxalloc:
+    case GEMDOS_Pause:
+    case GEMDOS_Pdomain:
+    case GEMDOS_Pexec:
+    case GEMDOS_Pfork:
+    case GEMDOS_Pgetegid:
+    case GEMDOS_Pgeteuid:
+    case GEMDOS_Pgetgid:
+    case GEMDOS_Pgetpgrp:
+    case GEMDOS_Pgetpid:
+    case GEMDOS_Pgetppid:
+    case GEMDOS_Pgetuid:
+    case GEMDOS_Pkill:
+    case GEMDOS_Pmsg:
+    case GEMDOS_Pnice:
+    case GEMDOS_Prenice:
+    case GEMDOS_Prusage:
+    case GEMDOS_Psemaphore:
+    case GEMDOS_Psetgit:
+    case GEMDOS_Psetlimit:
+    case GEMDOS_Psetpgrp:
+    case GEMDOS_Psetuid:
+    case GEMDOS_Psigaction:
+    case GEMDOS_Psigblock:
+    case GEMDOS_Psignal:
+    case GEMDOS_Psigpause:
+    case GEMDOS_Psigpending:
+    case GEMDOS_Psigreturn:
+    case GEMDOS_Psigsetmask:
+    case GEMDOS_Ptermres:
+    case GEMDOS_Pumask:
+    case GEMDOS_Pursval:
+    case GEMDOS_Pvfork:
+    case GEMDOS_Pwait:
+    case GEMDOS_Pwait3:
+    case GEMDOS_Pwaitpid:
+    case GEMDOS_Salert:
+    case GEMDOS_Sversion:
+    case GEMDOS_Pyield:
+    case GEMDOS_Sysconf:
+    case GEMDOS_Talarm:
+    case GEMDOS_Tgetdate:
+    case GEMDOS_Tgettime:
+    case GEMDOS_Tsetdate:
+    case GEMDOS_Tsettime:
+        halt_execution();
         printf("GEMDOS unimplemented 0x%x\n", fnct);
         break;
     default:
+        halt_execution();
         printf("GEMDOS: Unknown function called 0x%x\n", fnct);
         break;
     }
