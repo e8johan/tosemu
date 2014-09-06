@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "tossystem.h"
 #include "m68k.h"
 
 /* Memory area linked list head */
@@ -121,7 +122,7 @@ uint8_t tos_read(uint32_t address)
     uint8_t mask;
     
     if (!area) {
-        /* TODO throw an "exception" */
+        halt_execution();
         printf("Attempted to read non-existing memory at 0x%x\n", address);
         return 0;
     }
@@ -132,11 +133,10 @@ uint8_t tos_read(uint32_t address)
     else
         mask = MEMORY_READ;
     
-    /* TODO do we want to have memory protection based on supervisor mode? */
     if ((area->flags & mask) != 0)
         return area->read(area, address);
     else {
-        /* TODO throw an "exception" */
+        halt_execution();
         printf("Attempted to read non-readable memory at 0x%x\n", address);
         return 0;
     }
@@ -148,22 +148,21 @@ void tos_write(uint32_t address, uint8_t value)
     uint8_t mask;
     
     if (!area) {
-        /* TODO throw an "exception" */
+        halt_execution();
         printf("Attempted to write to non-existing memory at 0x%x\n", address);
         return;
     }
     
-        /* Is the CPU in supervisor mode? */
+    /* Is the CPU in supervisor mode? */
     if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000)
         mask = MEMORY_WRITE | MEMORY_SUPERWRITE;
     else
         mask = MEMORY_WRITE;
     
-    /* TODO do we want to have memory protection based on supervisor mode? */
     if ((area->flags & mask) != 0)
         area->write(area, address, value);
     else {
-        /* TODO throw an "exception" */
+        halt_execution();
         printf("Attempted to write to non-writeable memory at 0x%x\n", address);
     }
 }
