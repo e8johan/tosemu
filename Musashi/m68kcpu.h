@@ -1735,6 +1735,8 @@ void m68k_trap(uint);
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
 INLINE void m68ki_exception_trapN(uint vector)
 {
+    uint sr;
+    
     /* TOSEMU intercepts trap calls and implements them on the host side for OS calls */
     switch(vector)
     {
@@ -1746,7 +1748,7 @@ INLINE void m68ki_exception_trapN(uint vector)
             break;
             
         default:
-            uint sr = m68ki_init_exception();
+            sr = m68ki_init_exception();
             m68ki_stack_frame_0000(REG_PC, sr, vector);
             m68ki_jump_vector(vector);
 
