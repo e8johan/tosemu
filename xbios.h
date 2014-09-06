@@ -18,31 +18,9 @@
  *
  */
 
-#ifndef TOSSYSTEM_H
-#define TOSSYSTEM_H
+#ifndef XBIOS_H
+#define XBIOS_H
 
-#include <stdint.h>
+void xbios_trap();
 
-struct basepage;
-
-struct tos_environment {
-    uint64_t size;
-    void *appmem;
-    void *supermem;
-    void *staticmem0;
-    void *staticmem1;
-    
-    uint32_t tsize, 
-             dsize, 
-             bsize, 
-             ssize;
-
-    struct basepage *bp;
-};
-
-int init_tos_environment(struct tos_environment *te, void *binary, uint64_t binary_size);
-void free_tos_environment(struct tos_environment *te);
-
-void halt_execution();
-
-#endif /* TOSSYSTEM_H */
+#endif /* XBIOS_H */

@@ -26,6 +26,7 @@
 #include "memory.h"
 #include "utils.h"
 #include "gemdos.h"
+#include "xbios.h"
 
 #include "m68k.h"
 
@@ -69,6 +70,8 @@ struct exec_header {
 #pragma pack(pop)
 
 #define SUPERMEMSIZE (512)
+
+int keepongoing;
 
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
@@ -171,7 +174,10 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
-    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
+    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
+    
+    /* TODO Move into CPU initialization */
+    keepongoing = 1;
     
     return 0;
 }
@@ -200,15 +206,24 @@ void m68k_trap(unsigned int vector)
             gemdos_trap();
             break;
         case 0x22: /* trap #$2, AES / VDI */
+            halt_execution();
             printf("AES / VDI not yet implemented\n");
             break;
         case 0x2d: /* trap #$d, BIOS */
+            halt_execution();
             printf("BIOS not yet implemented\n");
             break;
         case 0x2e: /* trap #$e, XBIOS */
-            printf("XBIOS not yet implemented\n");
+            xbios_trap();
             break;
         default:
-            printf("Invoked unsupported trap 0x%x\n", vector);
+            halt_execution();
+            printf("Invoked unsupported trap 0x%x, this should never happen!\n", vector);
+            break;
     }
+}
+
+void halt_execution()
+{
+    keepongoing = 0;
 }
