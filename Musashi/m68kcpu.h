@@ -1735,17 +1735,25 @@ void m68k_trap(uint);
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
 INLINE void m68ki_exception_trapN(uint vector)
 {
-    /* TOSEMU intercepts trap calls and implements them on the host side */
-    m68k_trap(vector);
-    
-#if 0
-    uint sr = m68ki_init_exception();
-	m68ki_stack_frame_0000(REG_PC, sr, vector);
-	m68ki_jump_vector(vector);
+    /* TOSEMU intercepts trap calls and implements them on the host side for OS calls */
+    switch(vector)
+    {
+        case 33:
+        case 34:
+        case 45:
+        case 46:
+            m68k_trap(vector);
+            break;
+            
+        default:
+            uint sr = m68ki_init_exception();
+            m68ki_stack_frame_0000(REG_PC, sr, vector);
+            m68ki_jump_vector(vector);
 
-	/* Use up some clock cycles */
-	USE_CYCLES(CYC_EXCEPTION[vector]);
-#endif
+            /* Use up some clock cycles */
+            USE_CYCLES(CYC_EXCEPTION[vector]);
+            break;
+    }
 }
 
 /* Exception for trace mode */
