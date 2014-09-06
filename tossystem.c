@@ -81,12 +81,16 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         return -1;
     }
     
-    /* Setup a maximum size user RAM */
-    te->size = 0x0fffff-0x000900;
-    te->appmem = malloc(te->size);
+    /* Setup "static" data areas */
+    te->staticmem0 = malloc(0x200);       /* 0x0 - 0x1ff */
+    te->staticmem1 = malloc(0x500-0x380); /* 0x380 - 0x4ff */
     
     /* Create supervisor memory for a stack */
     te->supermem = malloc(SUPERMEMSIZE);
+    
+    /* Setup a maximum size user RAM */
+    te->size = 0x0fffff-0x000900;
+    te->appmem = malloc(te->size);
     
     /* Copy segment sizes from header */
     header = (struct exec_header*)binary;
@@ -166,6 +170,8 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
+    add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
+    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     
     return 0;
 }

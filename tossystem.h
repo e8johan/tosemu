@@ -29,6 +29,8 @@ struct tos_environment {
     uint64_t size;
     void *appmem;
     void *supermem;
+    void *staticmem0;
+    void *staticmem1;
     
     uint32_t tsize, 
              dsize, 
