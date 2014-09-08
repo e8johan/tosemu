@@ -27,34 +27,48 @@
 #include "m68k.h"
 #include "utils.h"
 
+uint32_t XBIOS_Getrez(uint32_t sp)
+{
+    /* Custom value, to ensure that HW-dependent code fails */
+    return 8;
+}
+
+
 /* XBIOS function table according to
  * http://www.yardley.cc/atari/compendium/atari-compendium-XBIOS-Function-Reference.htm
  */
+struct XBIOS_function {
+    char *name;
+    uint32_t (*fnct)(uint32_t);
+    uint16_t id;
+};
+
 /* TODO fill this out */
+struct XBIOS_function XBIOS_functions[] = {
+    {"Getrez",      XBIOS_Getrez, 0x04}
+};
+
 #define XBIOS_Getrez (0x04)
 
 void xbios_trap()
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t fnct;
+    uint16_t fnct = endianize_16(m68k_read_disassembler_16(sp));
+    int i;
     
-    fnct = endianize_16(m68k_read_disassembler_16(sp));
-    
-    switch(fnct)
-    {
-    case XBIOS_Getrez:
-        /* Custom value, to ensure that HW-dependent code fails */
-        m68k_set_reg(M68K_REG_D0, 8);
-        break;
-
-#if 0
-        halt_execution();
-        printf("GEMDOS unimplemented 0x%x\n", fnct);
-        break;
-#endif
-    default:
-        halt_execution();
-        printf("XBIOS: Unknown function called 0x%x\n", fnct);
-        break;
+    for(i=0; i<=sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
+        if (XBIOS_functions[i].id == fnct) {
+            if (XBIOS_functions[i].fnct) {
+                m68k_set_reg(M68K_REG_D0, XBIOS_functions[i].fnct(sp));
+            } else {
+                halt_execution();
+                printf("XBIOS %s (0x%x) not implemented\n", XBIOS_functions[i].name, fnct);
+            }
+            
+            return;
+        }
     }
+            
+    halt_execution();
+    printf("XBIOS Unknown function called 0x%x\n", fnct);
 }

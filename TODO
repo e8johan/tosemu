@@ -5,4 +5,3 @@
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
 - Have a long good look at supervisor mode and how to handle it. For instance, XBIOS Supexec is scary.
-- Change GEMDOS and XBIOS implementations to use tables with function pointers so that each function is a separate function, and so that proper names can be returned in error messages, e.g. GEMDOS MShrink, not 0x4f.
