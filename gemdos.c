@@ -29,6 +29,12 @@
 
 /* GEMDOS functions */
 
+uint32_t GEMDOS_Cconout(uint32_t sp)
+{
+    putchar(m68k_read_disassembler_16(sp+2)&0xff);
+    return 0;
+}
+
 uint32_t GEMDOS_Pterm(uint32_t sp)
 {
     exit(endianize_16(m68k_read_disassembler_16(sp+2)));
@@ -76,7 +82,6 @@ uint32_t GEMDOS_Mshrink(uint32_t sp)
 #define GEMDOS_Cconin NULL
 #define GEMDOS_Cconis NULL
 #define GEMDOS_Cconos NULL
-#define GEMDOS_Cconout NULL
 #define GEMDOS_Cconrs NULL
 #define GEMDOS_Cconws NULL
 #define GEMDOS_Cnecin NULL
