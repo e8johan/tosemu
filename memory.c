@@ -42,10 +42,10 @@ static void ptr_write(struct _memarea *area, uint32_t address, uint8_t value)
 
 int add_ptr_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr)
 {
-    return add_fkt_memory_area(name, flags, base, len, ptr, ptr_read, ptr_write);
+    return add_fnct_memory_area(name, flags, base, len, ptr, ptr_read, ptr_write);
 }
 
-int add_fkt_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea*, uint32_t), void (*write)(struct _memarea*, uint32_t, uint8_t))
+int add_fnct_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea*, uint32_t), void (*write)(struct _memarea*, uint32_t, uint8_t))
 {
     struct _memarea *area;
     

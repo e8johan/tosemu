@@ -23,14 +23,18 @@
 
 #include <stdint.h>
 
-/* Memory area access flags */
-#define MEMORY_READ       (0x01)
-#define MEMORY_WRITE      (0x02)
-#define MEMORY_READWRITE  (0x03)
-#define MEMORY_SUPERREAD  (0x04)
-#define MEMORY_SUPERWRITE (0x08)
+/* Memory area access flags, combine with OR to your liking */
+#define MEMORY_READ       (0x01) /* Readable in all modes */ 
+#define MEMORY_WRITE      (0x02) /* Writeable in all modes */
+#define MEMORY_READWRITE  (0x03) /* Readable and writeable in all modes */
+#define MEMORY_SUPERREAD  (0x04) /* Readable in supervisor mode */
+#define MEMORY_SUPERWRITE (0x08) /* Writeable in supervisor mode */
 
-/* Memory area item */
+/* Memory area items 
+ *
+ * Consider this data structure private to all methods apart from memory read/write 
+ * methods (see add_fkt_memory_area).
+ */
 struct _memarea;
 struct _memarea {
     uint32_t base;
@@ -45,9 +49,17 @@ struct _memarea {
     struct _memarea *next;
 };
 
-/* Add memory areas, return 0 on success */
+/* Add memory areas, return 0 on success 
+ *
+ * A ptr memory area is simply a piece of memory mapped from the host system (ptr) to the 
+ * emulated system (base) of len bytes.
+ * 
+ * A fnct memory area operates through read and write functions, and takes a private 
+ * pointer (ptr) that can be freely used by the pointer. It is mapped into the emulated 
+ * system starting from base for len bytes.
+ */
 int add_ptr_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr);
-int add_fkt_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea *, uint32_t), void (*write)(struct _memarea *, uint32_t, uint8_t));
+int add_fnct_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea *, uint32_t), void (*write)(struct _memarea *, uint32_t, uint8_t));
 
 /* Remove memory areas, return 0 on success */
 int remove_memory_area(uint32_t base);
