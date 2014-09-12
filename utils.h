@@ -23,7 +23,10 @@
 
 #include <stdint.h>
 
+/* Changes endianess of a 16-bits word */
 uint16_t endianize_16(uint16_t in);
+
+/* Changes endianess of a 32-bits long word */
 uint32_t endianize_32(uint32_t in);
 
 #endif /* UTILS_H */
