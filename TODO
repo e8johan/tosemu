@@ -5,3 +5,4 @@
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
 - Have a long good look at supervisor mode and how to handle it. For instance, XBIOS Supexec is scary.
+- Provide a generic way to register breakpoints - will solve supexec

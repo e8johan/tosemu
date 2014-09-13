@@ -35,6 +35,31 @@ uint32_t XBIOS_Getrez(uint32_t sp)
     return 8;
 }
 
+uint32_t XBIOS_Supexec(uint32_t sp)
+{
+    uint32_t lv0 = endianize_32(m68k_read_disassembler_32(sp+2));
+    
+    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
+    
+    /* TODO perform a call in supervisor mode, i.e. push current PC onto stack, register breakpoint callback, etc */
+    
+    /* TODO how do we handle the change of D0, it should not be altered *before* the call */
+    return 0;
+}
+
+/* XBIOS_Supexec breakpoint callback */
+void cb_XBIOS_Supexec()
+{
+    /* TODO Pop PC from stack */
+    
+    
+    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in normal mode */
+
+    /* Set XBIOS call return value */
+    m68k_set_reg(M68K_REG_D0, 0);    
+}
+
+
 /* Table of non-implemented XBIOS functions */
 
 #define XBIOS_Bconmap NULL
@@ -133,7 +158,6 @@ uint32_t XBIOS_Getrez(uint32_t sp)
 #define XBIOS_Sndstatus NULL
 #define XBIOS_Soundcmd NULL
 #define XBIOS_Ssbrk NULL
-#define XBIOS_Supexec NULL
 #define XBIOS_Unlocksnd NULL
 #define XBIOS_VgetMonitor NULL
 #define XBIOS_VgetRGB NULL
