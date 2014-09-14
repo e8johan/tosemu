@@ -28,6 +28,16 @@ void enable_supervisor_mode();
 void disable_supervisor_mode();
 int is_supervisor_mode_enabled();
 
+/* Push values onto the target stack.
+ * Accepts arguments in host system endianess */
+void push_u16(uint16_t value);
+void push_u32(uint32_t value);
+
+/* Pop values from the target stack.
+ * Returns values in host system endianess */
+uint16_t pop_u16();
+uint32_t pop_u32();
+
 /* Peek at the stack.
  * Returns host system endian values */
 uint8_t peek_u8(int offset);

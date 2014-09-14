@@ -2,4 +2,3 @@
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
-- Provide a generic way to register breakpoints - will solve supexec

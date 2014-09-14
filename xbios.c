@@ -24,6 +24,7 @@
 #include <stdlib.h>
 
 #include "tossystem.h"
+#include "memory.h"
 #include "cpu.h"
 #include "utils.h"
 #include "m68k.h"
@@ -36,29 +37,56 @@ uint32_t XBIOS_Getrez()
     return 8;
 }
 
+/* Supexec has been implemented using magic memory, which provides a mechanism 
+ * for triggering a callback. The general idea is:
+ * 
+ * 1. Switch to supervisor mode, thus switching stack
+ * 2. Push the current PC, i.e. the return address
+ * 3. Push the magic value 0x200
+ * 4. Set the PC to the sub-routine address
+ * 
+ * When the RTS call is made, the PC will be set to 0x200, triggering a read to
+ * the addresses 0x200 and 0x201. This will hit the magic memory area 
+ * registered for this purpose, resulting in calls to magic_xbios_supexec_read.
+ * When 0x201 is called, the PC is popped from the stack before the supervisor
+ * mode is disabled, PC updated and D0 set to 0 (the XBIOS return code for no
+ * error).
+ */
 uint32_t XBIOS_Supexec()
 {
     uint32_t lv0 = peek_u32(2);
 
     enable_supervisor_mode();
-    
-    /* TODO perform a call in supervisor mode, i.e. push current PC onto stack, register breakpoint callback, etc */
-    
-    /* TODO how do we handle the change of D0, it should not be altered *before* the call */
+    push_u32(m68k_get_reg(0, M68K_REG_PC));
+    push_u32(0x200);
+    m68k_set_reg(M68K_REG_PC, lv0);
+
     return 0;
 }
 
-/* XBIOS_Supexec breakpoint callback */
-void cb_XBIOS_Supexec()
+/* Magic memory for supexec */
+uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address)
 {
-    /* TODO Pop PC from stack */
+    uint32_t lv0;
+    printf("ADDRESS: 0x%x\n", address);
+    if (address == 0x201)
+    {
+        lv0 = pop_u32();
+        disable_supervisor_mode();
+        m68k_set_reg(M68K_REG_PC, lv0);
+        m68k_set_reg(M68K_REG_D0, 0);    
+    }
     
-
-    disable_supervisor_mode();
-
-    /* Set XBIOS call return value */
-    m68k_set_reg(M68K_REG_D0, 0);    
+    return 0;
 }
+
+/* Protection for magic memory for supexec */
+void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value)
+{
+    printf("Attempted to write to magic memory at 0x%x\n", address);
+    halt_execution();
+}
+
 
 
 /* Table of non-implemented XBIOS functions */
