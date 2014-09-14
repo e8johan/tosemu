@@ -24,22 +24,23 @@
 #include <stdlib.h>
 
 #include "tossystem.h"
-#include "m68k.h"
+#include "cpu.h"
 #include "utils.h"
+#include "m68k.h"
 
 /* XBIOS functions */
 
-uint32_t XBIOS_Getrez(uint32_t sp)
+uint32_t XBIOS_Getrez()
 {
     /* Custom value, to ensure that HW-dependent code fails */
     return 8;
 }
 
-uint32_t XBIOS_Supexec(uint32_t sp)
+uint32_t XBIOS_Supexec()
 {
-    uint32_t lv0 = endianize_32(m68k_read_disassembler_32(sp+2));
-    
-    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
+    uint32_t lv0 = peek_u32(2);
+
+    enable_supervisor_mode();
     
     /* TODO perform a call in supervisor mode, i.e. push current PC onto stack, register breakpoint callback, etc */
     
@@ -52,8 +53,8 @@ void cb_XBIOS_Supexec()
 {
     /* TODO Pop PC from stack */
     
-    
-    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in normal mode */
+
+    disable_supervisor_mode();
 
     /* Set XBIOS call return value */
     m68k_set_reg(M68K_REG_D0, 0);    
@@ -176,7 +177,7 @@ void cb_XBIOS_Supexec()
  */
 struct XBIOS_function {
     char *name;
-    uint32_t (*fnct)(uint32_t);
+    uint32_t (*fnct)();
     uint16_t id;
 };
 
@@ -295,14 +296,13 @@ struct XBIOS_function XBIOS_functions[] = {
 
 void xbios_trap()
 {
-    uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t fnct = endianize_16(m68k_read_disassembler_16(sp));
+    uint16_t fnct = peek_u16(0);
     int i;
     
     for(i=0; i<=sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
         if (XBIOS_functions[i].id == fnct) {
             if (XBIOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, XBIOS_functions[i].fnct(sp));
+                m68k_set_reg(M68K_REG_D0, XBIOS_functions[i].fnct());
             } else {
                 halt_execution();
                 printf("XBIOS %s (0x%x) not implemented\n", XBIOS_functions[i].name, fnct);

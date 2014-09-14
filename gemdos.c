@@ -24,45 +24,46 @@
 #include <stdlib.h>
 
 #include "tossystem.h"
+#include "cpu.h"
 #include "m68k.h"
 #include "utils.h"
 
 /* GEMDOS functions */
 
-uint32_t GEMDOS_Cconout(uint32_t sp)
+uint32_t GEMDOS_Cconout()
 {
-    putchar(m68k_read_disassembler_16(sp+2)&0xff);
+    putchar(peek_u16(2)&0xff);
     return 0;
 }
 
-uint32_t GEMDOS_Pterm(uint32_t sp)
+uint32_t GEMDOS_Pterm()
 {
-    exit(endianize_16(m68k_read_disassembler_16(sp+2)));
+    exit(peek_u16(2));
     return 0;
 }
         
-uint32_t GEMDOS_Pterm0(uint32_t sp)
+uint32_t GEMDOS_Pterm0()
 {
     exit(0);
     return 0;
 }
 
-uint32_t GEMDOS_Super(uint32_t sp)
+uint32_t GEMDOS_Super()
 {
-    uint32_t lv0 = endianize_32(m68k_read_disassembler_32(sp+2));
+    uint32_t lv0 = peek_u32(2);
         
     if (lv0 == 0) { /* Set CPU in supervisor mode */
-        m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
+        enable_supervisor_mode();
         return m68k_get_reg(0, M68K_REG_A7);
     } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
-        if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000) {
+        if (is_supervisor_mode_enabled()) {
             return 1;
         } else {
             return 0;
         }
     } else { /* Set CPU in user mode, set SP to lv0 */
         m68k_set_reg(M68K_REG_USP, lv0);
-        m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in user mode */
+        disable_supervisor_mode();
         return 0;
     }
 }    
@@ -189,7 +190,7 @@ uint32_t GEMDOS_Mshrink(uint32_t sp)
  */
 struct GEMDOS_function {
     char *name;
-    uint32_t (*fnct)(uint32_t);
+    uint32_t (*fnct)();
     uint16_t id;
 };
 
@@ -311,14 +312,13 @@ struct GEMDOS_function GEMDOS_functions[] = {
 
 void gemdos_trap()
 {
-    uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t fnct = endianize_16(m68k_read_disassembler_16(sp));
+    uint16_t fnct = peek_u16(0);
     int i;
     
     for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
         if (GEMDOS_functions[i].id == fnct) {
             if (GEMDOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, GEMDOS_functions[i].fnct(sp));
+                m68k_set_reg(M68K_REG_D0, GEMDOS_functions[i].fnct());
             } else {
                 halt_execution();
                 printf("GEMDOS %s (0x%x) not implemented\n", GEMDOS_functions[i].name, fnct);

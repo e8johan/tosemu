@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "cpu.h"
 #include "m68k.h"
 
 #include "tossystem.h"
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
     m68k_set_reg(M68K_REG_USP, te.size-4); /* user stack pointer */
     m68k_write_memory_32(te.size, 0x0080000); /* big endian 0x800 */
     m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
-    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in user mode */
+    disable_supervisor_mode();
     
     /* TODO exec */
     while (keepongoing) {

@@ -1,8 +1,5 @@
-- Avoid reading from 0x0 addresses at the very start
-- Make the execution loop infinite, but keep an "exception" flag to terminate it
 - Move the whole execution loop into the tossystem module
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
-- Have a long good look at supervisor mode and how to handle it. For instance, XBIOS Supexec is scary.
 - Provide a generic way to register breakpoints - will solve supexec

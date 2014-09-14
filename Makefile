@@ -1,5 +1,5 @@
 # Source files for TOS emulator
-SOURCEFILES = main.c gemdos.c xbios.c tossystem.c utils.c memory.c
+SOURCEFILES = main.c gemdos.c xbios.c tossystem.c utils.c memory.c cpu.h
 
 # Hand-written Musashi files
 MUSASHIFILES = Musashi/m68kcpu.c Musashi/m68kdasm.c
