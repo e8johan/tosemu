@@ -44,4 +44,4 @@ uint8_t peek_u8(int offset);
 uint16_t peek_u16(int offset);
 uint32_t peek_u32(int offset);
 
-#endif /* GEMDOS_H */
+#endif /* CPU_H */
