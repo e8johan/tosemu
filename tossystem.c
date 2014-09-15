@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "gemdos.h"
 #include "xbios.h"
+#include "bios.h"
 
 #include "m68k.h"
 
@@ -211,8 +212,7 @@ void m68k_trap(unsigned int vector)
             printf("AES / VDI not yet implemented\n");
             break;
         case 0x2d: /* trap #$d, BIOS */
-            halt_execution();
-            printf("BIOS not yet implemented\n");
+            bios_trap();
             break;
         case 0x2e: /* trap #$e, XBIOS */
             xbios_trap();
