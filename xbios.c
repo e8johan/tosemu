@@ -26,7 +26,6 @@
 #include "tossystem.h"
 #include "memory.h"
 #include "cpu.h"
-#include "utils.h"
 #include "m68k.h"
 
 /* XBIOS functions */

@@ -26,7 +26,6 @@
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
-#include "utils.h"
 
 /* GEMDOS functions */
 
