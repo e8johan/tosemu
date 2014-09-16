@@ -55,10 +55,22 @@ uint32_t BIOS_Bconout()
     }
 }
 
+uint32_t BIOS_Bcostat()
+{
+    uint16_t dev = peek_u16(2);
+    
+    switch(dev)
+    {
+    case 2: /* console */
+        return -1; /* Always ready */
+    default:
+        return 0; /* TODO support additional devices */
+    }
+}
+
 /* Table of non-implemented BIOS functions */
 
 #define BIOS_Bconstat NULL
-#define BIOS_Bcostat NULL
 #define BIOS_Drvmap NULL
 #define BIOS_Getbpb NULL
 #define BIOS_Getmpb NULL
