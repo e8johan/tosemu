@@ -29,6 +29,12 @@
 
 /* GEMDOS functions */
 
+
+uint32_t GEMDOS_Cconin()
+{
+    return getchar() & 0xff; /* TODO no shift key status, scancode */
+}
+
 uint32_t GEMDOS_Cconout()
 {
     putchar(peek_u16(2)&0xff);
@@ -79,7 +85,6 @@ uint32_t GEMDOS_Mshrink(uint32_t sp)
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
 #define GEMDOS_Cauxout NULL
-#define GEMDOS_Cconin NULL
 #define GEMDOS_Cconis NULL
 #define GEMDOS_Cconos NULL
 #define GEMDOS_Cconrs NULL
