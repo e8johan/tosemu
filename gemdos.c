@@ -73,7 +73,7 @@ uint32_t GEMDOS_Super()
     }
 }    
 
-uint32_t GEMDOS_Mshrink(uint32_t sp)
+uint32_t GEMDOS_Mshrink()
 {
     /* TODO currently, we do not react to this */
     return 0;
