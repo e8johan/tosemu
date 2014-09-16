@@ -23,10 +23,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
+
+/* Checks if the console has available input, used by Bconin and Bconstat 
+ * http://stackoverflow.com/questions/717572/how-do-you-do-non-blocking-console-i-o-on-linux-in-c
+ */
+int console_input_available()
+{
+    struct timeval tv;
+    fd_set fds;
+
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+
+    return (FD_ISSET(0, &fds));
+}
 
 uint32_t BIOS_Bconin()
 {
@@ -35,7 +55,10 @@ uint32_t BIOS_Bconin()
     switch(dev)
     {
     case 2: /* console */
-        return getchar() & 0xff; /* TODO non-blocking, no scancode and no shift status */
+        if (console_input_available())
+            return getchar() & 0xff;
+        else
+            return 0;
     default:
         return 0; /* TODO support reading from additional devices */
     }
@@ -55,6 +78,22 @@ uint32_t BIOS_Bconout()
     }
 }
 
+uint32_t BIOS_Bconstat()
+{
+    uint16_t dev = peek_u16(2);
+    
+    switch(dev)
+    {
+    case 2: /* console */
+        if (console_input_available())
+            return -1;
+        else
+            return 0;
+    default:
+        return 0; /* TODO support additional devices */
+    }
+}            
+
 uint32_t BIOS_Bcostat()
 {
     uint16_t dev = peek_u16(2);
@@ -70,7 +109,6 @@ uint32_t BIOS_Bcostat()
 
 /* Table of non-implemented BIOS functions */
 
-#define BIOS_Bconstat NULL
 #define BIOS_Drvmap NULL
 #define BIOS_Getbpb NULL
 #define BIOS_Getmpb NULL
