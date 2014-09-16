@@ -28,10 +28,35 @@
 #include "cpu.h"
 #include "m68k.h"
 
+uint32_t BIOS_Bconin()
+{
+    uint16_t dev = peek_u16(2);
+    
+    switch(dev)
+    {
+    case 2: /* console */
+        return getchar() & 0xff; /* TODO non-blocking, no scancode and no shift status */
+    default:
+        return 0; /* TODO support reading from additional devices */
+    }
+}
+
+uint32_t BIOS_Bconout()
+{
+    uint16_t dev = peek_u16(2);
+    uint16_t c = peek_u16(4);
+    
+    switch(dev)
+    {
+    case 2: /* console */
+        putchar(c);
+    default:
+        return 0; /* TODO support writing to additional devices */
+    }
+}
+
 /* Table of non-implemented BIOS functions */
 
-#define BIOS_Bconin NULL
-#define BIOS_Bconout NULL
 #define BIOS_Bconstat NULL
 #define BIOS_Bcostat NULL
 #define BIOS_Drvmap NULL
