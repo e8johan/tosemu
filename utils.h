@@ -29,4 +29,7 @@ uint16_t endianize_16(uint16_t in);
 /* Changes endianess of a 32-bits long word */
 uint32_t endianize_32(uint32_t in);
 
+/* Checks if the console has available input */
+int console_input_available();
+
 #endif /* UTILS_H */

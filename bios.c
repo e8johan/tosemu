@@ -23,30 +23,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h>
 
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
-
-/* Checks if the console has available input, used by Bconin and Bconstat 
- * http://stackoverflow.com/questions/717572/how-do-you-do-non-blocking-console-i-o-on-linux-in-c
- */
-int console_input_available()
-{
-    struct timeval tv;
-    fd_set fds;
-
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-
-    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
-
-    return (FD_ISSET(0, &fds));
-}
+#include "utils.h"
 
 uint32_t BIOS_Bconin()
 {
