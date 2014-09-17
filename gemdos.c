@@ -26,9 +26,9 @@
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
+#include "utils.h"
 
 /* GEMDOS functions */
-
 
 uint32_t GEMDOS_Cconin()
 {
@@ -39,6 +39,19 @@ uint32_t GEMDOS_Cconout()
 {
     putchar(peek_u16(2)&0xff);
     return 0;
+}
+
+uint32_t GEMDOS_Cconis()
+{
+    if (console_input_available())
+        return -1;
+    else
+        return 0;
+}
+
+uint32_t GEMDOS_Cconos()
+{
+    return -1; /* Always ready */
 }
 
 uint32_t GEMDOS_Pterm()
@@ -85,8 +98,6 @@ uint32_t GEMDOS_Mshrink()
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
 #define GEMDOS_Cauxout NULL
-#define GEMDOS_Cconis NULL
-#define GEMDOS_Cconos NULL
 #define GEMDOS_Cconrs NULL
 #define GEMDOS_Cconws NULL
 #define GEMDOS_Cnecin NULL
