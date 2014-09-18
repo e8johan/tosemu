@@ -53,9 +53,11 @@ Tests
 =====
 
 The tests subdirectory contains test applications used during the development 
-of tosemu.
+of tosemu. The tests are compiled with the m68k-atari-mint cross-tools built by Vincent Rivière. Please visit the following web site for more information:
 
+  http://vincent.riviere.free.fr/soft/m68k-atari-mint/
 
+  
 
 Licensing
 =========
