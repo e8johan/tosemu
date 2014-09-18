@@ -1,5 +1,5 @@
 # Each testname is build from a source file with the file name extension .s
-TESTNAME=Pterm0
+TESTNAME=Pterm0 helloworld
 
 all: $(TESTNAME)
 
