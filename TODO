@@ -2,3 +2,4 @@
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
+- Create makefile for the examples, use m68k-atari-mint-gcc (http://bus-error.nokturnal.pl/tiki-read_article.php?articleId=2)

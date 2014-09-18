@@ -10,7 +10,12 @@ Instead of emulating a complete TOS-compatible machine, operating system calls
 are intercepted and emulated on the host platform. The end result will be TOS 
 applications running as an integrated part of the host system.
 
-TOSEMU can be seen as a mix of 68kemu, which allows 68k applications to be executed in a TOS environment on another CPU platform, and wine, which lets Windows applications execute using a system API translation laer on the CPU platform they where meant for. TOSEMU executes 68k applications on non-68k CPUs, and provides an OS wrapper layer, translating TOS calls to system calls native to the host operating system.
+TOSEMU can be seen as a mix of 68kemu, which allows 68k applications to be 
+executed in a TOS environment on another CPU platform, and wine, which lets 
+Windows applications execute using a system API translation laer on the CPU 
+platform they where meant for. TOSEMU executes 68k applications on non-68k 
+CPUs, and provides an OS wrapper layer, translating TOS calls to system calls 
+native to the host operating system.
 
 
 
@@ -41,6 +46,14 @@ extending the available system calls.
 When basic applications are useable, a server/client architecture enabling 
 intra-app communication as well as desktop accessory applications will be 
 implemented.
+
+
+
+Tests
+=====
+
+The tests subdirectory contains test applications used during the development 
+of tosemu.
 
 
 
