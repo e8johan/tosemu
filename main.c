@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,15 +33,20 @@
 
 #include "tossystem.h"
 
+int verbose;
+
 void cpu_instr_callback()
 {
     static char buff[100];
     static unsigned int pc;
 
-    pc = m68k_get_reg(NULL, M68K_REG_PC);
-    m68k_disassemble(buff, pc, M68K_CPU_TYPE_68000);
-    printf("E %03x: %s\n", pc, buff);
-    fflush(stdout);
+    if (verbose)
+    {
+        pc = m68k_get_reg(NULL, M68K_REG_PC);
+        m68k_disassemble(buff, pc, M68K_CPU_TYPE_68000);
+        printf("E %03x: %s\n", pc, buff);
+        fflush(stdout);
+    }
 }
 
 extern int keepongoing;
@@ -52,18 +58,27 @@ int main(int argc, char **argv)
     struct stat sb;
     struct tos_environment te;
     
+    verbose = 0;
+    
     /* Program usage */
-    if(argc != 2)
+    if (argc != 2 && argc != 3)
     {
-        printf("Usage: tosemu <binary>\n\n\t<binary> name of binary to execute\n");
+        printf("Usage: tosemu [-v] <binary>\n\n\t<binary> name of binary to execute\n");
         return -1;
+    }
+    
+    /* Check if we want to be verbose */
+    if (argc == 3)
+    {
+        if (strcmp("-v", argv[1]) == 0)
+            verbose = -1;
     }
 
     /* Open the provided file */
-    binary_file = open(argv[1], O_RDONLY);
+    binary_file = open(argv[argc-1], O_RDONLY);
     if (binary_file == -1)
     {
-        printf("Error: failed to open '%s'\n", argv[1]);
+        printf("Error: failed to open '%s'\n", argv[argc-1]);
         return -1;
     }
     
@@ -74,7 +89,7 @@ int main(int argc, char **argv)
     binary_data = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, binary_file, 0);
     if (!binary_data)
     {
-        printf("Error: failed to mmap '%s'\n", argv[1]);
+        printf("Error: failed to mmap '%s'\n", argv[argc-1]);
         close(binary_file);
         return -1;
     }
@@ -82,7 +97,7 @@ int main(int argc, char **argv)
     /* Check that the binary starts with the magix 0x601a sequence */
     if( ((char*)binary_data)[0] != 0x60 && ((char*)binary_data)[1] == 0x1a)
     {
-        printf("Error: invalid magic in '%s'\n", argv[1]);
+        printf("Error: invalid magic in '%s'\n", argv[argc-1]);
         close(binary_file);
         return -1;
     }

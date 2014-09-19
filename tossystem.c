@@ -150,21 +150,6 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
      * te->bp->p_parent; */
     /* TODO te->bp->p_env; */
     /* TODO te->bp->p_cmdlin[128];*/
-    
-    printf("BASEPAGE\n  BASEPAGE: 0x%x - 0x%x\n  TEXT: 0x%x [0x%x]\n  DATA: 0x%x [0x%x]\n  BSS:  0x%x [0x%x]\n  DTA:  0x%x\n  PARENT: 0x%x\n  ENV: 0x%x\n  CMDLINE: '%s'\n",
-           endianize_32(te->bp->p_lowtpa),
-           endianize_32(te->bp->p_hitpa),
-           endianize_32(te->bp->p_tbase),
-           endianize_32(te->bp->p_tlen),
-           endianize_32(te->bp->p_dbase),
-           endianize_32(te->bp->p_dlen),
-           endianize_32(te->bp->p_bbase),
-           endianize_32(te->bp->p_blen),
-           endianize_32(te->bp->p_dta),
-           endianize_32(te->bp->p_parent),
-           te->bp->p_env,
-           te->bp->p_cmdlin
-           );
         
     /* TODO perform relocation fixups according to binary, pseudo code here: 
      * http://code.metager.de/source/xref/haiku/docs/develop/ports/m68k/atari/atariexe.txt
