@@ -20,8 +20,7 @@ XDEF _start
 .text
 _start:
         move.l  4(sp), a0
-        move.l  16(a0), a1     | The base address of the data segment
-
+        lea msg, a1
 
 l0:
         clr.l   d0

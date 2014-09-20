@@ -169,14 +169,6 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* Relocating the loaded binary, must take place after the "userram" has 
      * been registered, as it takes place in the memory of the tos machine */
-    printf("TOTAL: %" PRIu64 "\n", size);
-    printf("TEXT : %u\n", te->tsize);
-    printf("DATA : %u\n", te->dsize);
-    printf("BSS  : %u\n", te->bsize);
-    printf("SYMS : %u\n", te->ssize);
-    printf("SUM  : %u\n", te->tsize + te->dsize + te->ssize);
-    printf("DIFF : %" PRIu64 "\n", size - (te->tsize + te->dsize + te->ssize));
-    
     ptr = binary;                       /* start of file contents */
     ptr += sizeof(struct exec_header);  /* skip header */
     ptr += te->tsize;                   /* skip text segment */
@@ -184,8 +176,10 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     ptr += te->ssize;                   /* skip symbol table */
     ptr32 = (uint32_t*)ptr;             /* address of initial offet */
     ptr += 4;                           /* skip to start of relocation table */
-    printf("OFFSET: 0x%x\n", endianize_32(*ptr32));
-    adr = 0x900 + endianize_32(*ptr32) - sizeof(struct exec_header); /* first relocation address in the tos memory space */
+    adr = 0x900 + endianize_32(*ptr32); - sizeof(struct exec_header); /* first relocation address in the tos memory space */
+    
+    m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
+
     while(*ptr)
     {
         switch(*ptr)
@@ -193,13 +187,13 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         case 0:
             break;
         case 1:
-            adr += 254;
+            adr += 0xfe;
             ptr ++;
             break;
         default:
             adr += *ptr;
             ptr ++;
-            m68k_write_memory_32(adr, endianize_32(endianize_32(m68k_read_memory_32(adr)) + 0x900));
+            m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
 
             break;
         }
