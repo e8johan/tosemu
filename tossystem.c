@@ -163,42 +163,46 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
-    add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
+        add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     
     /* Relocating the loaded binary, must take place after the "userram" has 
-     * been registered, as it takes place in the memory of the tos machine */
-    ptr = binary;                       /* start of file contents */
-    ptr += sizeof(struct exec_header);  /* skip header */
-    ptr += te->tsize;                   /* skip text segment */
-    ptr += te->dsize;                   /* skip data segment */
-    ptr += te->ssize;                   /* skip symbol table */
-    ptr32 = (uint32_t*)ptr;             /* address of initial offet */
-    ptr += 4;                           /* skip to start of relocation table */
-    adr = 0x900 + endianize_32(*ptr32); - sizeof(struct exec_header); /* first relocation address in the tos memory space */
-    
-    m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
-
-    while(*ptr)
-    {
-        switch(*ptr)
-        {
-        case 0:
-            break;
-        case 1:
-            adr += 0xfe;
-            ptr ++;
-            break;
-        default:
-            adr += *ptr;
-            ptr ++;
+    * been registered, as it takes place in the memory of the tos machine */
+    if (!header->absflag) {
+        /* Move ptr to the start of the relocation data */
+        ptr = binary;                       /* start of file contents */
+        ptr += sizeof(struct exec_header);  /* skip header */
+        ptr += te->tsize;                   /* skip text segment */
+        ptr += te->dsize;                   /* skip data segment */
+        ptr += te->ssize;                   /* skip symbol table */
+        ptr32 = (uint32_t*)ptr;             /* address of initial offet */
+        ptr += 4;                           /* skip to start of relocation table */
+        /* first relocation address in the tos memory space */
+        adr = 0x900 + endianize_32(*ptr32);
+        
+        if (adr) {
             m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
+            while(*ptr)
+            {
+                switch(*ptr)
+                {
+                case 0:
+                    break;
+                case 1:
+                    adr += 0xfe;
+                    ptr ++;
+                    break;
+                default:
+                    adr += *ptr;
+                    ptr ++;
+                    m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
 
-            break;
+                    break;
+                }
+            }
         }
     }
-
     
     /* TODO Move into CPU initialization */
     keepongoing = 1;
