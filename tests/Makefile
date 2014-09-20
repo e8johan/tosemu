@@ -1,10 +1,15 @@
 # Each testname is build from a source file with the file name extension .s
-TESTNAME=Pterm Pterm0 helloworld
+STESTNAME=Pterm Pterm0 asm-helloworld c-helloworld
 
-all: $(TESTNAME)
+CC=m68k-atari-mint-gcc
 
-%: %.s
+all: $(addprefix test-,$(basename $(STESTNAME) $(CTESTNAME)))
+
+test-%: %.s
 	m68k-atari-mint-gcc $< -Wa,-S -nostdlib -o $@
-	
+
+test-%: %.c
+	m68k-atari-mint-gcc $< -o $@
+
 clean:
-	$(RM) $(TESTNAME)
+	$(RM) $(addprefix test-,$(basename $(STESTNAME) $(CTESTNAME)))
