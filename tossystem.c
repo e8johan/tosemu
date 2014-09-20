@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "memory.h"
 #include "utils.h"
@@ -77,7 +78,10 @@ int keepongoing;
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
 {
     struct exec_header *header;
-        
+    uint8_t *ptr = 0;
+    uint32_t *ptr32 = 0;
+    uint32_t adr = 0;
+    
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
     {
@@ -105,7 +109,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* Copy segments into app memory */
     memcpy(te->appmem, ((uint8_t*)binary) + sizeof(struct exec_header), te->tsize + te->dsize + te->ssize);
-    
+        
     /* Allocate basepage */
     te->bp = malloc(sizeof(struct basepage));
     
@@ -162,6 +166,45 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
+    
+    /* Relocating the loaded binary, must take place after the "userram" has 
+     * been registered, as it takes place in the memory of the tos machine */
+    printf("TOTAL: %" PRIu64 "\n", size);
+    printf("TEXT : %u\n", te->tsize);
+    printf("DATA : %u\n", te->dsize);
+    printf("BSS  : %u\n", te->bsize);
+    printf("SYMS : %u\n", te->ssize);
+    printf("SUM  : %u\n", te->tsize + te->dsize + te->ssize);
+    printf("DIFF : %" PRIu64 "\n", size - (te->tsize + te->dsize + te->ssize));
+    
+    ptr = binary;                       /* start of file contents */
+    ptr += sizeof(struct exec_header);  /* skip header */
+    ptr += te->tsize;                   /* skip text segment */
+    ptr += te->dsize;                   /* skip data segment */
+    ptr += te->ssize;                   /* skip symbol table */
+    ptr32 = (uint32_t*)ptr;             /* address of initial offet */
+    ptr += 4;                           /* skip to start of relocation table */
+    printf("OFFSET: 0x%x\n", endianize_32(*ptr32));
+    adr = 0x900 + endianize_32(*ptr32) - sizeof(struct exec_header); /* first relocation address in the tos memory space */
+    while(*ptr)
+    {
+        switch(*ptr)
+        {
+        case 0:
+            break;
+        case 1:
+            adr += 254;
+            ptr ++;
+            break;
+        default:
+            adr += *ptr;
+            ptr ++;
+            m68k_write_memory_32(adr, endianize_32(endianize_32(m68k_read_memory_32(adr)) + 0x900));
+
+            break;
+        }
+    }
+
     
     /* TODO Move into CPU initialization */
     keepongoing = 1;
