@@ -20,7 +20,7 @@ XDEF _start
 .text
 _start:
         move.l  4(sp), a0
-        lea msg, a1
+        lea     msg, a1
 
 l0:
         clr.l   d0
@@ -28,7 +28,7 @@ l0:
         beq     l1
         
         move.w  d0,-(sp)
-        move.w  #2,-(sp)
+        move.w  #2,-(sp)        | call Cconout
         trap    #1
         addq.l   #4,sp
         bra     l0
