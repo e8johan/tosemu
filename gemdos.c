@@ -54,6 +54,21 @@ uint32_t GEMDOS_Cconos()
     return -1; /* Always ready */
 }
 
+uint32_t GEMDOS_Cconws()
+{
+    uint32_t adr = peek_u32(2);
+    uint32_t res = 0;
+    uint8_t ch;
+    
+    while((ch=m68k_read_disassembler_8(adr++)))
+    {
+        putchar(ch);
+        res++;
+    }
+    
+    return res;
+}
+
 uint32_t GEMDOS_Pterm()
 {
     exit(peek_u16(2));
@@ -99,7 +114,6 @@ uint32_t GEMDOS_Mshrink()
 #define GEMDOS_Cauxis NULL
 #define GEMDOS_Cauxout NULL
 #define GEMDOS_Cconrs NULL
-#define GEMDOS_Cconws NULL
 #define GEMDOS_Cnecin NULL
 #define GEMDOS_Cprnos NULL
 #define GEMDOS_Cprnout NULL
