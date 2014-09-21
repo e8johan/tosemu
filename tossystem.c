@@ -181,7 +181,8 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         /* first relocation address in the tos memory space */
         adr = 0x900 + endianize_32(*ptr32);
         
-        if (adr) {
+        printf("0x%x\n", adr);
+        if (adr != 0x900) {
             m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
             while(*ptr)
             {
