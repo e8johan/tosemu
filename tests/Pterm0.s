@@ -17,6 +17,7 @@
 
 XDEF _start
 
+.text
 _start:
         move.w  #0, -(sp)       | call Pterm0
         trap    #1
