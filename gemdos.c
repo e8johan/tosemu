@@ -107,8 +107,14 @@ uint32_t GEMDOS_Mshrink()
     return 0;
 }
 
+uint32_t GEMDOS_Unknown()
+{
+    return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
+}
+
 /* Table of non-implemented GEMDOS functions */
 
+#define GEMDOS_Ssystem GEMDOS_Unknown
 #define GEMDOS_Cauxin NULL
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
@@ -216,6 +222,8 @@ uint32_t GEMDOS_Mshrink()
 
 /* GEMDOS function table according to
  * http://www.yardley.cc/atari/compendium/atari-compendium-GEMDOS-Function-Reference.htm
+ * 
+ * Added Ssystem from http://toshyp.atari.org/en/00500e.html
  */
 struct GEMDOS_function {
     char *name;
@@ -337,6 +345,7 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Tgettime",    GEMDOS_Tgettime, 0x2C},
     {"Tsetdate",    GEMDOS_Tsetdate, 0x2B},
     {"Tsettime",    GEMDOS_Tsettime, 0x2D},
+    {"Ssystem",     GEMDOS_Ssystem, 0x154}
 };
 
 void gemdos_trap()
