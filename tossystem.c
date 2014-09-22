@@ -141,7 +141,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
 
     memset(te->bp, 0, sizeof(struct basepage));
     te->bp->p_lowtpa = endianize_32(0x000800);
-    te->bp->p_hitpa = endianize_32(endianize_32(te->bp->p_lowtpa) + sizeof(struct basepage));
+    te->bp->p_hitpa = endianize_32(te->size + 0x900);
     te->bp->p_tbase = te->bp->p_hitpa;
     te->bp->p_tlen = endianize_32(te->tsize);
     te->bp->p_dbase = endianize_32(endianize_32(te->bp->p_tbase) + endianize_32(te->bp->p_tlen));
@@ -163,7 +163,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
-        add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
+    add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     
