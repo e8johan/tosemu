@@ -45,6 +45,28 @@ void cpu_instr_callback()
         pc = m68k_get_reg(NULL, M68K_REG_PC);
         m68k_disassemble(buff, pc, M68K_CPU_TYPE_68000);
         printf("E %03x: %s\n", pc, buff);
+#if 0 /* Dump all regs */
+        printf("    D0       D1       D2       D3       D4       D5       D6       D7\n");
+        printf("    %08x %08x %08x %08x %08x %08x %08x %08x\n"
+            , m68k_get_reg(0, M68K_REG_D0)
+            , m68k_get_reg(0, M68K_REG_D1)
+            , m68k_get_reg(0, M68K_REG_D2)
+            , m68k_get_reg(0, M68K_REG_D3)
+            , m68k_get_reg(0, M68K_REG_D4)
+            , m68k_get_reg(0, M68K_REG_D5)
+            , m68k_get_reg(0, M68K_REG_D6)
+            , m68k_get_reg(0, M68K_REG_D7));
+        printf("    A0       A1       A2       A3       A4       A5       A6       A7\n");
+        printf("    %08x %08x %08x %08x %08x %08x %08x %08x\n"
+            , m68k_get_reg(0, M68K_REG_A0)
+            , m68k_get_reg(0, M68K_REG_A1)
+            , m68k_get_reg(0, M68K_REG_A2)
+            , m68k_get_reg(0, M68K_REG_A3)
+            , m68k_get_reg(0, M68K_REG_A4)
+            , m68k_get_reg(0, M68K_REG_A5)
+            , m68k_get_reg(0, M68K_REG_A6)
+            , m68k_get_reg(0, M68K_REG_A7));
+#endif
         fflush(stdout);
     }
 }
@@ -123,7 +145,7 @@ int main(int argc, char **argv)
     /* TODO is this really correct, or should it be the MSP? If so, why does that not work? */
     m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
     m68k_set_reg(M68K_REG_USP, te.size-4); /* user stack pointer */
-    m68k_write_memory_32(te.size, 0x0080000); /* big endian 0x800 */
+    m68k_write_memory_32(te.size, 0x800); /* big endian 0x800 */
     m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
     disable_supervisor_mode();
     
