@@ -1,5 +1,5 @@
 # Each testname is build from a source file with the file name extension .s
-STESTNAME=Pterm Pterm0 Cconout Cconws c-helloworld
+STESTNAME=Pterm Pterm0 Cconout Cconws Bconout c-helloworld
 
 CC=m68k-atari-mint-gcc
 
