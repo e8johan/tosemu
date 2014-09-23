@@ -46,7 +46,7 @@ void push_u16(uint16_t value)
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
     sp -= 2;
-    m68k_write_memory_16(sp, endianize_16(value));
+    m68k_write_memory_16(sp, value);
     m68k_set_reg(M68K_REG_A7, sp);
 }
 
@@ -54,14 +54,14 @@ void push_u32(uint32_t value)
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
     sp -= 4;
-    m68k_write_memory_32(sp, endianize_32(value));
+    m68k_write_memory_32(sp, value);
     m68k_set_reg(M68K_REG_A7, sp);
 }
 
 uint16_t pop_u16()
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t value = endianize_16(m68k_read_disassembler_16(sp));
+    uint16_t value = m68k_read_disassembler_16(sp);
     sp += 2;
     m68k_set_reg(M68K_REG_A7, sp);
     return value;
@@ -70,7 +70,7 @@ uint16_t pop_u16()
 uint32_t pop_u32()
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t value = endianize_32(m68k_read_disassembler_32(sp));
+    uint16_t value = m68k_read_disassembler_32(sp);
     sp += 4;
     m68k_set_reg(M68K_REG_A7, sp);
     return value;
@@ -85,11 +85,11 @@ uint8_t peek_u8(int offset)
 uint16_t peek_u16(int offset)
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    return endianize_16(m68k_read_disassembler_16(sp+offset));
+    return m68k_read_disassembler_16(sp+offset);
 }
 
 uint32_t peek_u32(int offset)
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    return endianize_32(m68k_read_disassembler_32(sp+offset));
+    return m68k_read_disassembler_32(sp+offset);
 }

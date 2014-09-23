@@ -182,7 +182,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         adr = 0x900 + endianize_32(*ptr32);
         
         if (adr != 0x900) {
-            m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
+            m68k_write_memory_32(adr, m68k_read_memory_32(adr) + 0x900);
             while(*ptr)
             {
                 switch(*ptr)
@@ -196,7 +196,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
                 default:
                     adr += *ptr;
                     ptr ++;
-                    m68k_write_memory_32(adr, endianize_32(m68k_read_memory_32(adr) + 0x900));
+                    m68k_write_memory_32(adr, m68k_read_memory_32(adr) + 0x900);
 
                     break;
                 }

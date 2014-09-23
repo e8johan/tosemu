@@ -220,7 +220,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
     int i;
     
     for(i=0; i<2; ++i) {
-        tos_write(address+i, value&0xff);        
+        tos_write(address+1-i, value&0xff);
         value = value >> 8;
     }
 }
@@ -229,7 +229,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
     int i;
     
     for(i=0; i<4; ++i) {
-        tos_write(address+i, value&0xff);        
+        tos_write(address+3-i, value&0xff);
         value = value >> 8;
     }
 }
