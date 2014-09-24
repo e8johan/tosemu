@@ -142,7 +142,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     memset(te->bp, 0, sizeof(struct basepage));
     te->bp->p_lowtpa = endianize_32(0x000800);
     te->bp->p_hitpa = endianize_32(te->size + 0x900);
-    te->bp->p_tbase = te->bp->p_hitpa;
+    te->bp->p_tbase = endianize_32(0x000900);
     te->bp->p_tlen = endianize_32(te->tsize);
     te->bp->p_dbase = endianize_32(endianize_32(te->bp->p_tbase) + endianize_32(te->bp->p_tlen));
     te->bp->p_dlen = endianize_32(te->dsize);
@@ -152,7 +152,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
      * te->bp->p_dta; */
     /* TODO how to provide a pointer to the parent process? 
      * te->bp->p_parent; */
-    /* TODO te->bp->p_env; */
+    te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory */
     /* TODO te->bp->p_cmdlin[128];*/
         
     /* TODO perform relocation fixups according to binary, pseudo code here: 
