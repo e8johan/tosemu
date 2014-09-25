@@ -24,6 +24,7 @@
 #include <stdlib.h>
 
 #include "tossystem.h"
+#include "cpu.h"
 #include "m68k.h"
 
 /* Memory area linked list head */
@@ -128,7 +129,7 @@ uint8_t tos_read(uint32_t address)
     }
     
     /* Is the CPU in supervisor mode? */
-    if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000)
+    if (is_supervisor_mode_enabled())
         mask = MEMORY_READ | MEMORY_SUPERREAD;
     else
         mask = MEMORY_READ;
@@ -154,7 +155,7 @@ void tos_write(uint32_t address, uint8_t value)
     }
     
     /* Is the CPU in supervisor mode? */
-    if ((m68k_get_reg(0, M68K_REG_SR) & 0x2000) == 0x2000)
+    if (is_supervisor_mode_enabled())
         mask = MEMORY_WRITE | MEMORY_SUPERWRITE;
     else
         mask = MEMORY_WRITE;
