@@ -118,6 +118,7 @@ uint32_t GEMDOS_Unknown()
 /* Table of non-implemented GEMDOS functions */
 
 #define GEMDOS_Ssystem GEMDOS_Unknown
+#define GEMDOS_Ffstat64 GEMDOS_Unknown
 #define GEMDOS_Cauxin NULL
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
@@ -147,7 +148,7 @@ uint32_t GEMDOS_Unknown()
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
 #define GEMDOS_Fclose NULL
-#define GEMDOS_Fcntl NULL
+#define GEMDOS_Fcntl GEMDOS_Unknown
 #define GEMDOS_Fcreate NULL
 #define GEMDOS_Fdatime NULL
 #define GEMDOS_Fdelete NULL
@@ -179,16 +180,16 @@ uint32_t GEMDOS_Unknown()
 #define GEMDOS_Mfree NULL
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
-#define GEMDOS_Pdomain NULL
+#define GEMDOS_Pdomain GEMDOS_Unknown
 #define GEMDOS_Pexec NULL
 #define GEMDOS_Pfork NULL
-#define GEMDOS_Pgetegid NULL
-#define GEMDOS_Pgeteuid NULL
-#define GEMDOS_Pgetgid NULL
+#define GEMDOS_Pgetegid GEMDOS_Unknown
+#define GEMDOS_Pgeteuid GEMDOS_Unknown
+#define GEMDOS_Pgetgid GEMDOS_Unknown
 #define GEMDOS_Pgetpgrp NULL
 #define GEMDOS_Pgetpid NULL
 #define GEMDOS_Pgetppid NULL
-#define GEMDOS_Pgetuid NULL
+#define GEMDOS_Pgetuid GEMDOS_Unknown
 #define GEMDOS_Pkill NULL
 #define GEMDOS_Pmsg NULL
 #define GEMDOS_Pnice NULL
@@ -348,7 +349,8 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Tgettime",    GEMDOS_Tgettime, 0x2C},
     {"Tsetdate",    GEMDOS_Tsetdate, 0x2B},
     {"Tsettime",    GEMDOS_Tsettime, 0x2D},
-    {"Ssystem",     GEMDOS_Ssystem, 0x154}
+    {"Ssystem",     GEMDOS_Ssystem, 0x154},
+    {"Ffstat64",    GEMDOS_Ffstat64, 0x15D}
 };
 
 void gemdos_trap()
