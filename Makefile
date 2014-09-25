@@ -15,6 +15,11 @@ LDFLAGS = -lc
 
 all: bin/tosemu
 
+.PHONY: tests
+
+tests:
+	$(MAKE) -C tests/
+
 # Main emulator target
 bin/tosemu: $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
 	$(LD) $(LDFLAGS) $^ -o $@
@@ -38,3 +43,4 @@ clean:
 	$(RM) gen/*
 	$(RM) bin/*
 	$(RM) -d gen/ bin/
+	$(MAKE) -C tests/ clean
