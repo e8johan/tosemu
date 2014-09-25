@@ -84,21 +84,24 @@ uint32_t GEMDOS_Pterm0()
 uint32_t GEMDOS_Super()
 {
     uint32_t lv0 = peek_u32(2);
-        
+    uint32_t res = 0;
+    
     if (lv0 == 0) { /* Set CPU in supervisor mode */
+        res = m68k_get_reg(0, M68K_REG_A7);
         enable_supervisor_mode();
-        return m68k_get_reg(0, M68K_REG_A7);
     } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
         if (is_supervisor_mode_enabled()) {
-            return 1;
+            res = 1;
         } else {
-            return 0;
+            res = 0;
         }
     } else { /* Set CPU in user mode, set SP to lv0 */
         m68k_set_reg(M68K_REG_USP, lv0);
         disable_supervisor_mode();
-        return 0;
+        res = 0;
     }
+    
+    return res;
 }    
 
 uint32_t GEMDOS_Mshrink()
