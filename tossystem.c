@@ -91,7 +91,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* Setup "static" data areas */
     te->staticmem0 = malloc(0x200);       /* 0x0 - 0x1ff */
-    te->staticmem1 = malloc(0x500-0x380); /* 0x380 - 0x4ff */
+    te->staticmem1 = malloc(0x5B4-0x380); /* 0x380 - 0x5B4 */
     
     /* Create supervisor memory for a stack */
     te->supermem = malloc(SUPERMEMSIZE);
@@ -150,19 +150,14 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->bp->p_blen = endianize_32(te->bsize);
     /* TODO, Disk Transfer Address, http://www.yardley.cc/atarsi/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem
      * te->bp->p_dta; */
-    /* TODO how to provide a pointer to the parent process? 
-     * te->bp->p_parent; */
+    te->bp->p_parent = 0;
     te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory */
     /* TODO te->bp->p_cmdlin[128];*/
         
-    /* TODO perform relocation fixups according to binary, pseudo code here: 
-     * http://code.metager.de/source/xref/haiku/docs/develop/ports/m68k/atari/atariexe.txt
-     */
-    
     reset_memory();
     add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
-    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x500-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
+    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x5B4-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     add_ptr_memory_area("basepage", MEMORY_READ, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
