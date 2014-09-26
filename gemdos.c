@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "tossystem.h"
 #include "cpu.h"
@@ -110,6 +111,54 @@ uint32_t GEMDOS_Mshrink()
     return 0;
 }
 
+uint32_t GEMDOS_Tgetdate()
+{
+    /*
+    * 0-4     Day (1-31)
+    * 5-8     Month (1-12)
+    * 9-15    Year (0-119, 0= 1980)
+    * 
+    * http://toshyp.atari.org/en/00500a.html
+    */
+    uint32_t res = 0;
+    time_t t;
+    struct tm *lt;
+    
+    t = time(NULL);
+    lt = localtime(&t);
+    
+    res = lt->tm_mday |
+          ((lt->tm_mon+1) << 5) |
+          ((lt->tm_year-80) << 9);
+    
+    return res;
+}
+
+uint32_t GEMDOS_Tgettime()
+{
+    /*
+    * 0-4     Seconds in units of two (0-29)
+    * 5-10    Minutes (0-59)
+    * 11-15   Hours (0-23)
+    * 
+    * http://toshyp.atari.org/en/00500a.html
+    */
+    uint32_t res = 0;
+    time_t t;
+    struct tm *lt;
+    
+    t = time(NULL);
+    lt = localtime(&t);
+    
+    res = (lt->tm_sec / 2) |
+          (lt->tm_min << 5) |
+          (lt->tm_hour << 11);
+    
+    return res;
+}
+
+
+/* Used to tag Mint-only calls that should not halt execution, but are not implemented */
 uint32_t GEMDOS_Unknown()
 {
     return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
@@ -119,6 +168,8 @@ uint32_t GEMDOS_Unknown()
 
 #define GEMDOS_Ssystem GEMDOS_Unknown
 #define GEMDOS_Ffstat64 GEMDOS_Unknown
+#define GEMDOS_Tgettimeofday GEMDOS_Unknown
+
 #define GEMDOS_Cauxin NULL
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
@@ -219,8 +270,6 @@ uint32_t GEMDOS_Unknown()
 #define GEMDOS_Pyield NULL
 #define GEMDOS_Sysconf NULL
 #define GEMDOS_Talarm NULL
-#define GEMDOS_Tgetdate NULL
-#define GEMDOS_Tgettime NULL
 #define GEMDOS_Tsetdate NULL
 #define GEMDOS_Tsettime NULL
 
@@ -350,7 +399,8 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Tsetdate",    GEMDOS_Tsetdate, 0x2B},
     {"Tsettime",    GEMDOS_Tsettime, 0x2D},
     {"Ssystem",     GEMDOS_Ssystem, 0x154},
-    {"Ffstat64",    GEMDOS_Ffstat64, 0x15D}
+    {"Ffstat64",    GEMDOS_Ffstat64, 0x15D},
+    {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155}
 };
 
 void gemdos_trap()
