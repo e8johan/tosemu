@@ -31,6 +31,8 @@
 
 /* GEMDOS functions */
 
+/* Console I/O functions *****************************************************/
+
 uint32_t GEMDOS_Cconin()
 {
     return getchar() & 0xff; /* TODO no shift key status, scancode */
@@ -70,6 +72,8 @@ uint32_t GEMDOS_Cconws()
     return res;
 }
 
+/* Process management functions **********************************************/
+
 uint32_t GEMDOS_Pterm()
 {
     exit(peek_u16(2));
@@ -82,34 +86,15 @@ uint32_t GEMDOS_Pterm0()
     return 0;
 }
 
-uint32_t GEMDOS_Super()
-{
-    uint32_t lv0 = peek_u32(2);
-    uint32_t res = 0;
-    
-    if (lv0 == 0) { /* Set CPU in supervisor mode */
-        res = m68k_get_reg(0, M68K_REG_A7);
-        enable_supervisor_mode();
-    } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
-        if (is_supervisor_mode_enabled()) {
-            res = 1;
-        } else {
-            res = 0;
-        }
-    } else { /* Set CPU in user mode, set SP to lv0 */
-        m68k_set_reg(M68K_REG_USP, lv0);
-        disable_supervisor_mode();
-        res = 0;
-    }
-    
-    return res;
-}    
+/* Memory management functions ***********************************************/
 
 uint32_t GEMDOS_Mshrink()
 {
     /* TODO currently, we do not react to this */
     return 0;
 }
+
+/* Date/time functions *******************************************************/
 
 uint32_t GEMDOS_Tgetdate()
 {
@@ -157,6 +142,30 @@ uint32_t GEMDOS_Tgettime()
     return res;
 }
 
+/* Misc functions ************************************************************/
+
+uint32_t GEMDOS_Super()
+{
+    uint32_t lv0 = peek_u32(2);
+    uint32_t res = 0;
+    
+    if (lv0 == 0) { /* Set CPU in supervisor mode */
+        res = m68k_get_reg(0, M68K_REG_A7);
+        enable_supervisor_mode();
+    } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
+        if (is_supervisor_mode_enabled()) {
+            res = 1;
+        } else {
+            res = 0;
+        }
+    } else { /* Set CPU in user mode, set SP to lv0 */
+        m68k_set_reg(M68K_REG_USP, lv0);
+        disable_supervisor_mode();
+        res = 0;
+    }
+    
+    return res;
+}    
 
 /* Used to tag Mint-only calls that should not halt execution, but are not implemented */
 uint32_t GEMDOS_Unknown()
