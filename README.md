@@ -32,7 +32,9 @@ The `make clean` target produces a clean source tree.
 Usage
 =====
 
-TOSEMU takes a single command line argument, the location of a TOS application. It is also possible to use TOSEMU with the binfmt support in the Linux kernel. I use the following line to enable this:
+TOSEMU takes a single command line argument, the location of a TOS application. 
+It is also possible to use TOSEMU with the binfmt support in the Linux kernel. I
+ use the following line to enable this:
 
   `echo ':tos:M::\x60\x1a:\xff\xff:/path/to/binary/tosemu:' | sudo tee /proc/sys/fs/binfmt_misc/register`
 
@@ -57,11 +59,13 @@ Tests
 =====
 
 The tests subdirectory contains test applications used during the development 
-of tosemu. The tests are compiled with the m68k-atari-mint cross-tools built by Vincent Rivière. Please visit the following web site for more information:
+of tosemu. The tests are compiled with the m68k-atari-mint cross-tools built by
+ Vincent Rivière. Please visit the following web site for more information:
 
   http://vincent.riviere.free.fr/soft/m68k-atari-mint/
 
-To build the tests, simply run make in the tests directory.
+To build the tests, simply run make tests, this will result in a set of binaries
+named test-* in the tests sub-directory.
 
 
 
