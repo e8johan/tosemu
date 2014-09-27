@@ -1,5 +1,5 @@
 /*
- * TOSEMU - and emulated environment for TOS applications
+ * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
