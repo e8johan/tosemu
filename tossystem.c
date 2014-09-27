@@ -97,7 +97,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->supermem = malloc(SUPERMEMSIZE);
     
     /* Setup a maximum size user RAM */
-    te->size = 0x0fffff-0x000900;
+    te->size = 0xF9FFFF -0x000900;
     te->appmem = malloc(te->size);
     
     /* Copy segment sizes from header */
