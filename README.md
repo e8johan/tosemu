@@ -69,6 +69,17 @@ named test-* in the tests sub-directory.
 
 
 
+Tracing
+=======
+
+The `config.h` file contains defines for enabling extremely verbose trace
+messages. This is a great tool when debugging a subsystem, e.g. bios or aes.
+
+There is no dependecy to `config.h`, so a clean build is needed for changes to 
+take effect.
+
+
+
 Licensing
 =========
 
