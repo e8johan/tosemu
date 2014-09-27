@@ -117,6 +117,37 @@ uint32_t GEMDOS_Cconws()
     return res;
 }
 
+/* File functions ************************************************************/
+
+uint32_t GEMDOS_Fseek()
+{
+    /*
+     * STDIN       Current File Handle 0 (standard input)
+     * STDOUT      Current File Handle 1 (standard output)
+     * STDERR      Current File Handle 2 (standard error)
+     * 
+     * seekmode Type of repositioning:
+     *       0 =     From start of file
+     *       1 =     From current position
+     *       2 =     From end of file
+     */
+    
+    uint16_t seekmode = peek_u16(8);
+    uint16_t handle = peek_u16(6);
+    uint32_t offset = peek_u32(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    offset: 0x%x, handle: 0x%x, seekmode: 0x%x\n", offset, handle, seekmode);
+    }
+    
+    if (handle < 3)
+        return EACCDN; /* TODO we simply assume that these three are pipes for now */
+    else
+        halt_execution(); /* TODO make this generic */
+    
+    return 0;
+}
+
 /* Process management functions **********************************************/
 
 uint32_t GEMDOS_Pterm()
@@ -480,7 +511,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fread NULL
 #define GEMDOS_Freadlink NULL
 #define GEMDOS_Frename NULL
-#define GEMDOS_Fseek NULL
 #define GEMDOS_Fselect NULL
 #define GEMDOS_Fsetdta NULL
 #define GEMDOS_Fsfirst NULL
