@@ -24,6 +24,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <errno.h>
 
 #include "tossystem.h"
 #include "cpu.h"
@@ -138,17 +141,48 @@ uint32_t GEMDOS_Fseek()
     uint16_t seekmode = peek_u16(8);
     uint16_t handle = peek_u16(6);
     uint32_t offset = peek_u32(2);
+    off_t ret;
+    int whence;
     
     FUNC_TRACE_ENTER_ARGS {
         printf("    offset: 0x%x, handle: 0x%x, seekmode: 0x%x\n", offset, handle, seekmode);
     }
     
-    if (handle < 3)
-        return EACCDN; /* TODO we simply assume that these three are pipes for now */
-    else
-        halt_execution(); /* TODO make this generic */
+    switch (seekmode)
+    {
+    case 0: /* From start of file */
+        whence = SEEK_SET;
+        break;
+    case 1: /* From current position */
+        whence = SEEK_CUR;
+        break;
+    case 2: /* From end of file */
+        whence = SEEK_END;
+        break;
+    default:
+        return GEMDOS_EINVAL; /* TODO is this corrent, invalid parameter? */
+    }
     
-    return 0;
+    ret = lseek(handle, offset, whence);
+    
+    if (ret < 0)
+    {
+        switch(errno)
+        {
+        case EBADF:
+            return GEMDOS_EIHNDL;
+        case ESPIPE:
+            return GEMDOS_EACCDN;
+        case EINVAL:
+            return GEMDOS_EINVAL;
+        case EOVERFLOW:
+        case ENXIO:
+        default:
+            return GEMDOS_EINTRN;
+        }
+    }
+    
+    return ret;
 }
 
 /* Process management functions **********************************************/
