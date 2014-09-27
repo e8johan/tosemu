@@ -211,6 +211,10 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
 
 void free_tos_environment(struct tos_environment *te)
 {
+    /* Clean up sub-systems */
+    gemdos_free();
+    /* TODO clean up after other sub-systems here as well */
+
     free(te->bp);
     te->bp = 0;
     

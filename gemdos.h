@@ -23,36 +23,10 @@
 
 #include "tossystem.h"
 
-/* GEMDOS return values */
-
-#define E_OK (0)
-#define EINVFN (32)
-#define EFILNF (33)
-#define EPTHNF (-34)
-#define ENHNDL (-35)
-#define EACCDN (-36)
-#define EIHNDL (-37)
-#define ENSMEM (-39)
-#define EIMBA (-40)
-#define EDRIVE (-46)
-#define ECWD (-47)
-#define ENSAME (-48)
-#define ENMFIL (-49)
-#define ELOCKED (-58)
-#define ENSLOCK (-59)
-#define ERANGE (-64)
-#define EINTRN (-65)
-#define EPLFMT (-66)
-#define EGSBF (-67)
-#define EBREAK (-68)
-#define EXCPT (-69)
-#define EPTHOV (-70)
-#define ELOOP (-80)
-#define EPIPE (-81)
-
-/* GEMDOS trap function */
+/* GEMDOS functions */
 
 void gemdos_init(struct tos_environment *);
+void gemdos_free();
 void gemdos_trap();
 
 #endif /* GEMDOS_H */

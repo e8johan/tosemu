@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
 #include "tossystem.h"
 #include "cpu.h"
@@ -31,6 +32,33 @@
 
 #define GEMDOS_TRACE_CONTEXT
 #include "config.h"
+
+/* GEMDOS return values */
+
+#define E_OK (0)
+#define EINVFN (32)
+#define EFILNF (33)
+#define EPTHNF (34)
+#define ENHNDL (35)
+#define EACCDN (36)
+#define EIHNDL (37)
+#define ENSMEM (39)
+#define EIMBA (40)
+#define EDRIVE (46)
+#define ECWD (47)
+#define ENSAME (48)
+#define ENMFIL (49)
+#define ELOCKED (58)
+#define ENSLOCK (59)
+#define ERANGE (64)
+#define EINTRN (65)
+#define EPLFMT (66)
+#define EGSBF (67)
+#define EBREAK (68)
+#define EXCPT (69)
+#define EPTHOV (70)
+#define ELOOP (80)
+#define EPIPE (81)
 
 /* GEMDOS functions */
 
@@ -111,6 +139,26 @@ uint32_t GEMDOS_Pterm0()
 
 /* Memory management functions ***********************************************/
 
+struct GEMDOS_mem_area;
+struct GEMDOS_mem_area {
+    uint32_t base, len;
+    struct GEMDOS_mem_area *next;
+};
+struct GEMDOS_mem_area *GEMDOS_mem_list;
+
+struct GEMDOS_mem_area * find_mem_area(uint32_t base)
+{
+    struct GEMDOS_mem_area *ptr = GEMDOS_mem_list;
+    while (ptr)
+    {
+        if (ptr->base == base)
+            break;
+        ptr = ptr->next;
+    }
+    
+    return ptr;
+}
+
 uint32_t GEMDOS_Mshrink()
 {
     uint32_t newsiz = peek_u32(8);
@@ -119,10 +167,22 @@ uint32_t GEMDOS_Mshrink()
     FUNC_TRACE_ENTER_ARGS {
         printf("    ns: 0x%x, b: 0x%x\n", newsiz, block);
     }
+    
+    struct GEMDOS_mem_area *ma = find_mem_area(block);
+    if (!ma)
+        return -EIMBA;
+    if (ma->len < newsiz)
+        return -EGSBF;
+    
+    ma->len = newsiz;
 
-    /* TODO currently, we do not react to this */
     return 0;
 }
+
+/* uint32_t GEMDOS_Malloc()
+uint32_t GEMDOS_Mfree()
+uint32_t GEMDOS_addalt()
+uint32_t GEMDOS_xalloc() */
 
 /* Date/time functions *******************************************************/
 
@@ -456,6 +516,25 @@ struct GEMDOS_function GEMDOS_functions[] = {
 
 void gemdos_init(struct tos_environment *te)
 {
+    struct GEMDOS_mem_area *ma = malloc(sizeof(struct GEMDOS_mem_area));
+    memset(ma, 0, sizeof(struct GEMDOS_mem_area));
+    
+    /* The initial area is by convention and relates to the binary loading and
+     * base page setup from tossystem */
+    ma->base = 0x800; 
+    ma->len = te->size + 0x100; /* Size + basepage */
+    
+    GEMDOS_mem_list = ma;
+}
+
+void gemdos_free()
+{
+    while (GEMDOS_mem_list)
+    {
+        struct GEMDOS_mem_area *n = GEMDOS_mem_list->next;
+        free(GEMDOS_mem_list);
+        GEMDOS_mem_list = n;
+    }
 }
 
 void gemdos_trap()
