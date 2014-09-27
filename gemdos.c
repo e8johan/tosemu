@@ -424,14 +424,7 @@ uint32_t GEMDOS_Super()
 }    
 
 /* Used to tag Mint-only calls that should not halt execution, but are not implemented */
-uint32_t GEMDOS_Unknown()
-{
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    func: 0x%x\n", peek_u16(0));
-    }
-
-    return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
-}
+uint32_t GEMDOS_Unknown();
 
 /* Table of non-implemented GEMDOS functions */
 
@@ -714,4 +707,23 @@ void gemdos_trap()
             
     halt_execution();
     printf("GEMDOS Unknown function called 0x%x\n", fnct);
+}
+
+/* Special function implementations */
+uint32_t GEMDOS_Unknown()
+{
+    int i;
+    uint16_t fnct;
+    
+    FUNC_TRACE_ENTER_ARGS {
+        fnct = peek_u16(0);
+        printf("    func: 0x%x\n", fnct);
+
+        for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i)
+            if (GEMDOS_functions[i].id == fnct)
+                if (GEMDOS_functions[i].fnct)
+                    printf("    %s\n", GEMDOS_functions[i].name);        
+    }
+
+    return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
 }
