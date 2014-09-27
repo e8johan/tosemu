@@ -227,6 +227,11 @@ uint32_t GEMDOS_Fdatime()
         return GEMDOS_EINVAL; /* TODO we do not support setting datime, only reading */
 }
 
+uint32_t GEMDOS_Dgetdrv()
+{
+    return 2; /* C: */
+}
+
 /* Process management functions **********************************************/
 
 uint32_t GEMDOS_Pterm()
@@ -558,7 +563,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Ddelete NULL
 #define GEMDOS_Dfree NULL
 #define GEMDOS_Dgetcwd NULL
-#define GEMDOS_Dgetdrv NULL
 #define GEMDOS_Dgetpath NULL
 #define GEMDOS_Dlock NULL
 #define GEMDOS_Dopendir NULL
