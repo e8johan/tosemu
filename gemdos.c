@@ -139,16 +139,17 @@ uint32_t GEMDOS_Pterm0()
 
 /* Memory management functions ***********************************************/
 
-struct GEMDOS_mem_area;
-struct GEMDOS_mem_area {
+/* The memory areas are stored in a sorted order by base */
+struct mem_area;
+struct mem_area {
     uint32_t base, len;
-    struct GEMDOS_mem_area *next;
+    struct mem_area *next;
 };
-struct GEMDOS_mem_area *GEMDOS_mem_list;
+struct mem_area *mem_list;
 
-struct GEMDOS_mem_area * find_mem_area(uint32_t base, struct GEMDOS_mem_area **prevptr)
+struct mem_area * find_mem_area(uint32_t base, struct mem_area **prevptr)
 {
-    struct GEMDOS_mem_area *ptr = GEMDOS_mem_list;
+    struct mem_area *ptr = mem_list;
     if (prevptr)
         *prevptr = 0;
     while (ptr)
@@ -165,7 +166,7 @@ struct GEMDOS_mem_area * find_mem_area(uint32_t base, struct GEMDOS_mem_area **p
 
 uint32_t GEMDOS_Mshrink()
 {
-    struct GEMDOS_mem_area *ma;
+    struct mem_area *ma;
     
     uint32_t newsiz = peek_u32(8);
     uint32_t block = peek_u32(4);
@@ -187,7 +188,7 @@ uint32_t GEMDOS_Mshrink()
 
 uint32_t GEMDOS_Mfree()
 {
-    struct GEMDOS_mem_area *ma, *prev;
+    struct mem_area *ma, *prev;
     
     uint32_t block = peek_u32(2);
     
@@ -203,7 +204,7 @@ uint32_t GEMDOS_Mfree()
     if (prev)
         prev->next = ma->next;
     else
-        GEMDOS_mem_list = ma->next;
+        mem_list = ma->next;
     
     free(ma);
     
@@ -541,24 +542,24 @@ struct GEMDOS_function GEMDOS_functions[] = {
 
 void gemdos_init(struct tos_environment *te)
 {
-    struct GEMDOS_mem_area *ma = malloc(sizeof(struct GEMDOS_mem_area));
-    memset(ma, 0, sizeof(struct GEMDOS_mem_area));
+    struct mem_area *ma = malloc(sizeof(struct mem_area));
+    memset(ma, 0, sizeof(struct mem_area));
     
     /* The initial area is by convention and relates to the binary loading and
      * base page setup from tossystem */
     ma->base = 0x800; 
     ma->len = te->size + 0x100; /* Size + basepage */
     
-    GEMDOS_mem_list = ma;
+    mem_list = ma;
 }
 
 void gemdos_free()
 {
-    while (GEMDOS_mem_list)
+    while (mem_list)
     {
-        struct GEMDOS_mem_area *n = GEMDOS_mem_list->next;
-        free(GEMDOS_mem_list);
-        GEMDOS_mem_list = n;
+        struct mem_area *n = mem_list->next;
+        free(mem_list);
+        mem_list = n;
     }
 }
 
