@@ -44,4 +44,8 @@ uint8_t peek_u8(int offset);
 uint16_t peek_u16(int offset);
 uint32_t peek_u32(int offset);
 
+int8_t peek_s8(int offset);
+int16_t peek_s16(int offset);
+int32_t peek_s32(int offset);
+
 #endif /* CPU_H */

@@ -93,3 +93,18 @@ uint32_t peek_u32(int offset)
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
     return m68k_read_disassembler_32(sp+offset);
 }
+
+int8_t peek_s8(int offset)
+{
+    return (int8_t)peek_u8(offset);
+}
+
+int16_t peek_s16(int offset)
+{
+    return (int16_t)peek_u16(offset);
+}
+
+int32_t peek_s32(int offset)
+{
+    return (int32_t)peek_u32(offset);
+}
