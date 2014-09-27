@@ -146,13 +146,17 @@ struct GEMDOS_mem_area {
 };
 struct GEMDOS_mem_area *GEMDOS_mem_list;
 
-struct GEMDOS_mem_area * find_mem_area(uint32_t base)
+struct GEMDOS_mem_area * find_mem_area(uint32_t base, struct GEMDOS_mem_area **prevptr)
 {
     struct GEMDOS_mem_area *ptr = GEMDOS_mem_list;
+    if (prevptr)
+        *prevptr = 0;
     while (ptr)
     {
         if (ptr->base == base)
             break;
+        if (prevptr)
+            *prevptr = ptr;
         ptr = ptr->next;
     }
     
@@ -161,6 +165,8 @@ struct GEMDOS_mem_area * find_mem_area(uint32_t base)
 
 uint32_t GEMDOS_Mshrink()
 {
+    struct GEMDOS_mem_area *ma;
+    
     uint32_t newsiz = peek_u32(8);
     uint32_t block = peek_u32(4);
     
@@ -168,7 +174,7 @@ uint32_t GEMDOS_Mshrink()
         printf("    ns: 0x%x, b: 0x%x\n", newsiz, block);
     }
     
-    struct GEMDOS_mem_area *ma = find_mem_area(block);
+    ma = find_mem_area(block, 0);
     if (!ma)
         return -EIMBA;
     if (ma->len < newsiz)
@@ -179,10 +185,30 @@ uint32_t GEMDOS_Mshrink()
     return 0;
 }
 
-/* uint32_t GEMDOS_Malloc()
 uint32_t GEMDOS_Mfree()
-uint32_t GEMDOS_addalt()
-uint32_t GEMDOS_xalloc() */
+{
+    struct GEMDOS_mem_area *ma, *prev;
+    
+    uint32_t block = peek_u32(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", block);
+    }
+    
+    ma = find_mem_area(block, &prev);
+    
+    if (!ma)
+        return -EIMBA;
+    
+    if (prev)
+        prev->next = ma->next;
+    else
+        GEMDOS_mem_list = ma->next;
+    
+    free(ma);
+    
+    return 0;
+}
 
 /* Date/time functions *******************************************************/
 
@@ -339,7 +365,6 @@ uint32_t GEMDOS_Unknown()
 #define GEMDOS_Fxattr NULL
 #define GEMDOS_Maddalt NULL
 #define GEMDOS_Malloc NULL
-#define GEMDOS_Mfree NULL
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
 #define GEMDOS_Pdomain GEMDOS_Unknown
