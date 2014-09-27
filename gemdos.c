@@ -454,9 +454,8 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155}
 };
 
-void gemdos_init()
+void gemdos_init(struct tos_environment *te)
 {
-    
 }
 
 void gemdos_trap()

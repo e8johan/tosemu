@@ -203,7 +203,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     keepongoing = 1;
 
     /* Initialize sub-systems */
-    gemdos_init();
+    gemdos_init(te);
     /* TODO initialization other sub-systems here as well */
     
     return 0;

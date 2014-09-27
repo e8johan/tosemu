@@ -21,6 +21,8 @@
 #ifndef GEMDOS_H
 #define GEMDOS_H
 
+#include "tossystem.h"
+
 /* GEMDOS return values */
 
 #define E_OK (0)
@@ -50,7 +52,7 @@
 
 /* GEMDOS trap function */
 
-void gemdos_init();
+void gemdos_init(struct tos_environment *);
 void gemdos_trap();
 
 #endif /* GEMDOS_H */
