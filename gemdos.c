@@ -546,6 +546,8 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Ssystem GEMDOS_Unknown
 #define GEMDOS_Ffstat64 GEMDOS_Unknown
 #define GEMDOS_Tgettimeofday GEMDOS_Unknown
+#define GEMDOS_Fstat64 GEMDOS_Unknown
+#define GEMDOS_Psysctl GEMDOS_Unknown
 
 #define GEMDOS_Cauxin NULL
 #define GEMDOS_Cauxos NULL
@@ -599,7 +601,7 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fsnext NULL
 #define GEMDOS_Fsymlink NULL
 #define GEMDOS_Fwrite NULL
-#define GEMDOS_Fxattr NULL
+#define GEMDOS_Fxattr GEMDOS_Unknown
 #define GEMDOS_Maddalt NULL
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
@@ -631,7 +633,7 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Psigreturn NULL
 #define GEMDOS_Psigsetmask NULL
 #define GEMDOS_Ptermres NULL
-#define GEMDOS_Pumask NULL
+#define GEMDOS_Pumask GEMDOS_Unknown
 #define GEMDOS_Pursval NULL
 #define GEMDOS_Pvfork NULL
 #define GEMDOS_Pwait NULL
@@ -772,7 +774,9 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Tsettime",    GEMDOS_Tsettime, 0x2D},
     {"Ssystem",     GEMDOS_Ssystem, 0x154},
     {"Ffstat64",    GEMDOS_Ffstat64, 0x15D},
-    {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155}
+    {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155},
+    {"Fstat64",     GEMDOS_Fstat64, 0x14B},
+    {"Psysctl",     GEMDOS_Psysctl, 0x15E}
 };
 
 void gemdos_init(struct tos_environment *te)
