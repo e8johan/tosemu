@@ -35,30 +35,33 @@
 
 /* GEMDOS return values */
 
-#define E_OK (0)
-#define EINVFN (32)
-#define EFILNF (33)
-#define EPTHNF (34)
-#define ENHNDL (35)
-#define EACCDN (36)
-#define EIHNDL (37)
-#define ENSMEM (39)
-#define EIMBA (40)
-#define EDRIVE (46)
-#define ECWD (47)
-#define ENSAME (48)
-#define ENMFIL (49)
-#define ELOCKED (58)
-#define ENSLOCK (59)
-#define ERANGE (64)
-#define EINTRN (65)
-#define EPLFMT (66)
-#define EGSBF (67)
-#define EBREAK (68)
-#define EXCPT (69)
-#define EPTHOV (70)
-#define ELOOP (80)
-#define EPIPE (81)
+#define GEMDOS_E_OK    (0)
+
+#define GEMDOS_EINVAL  (-25) /* Mint */
+
+#define GEMDOS_EINVFN  (-32)
+#define GEMDOS_EFILNF  (-33)
+#define GEMDOS_EPTHNF  (-34)
+#define GEMDOS_ENHNDL  (-35)
+#define GEMDOS_EACCDN  (-36)
+#define GEMDOS_EIHNDL  (-37)
+#define GEMDOS_ENSMEM  (-39)
+#define GEMDOS_EIMBA   (-40)
+#define GEMDOS_EDRIVE  (-46)
+#define GEMDOS_ECWD    (-47)
+#define GEMDOS_ENSAME  (-48)
+#define GEMDOS_ENMFIL  (-49)
+#define GEMDOS_ELOCKED (-58)
+#define GEMDOS_ENSLOCK (-59)
+#define GEMDOS_ERANGE  (-64)
+#define GEMDOS_EINTRN  (-65)
+#define GEMDOS_EPLFMT  (-66)
+#define GEMDOS_EGSBF   (-67)
+#define GEMDOS_EBREAK  (-68)
+#define GEMDOS_EXCPT   (-69)
+#define GEMDOS_EPTHOV  (-70)
+#define GEMDOS_ELOOP   (-80)
+#define GEMDOS_EPIPE   (-81)
 
 /* GEMDOS functions */
 
@@ -209,9 +212,9 @@ uint32_t GEMDOS_Mshrink()
     
     ma = find_mem_area(block, 0);
     if (!ma)
-        return -EIMBA;
+        return GEMDOS_EIMBA;
     if (ma->len < newsiz)
-        return -EGSBF;
+        return GEMDOS_EGSBF;
     
     ma->len = newsiz;
 
@@ -361,7 +364,7 @@ uint32_t GEMDOS_Mfree()
     ma = find_mem_area(block, &prev);
     
     if (!ma)
-        return -EIMBA;
+        return GEMDOS_EIMBA;
     
     if (prev)
         prev->next = ma->next;
@@ -755,5 +758,5 @@ uint32_t GEMDOS_Unknown()
                     printf("    %s\n", GEMDOS_functions[i].name);        
     }
 
-    return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
+    return GEMDOS_EINVFN; /* http://toshyp.atari.org/en/005003.html */
 }
