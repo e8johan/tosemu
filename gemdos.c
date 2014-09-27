@@ -146,6 +146,7 @@ struct mem_area {
     struct mem_area *next;
 };
 struct mem_area *mem_list;
+uint32_t mem_allocatable_top;
 
 struct mem_area * find_mem_area(uint32_t base, struct mem_area **prevptr)
 {
@@ -184,6 +185,136 @@ uint32_t GEMDOS_Mshrink()
     ma->len = newsiz;
 
     return 0;
+}
+
+uint32_t GEMDOS_Malloc()
+{
+    /* This is the tricky mem function, stay safe if changing it.
+     * 
+     * - Managed memory starts from 0x800 to mem_allocatable_top.
+     * - Memory between 0x800 - 0x900 cannot be deallocated [1].
+     * - Memory can be allocated from 0x900 to the end of managed memory.
+     * - mem_area structures are sorted by base address and never overlap.
+     * 
+     *  [1] Mfree and Mshrink does not care.
+     * 
+     * The algorithm works like this:
+     * 
+     * - Iterate current mem_area structures, look for gaps of the right size.
+     * - If no gaps, look for space at the end of allocated memory.
+     * - When memory is found:
+     *   - Create a new mem_area
+     *   - Insert in the correct place in the mem_list linked mem_list
+     *   - Return new base
+     * - Else:
+     *   - Return error
+     * 
+     * TODO room for improvement, to avoid fragmentation, use the smallest gap
+     *      suitable when allocating, right now the first suitable gap is used.
+     */
+    
+    struct mem_area *prev, *ptr, *n;
+    uint32_t prev_top, max_free;
+    
+    int32_t newsiz = peek_s32(2);
+    
+    if (newsiz == -1)
+    {
+        /* Simply locate largest gap */
+        
+        max_free = 0;
+
+        prev = mem_list;
+        if (prev)
+            ptr = mem_list->next;
+        else
+            ptr = 0;
+        
+        while (ptr)
+        {
+            prev_top = prev->base + prev->len;
+            if (max_free < ptr->base - prev_top)
+                max_free = ptr->base - prev_top;
+
+            prev = ptr;
+            ptr = ptr->next;
+        }
+        
+        /* Look at the gap at the end */
+        if (prev)
+            prev_top = prev->base + prev->len;
+        else
+            prev_top = 0x900;
+        
+        if (max_free < mem_allocatable_top - prev_top)
+            max_free = mem_allocatable_top - prev_top;
+        
+        return max_free;
+    }
+    else
+    {    
+        prev = mem_list;
+        if (prev)
+            ptr = mem_list->next;
+        else
+            ptr = 0;
+        
+        while (ptr)
+        {
+            prev_top = prev->base + prev->len;
+            if (ptr->base - prev_top > newsiz)
+            {
+                /* Large enough gap found */
+                
+                /* Allocate new area */
+                n = malloc(sizeof(struct mem_area));
+                memset(n, 0, sizeof(struct mem_area));
+                
+                /* Set base and len */
+                n->base = prev_top;
+                n->len = newsiz;
+                
+                /* Insert into list */
+                n->next = ptr;
+                prev->next = n;
+                
+                /* Return new base */
+                return n->base;
+            }
+            
+            prev = ptr;
+            ptr = ptr->next;
+        }
+        
+        if (prev)
+            prev_top = prev->base + prev->len;
+        else
+            prev_top = 0x900;
+        
+        if (newsiz < mem_allocatable_top - prev_top)
+        {
+            /* Large enough gap found at the end (which can be the start) */
+            
+            /* Allocate new area */
+            n = malloc(sizeof(struct mem_area));
+            memset(n, 0, sizeof(struct mem_area));
+            
+            /* Set base and len */
+            n->base = prev_top;
+            n->len = newsiz;
+            
+            /* Insert into list */
+            if (prev)
+                prev->next = n;
+            else
+                mem_list = n;
+            
+            /* Return new base */
+            return n->base;
+        }
+        
+        return 0; /* NULL pointer, indicating no new memory allocated */
+    }
 }
 
 uint32_t GEMDOS_Mfree()
@@ -365,7 +496,6 @@ uint32_t GEMDOS_Unknown()
 #define GEMDOS_Fwrite NULL
 #define GEMDOS_Fxattr NULL
 #define GEMDOS_Maddalt NULL
-#define GEMDOS_Malloc NULL
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
 #define GEMDOS_Pdomain GEMDOS_Unknown
@@ -549,6 +679,7 @@ void gemdos_init(struct tos_environment *te)
      * base page setup from tossystem */
     ma->base = 0x800; 
     ma->len = te->size + 0x100; /* Size + basepage */
+    mem_allocatable_top = ma->len;
     
     mem_list = ma;
 }
