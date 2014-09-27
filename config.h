@@ -18,39 +18,23 @@
  *
  */
 
-#ifndef GEMDOS_H
-#define GEMDOS_H
+/* Enable and disable detailed tracing for the various sub-systems of tosemu */
+/* #define ENABLE_GEMDOS_TRACE */
+/* #define ENABLE_BIOS_TRACE */
+/* #define ENABLE_XBIOS_TRACE */
+/* #define ENABLE_AES_TRACE */
+/* #define ENABLE_VDI_TRACE */
 
-/* GEMDOS return values */
+/* Tracing functions */
 
-#define E_OK (0)
-#define EINVFN (32)
-#define EFILNF (33)
-#define EPTHNF (-34)
-#define ENHNDL (-35)
-#define EACCDN (-36)
-#define EIHNDL (-37)
-#define ENSMEM (-39)
-#define EIMBA (-40)
-#define EDRIVE (-46)
-#define ECWD (-47)
-#define ENSAME (-48)
-#define ENMFIL (-49)
-#define ELOCKED (-58)
-#define ENSLOCK (-59)
-#define ERANGE (-64)
-#define EINTRN (-65)
-#define EPLFMT (-66)
-#define EGSBF (-67)
-#define EBREAK (-68)
-#define EXCPT (-69)
-#define EPTHOV (-70)
-#define ELOOP (-80)
-#define EPIPE (-81)
-
-/* GEMDOS trap function */
-
-void gemdos_init();
-void gemdos_trap();
-
-#endif /* GEMDOS_H */
+#if (defined(ENABLE_GEMDOS_TRACE) && defined(GEMDOS_TRACE_CONTEXT)) || \
+    (defined(ENABLE_BIOS_TRACE) && defined(BIOS_TRACE_CONTEXT)) || \
+    (defined(ENABLE_XBIOS_TRACE) && defined(XBIOS_TRACE_CONTEXT)) || \
+    (defined(ENABLE_AES_TRACE) && defined(AES_TRACE_CONTEXT)) || \
+    (defined(ENABLE_VDI_TRACE) && defined(VDI_TRACE_CONTEXT))
+#define     FUNC_TRACE_ENTER      printf("Enter %s\n", __func__);
+#define     FUNC_TRACE_ENTER_ARGS printf("Enter %s\n", __func__); if(1)
+#else
+#define     FUNC_TRACE_ENTER
+#define     FUNC_TRACE_ENTER_ARGS if(0)
+#endif

@@ -29,9 +29,16 @@
 #include "m68k.h"
 #include "utils.h"
 
+#define BIOS_TRACE_CONTEXT
+#include "config.h"
+
 uint32_t BIOS_Bconin()
 {
     uint16_t dev = peek_u16(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", dev);
+    }
     
     switch(dev)
     {
@@ -50,6 +57,10 @@ uint32_t BIOS_Bconout()
     uint16_t dev = peek_u16(2);
     uint16_t c = peek_u16(4);
     
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    dev: 0x%x, c: 0x%x '%c'\n", dev, c, c);
+    }
+    
     switch(dev)
     {
     case 2: /* console */
@@ -62,6 +73,10 @@ uint32_t BIOS_Bconout()
 uint32_t BIOS_Bconstat()
 {
     uint16_t dev = peek_u16(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", dev);
+    }    
     
     switch(dev)
     {
@@ -78,6 +93,10 @@ uint32_t BIOS_Bconstat()
 uint32_t BIOS_Bcostat()
 {
     uint16_t dev = peek_u16(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", dev);
+    }
     
     switch(dev)
     {

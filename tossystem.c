@@ -201,6 +201,10 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* TODO Move into CPU initialization */
     keepongoing = 1;
+
+    /* Initialize sub-systems */
+    gemdos_init();
+    /* TODO initialization other sub-systems here as well */
     
     return 0;
 }

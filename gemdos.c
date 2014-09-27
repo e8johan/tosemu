@@ -29,23 +29,34 @@
 #include "m68k.h"
 #include "utils.h"
 
+#define GEMDOS_TRACE_CONTEXT
+#include "config.h"
+
 /* GEMDOS functions */
 
 /* Console I/O functions *****************************************************/
 
 uint32_t GEMDOS_Cconin()
-{
+{   
+    FUNC_TRACE_ENTER
+    
     return getchar() & 0xff; /* TODO no shift key status, scancode */
 }
 
 uint32_t GEMDOS_Cconout()
 {
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x '%c'\n", peek_u16(2), peek_u16(2)&0xff);
+    }
+
     putchar(peek_u16(2)&0xff);
     return 0;
 }
 
 uint32_t GEMDOS_Cconis()
 {
+    FUNC_TRACE_ENTER
+
     if (console_input_available())
         return -1;
     else
@@ -54,6 +65,8 @@ uint32_t GEMDOS_Cconis()
 
 uint32_t GEMDOS_Cconos()
 {
+    FUNC_TRACE_ENTER
+
     return -1; /* Always ready */
 }
 
@@ -62,6 +75,10 @@ uint32_t GEMDOS_Cconws()
     uint32_t adr = peek_u32(2);
     uint32_t res = 0;
     uint8_t ch;
+
+    FUNC_TRACE_ENTER {
+        printf("    0x%x\n", adr);
+    }
     
     while((ch=m68k_read_disassembler_8(adr++)))
     {
@@ -76,12 +93,18 @@ uint32_t GEMDOS_Cconws()
 
 uint32_t GEMDOS_Pterm()
 {
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", peek_u16(2));
+    }
+
     exit(peek_u16(2));
     return 0;
 }
         
 uint32_t GEMDOS_Pterm0()
 {
+    FUNC_TRACE_ENTER
+
     exit(0);
     return 0;
 }
@@ -90,6 +113,13 @@ uint32_t GEMDOS_Pterm0()
 
 uint32_t GEMDOS_Mshrink()
 {
+    uint32_t newsiz = peek_u32(8);
+    uint32_t block = peek_u32(4);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    ns: 0x%x, b: 0x%x\n", newsiz, block);
+    }
+
     /* TODO currently, we do not react to this */
     return 0;
 }
@@ -108,6 +138,8 @@ uint32_t GEMDOS_Tgetdate()
     uint32_t res = 0;
     time_t t;
     struct tm *lt;
+
+    FUNC_TRACE_ENTER
     
     t = time(NULL);
     lt = localtime(&t);
@@ -132,6 +164,8 @@ uint32_t GEMDOS_Tgettime()
     time_t t;
     struct tm *lt;
     
+    FUNC_TRACE_ENTER
+
     t = time(NULL);
     lt = localtime(&t);
     
@@ -148,6 +182,10 @@ uint32_t GEMDOS_Super()
 {
     uint32_t lv0 = peek_u32(2);
     uint32_t res = 0;
+ 
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", lv0);
+    }
     
     if (lv0 == 0) { /* Set CPU in supervisor mode */
         res = m68k_get_reg(0, M68K_REG_A7);
@@ -170,6 +208,10 @@ uint32_t GEMDOS_Super()
 /* Used to tag Mint-only calls that should not halt execution, but are not implemented */
 uint32_t GEMDOS_Unknown()
 {
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    func: 0x%x\n", peek_u16(0));
+    }
+
     return -EINVFN; /* http://toshyp.atari.org/en/005003.html */
 }
 
@@ -411,6 +453,11 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Ffstat64",    GEMDOS_Ffstat64, 0x15D},
     {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155}
 };
+
+void gemdos_init()
+{
+    
+}
 
 void gemdos_trap()
 {

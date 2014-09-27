@@ -28,10 +28,15 @@
 #include "cpu.h"
 #include "m68k.h"
 
+#define XBIOS_TRACE_CONTEXT
+#include "config.h"
+
 /* XBIOS functions */
 
 uint32_t XBIOS_Getrez()
 {
+    FUNC_TRACE_ENTER
+    
     /* Custom value, to ensure that HW-dependent code fails */
     return 8;
 }
@@ -55,6 +60,10 @@ uint32_t XBIOS_Supexec()
 {
     uint32_t lv0 = peek_u32(2);
 
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", lv0);
+    }
+    
     enable_supervisor_mode();
     push_u32(m68k_get_reg(0, M68K_REG_PC));
     push_u32(0x200);
