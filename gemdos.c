@@ -160,7 +160,7 @@ uint32_t GEMDOS_Fseek()
         whence = SEEK_END;
         break;
     default:
-        return GEMDOS_EINVAL; /* TODO is this corrent, invalid parameter? */
+        return GEMDOS_EINVAL;
     }
     
     ret = lseek(handle, offset, whence);
