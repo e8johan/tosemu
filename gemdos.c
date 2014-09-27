@@ -25,8 +25,9 @@
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "tossystem.h"
 #include "cpu.h"
@@ -183,6 +184,47 @@ uint32_t GEMDOS_Fseek()
     }
     
     return ret;
+}
+
+uint32_t GEMDOS_Fdatime()
+{
+    struct stat buf;
+    struct tm *lt;
+    int ret;
+    uint32_t res;
+    
+    uint16_t wflag = peek_u16(8);
+    uint16_t handle = peek_u16(6);
+    uint32_t ptr = peek_u32(2);
+    
+    if (wflag == 0)
+    {
+        /* Read time */
+        
+        ret = fstat(handle, &buf);
+        
+        if (!ret)
+        {
+            lt = localtime(&buf.st_mtime);
+    
+            res = (lt->tm_sec / 2) |
+                  (lt->tm_min << 5) |
+                  (lt->tm_hour << 11) |
+                  (lt->tm_mday << 16) |
+                  ((lt->tm_mon+1) << 21) |
+                  ((lt->tm_year-80) << 25);
+
+            m68k_write_memory_32(ptr, res);
+                  
+            return 0;
+        }
+        else if (ret == EBADF)
+            return GEMDOS_EIHNDL;
+        else
+            return GEMDOS_EINTRN;
+    }
+    else
+        return GEMDOS_EINVAL; /* TODO we do not support setting datime, only reading */
 }
 
 /* Process management functions **********************************************/
@@ -531,7 +573,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fclose NULL
 #define GEMDOS_Fcntl GEMDOS_Unknown
 #define GEMDOS_Fcreate NULL
-#define GEMDOS_Fdatime NULL
 #define GEMDOS_Fdelete NULL
 #define GEMDOS_Fdup NULL
 #define GEMDOS_Fforce NULL
