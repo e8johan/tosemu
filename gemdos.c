@@ -232,6 +232,61 @@ uint32_t GEMDOS_Dgetdrv()
     return 2; /* C: */
 }
 
+uint32_t dta_adr;
+
+uint32_t GEMDOS_Fgetdta()
+{
+    FUNC_TRACE_ENTER
+    
+    return dta_adr;
+}
+
+uint32_t GEMDOS_Fsetdta()
+{
+    uint32_t adr = peek_u32(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", adr);
+    }
+    
+    dta_adr = adr;
+    
+    return 0;
+}
+
+uint32_t GEMDOS_Fsfirst()
+{
+    char buf[1024];
+    int i;
+    
+    uint16_t attr = peek_u16(6);
+    uint32_t filename = peek_u32(2);
+    
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    filename: 0x%x, attr: 0x%x\n", filename, attr);
+    }
+    
+    i=1;
+    buf[0] = m68k_read_disassembler_8(filename);
+    while(buf[i-1] && i<1023)
+    {
+        buf[i] = m68k_read_disassembler_8(filename+i);
+        ++i;
+    }
+    buf[i] = 0;
+    
+    printf("FILENAME: '%s'\n", buf);
+    
+    /* TODO continue implementing here, right now we pretend never to find any files */
+    
+    /* Find the file path */
+    /* Do a diropen */
+    /* Populate (initialize) the dta */
+    /* Decide if we want the opendir ref as a part of the m68k ram DTA, or outside */
+    
+    return GEMDOS_EFILNF;
+}
+
 /* Process management functions **********************************************/
 
 uint32_t GEMDOS_Pterm()
@@ -583,7 +638,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fdup NULL
 #define GEMDOS_Fforce NULL
 #define GEMDOS_Fgetchar NULL
-#define GEMDOS_Fgetdta NULL
 #define GEMDOS_Finstat NULL
 #define GEMDOS_Flink NULL
 #define GEMDOS_Flock NULL
@@ -596,8 +650,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Freadlink NULL
 #define GEMDOS_Frename NULL
 #define GEMDOS_Fselect NULL
-#define GEMDOS_Fsetdta NULL
-#define GEMDOS_Fsfirst NULL
 #define GEMDOS_Fsnext NULL
 #define GEMDOS_Fsymlink NULL
 #define GEMDOS_Fwrite NULL
@@ -781,6 +833,8 @@ struct GEMDOS_function GEMDOS_functions[] = {
 
 void gemdos_init(struct tos_environment *te)
 {
+    /* Memory management setup */
+    
     struct mem_area *ma = malloc(sizeof(struct mem_area));
     memset(ma, 0, sizeof(struct mem_area));
     
@@ -791,6 +845,10 @@ void gemdos_init(struct tos_environment *te)
     mem_allocatable_top = ma->len;
     
     mem_list = ma;
+    
+    /* File management setup */
+    
+    dta_adr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
 }
 
 void gemdos_free()
