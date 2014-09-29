@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <linux/limits.h>
 
 #include "tossystem.h"
 #include "cpu.h"
@@ -254,9 +255,65 @@ uint32_t GEMDOS_Fsetdta()
     return 0;
 }
 
+int path_from_tos(char *tp, char *up)
+{
+    /* \ -> / */
+    /* Prepend prefix */
+    /* Make canonical */
+    /* Ensure within prefix */
+    
+    
+    char tbuf[PATH_MAX+1];
+    int len;
+    char *src, *dest;
+    int prev_slash = 1;
+    
+    memset(tbuf, 0, PATH_MAX+1);
+    
+    strncpy(up, "/home/e8johan/tos/", PATH_MAX);
+    len = strlen(up);
+    src = tp;
+    dest = up + len;
+    
+    while(*src && len < PATH_MAX)
+    {
+        switch(*src)
+        {
+        case '\\':
+            if (!prev_slash)
+            {
+                *dest = '/';
+                ++ dest;
+            }
+            prev_slash = 1;
+            
+            break;
+        default:
+            *dest = *src;
+            ++ dest;
+            
+            prev_slash = 0;
+
+            break;
+        }
+        
+        ++ src;
+        ++ len;
+    }
+    
+    realpath(up, tbuf);
+    /* TODO work here */
+    printf("%d\n", strncmp(up, tbuf, 5+8+4+1));
+    if (strncmp(up, tbuf, 18))
+        return 0;
+    
+    return strlen(up);
+}
+
 uint32_t GEMDOS_Fsfirst()
 {
-    char buf[1024];
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
     int i;
     
     uint16_t attr = peek_u16(6);
@@ -266,16 +323,22 @@ uint32_t GEMDOS_Fsfirst()
         printf("    filename: 0x%x, attr: 0x%x\n", filename, attr);
     }
     
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    
     i=1;
     buf[0] = m68k_read_disassembler_8(filename);
-    while(buf[i-1] && i<1023)
+    
+    while(buf[i-1] && i<PATH_MAX)
     {
         buf[i] = m68k_read_disassembler_8(filename+i);
         ++i;
     }
-    buf[i] = 0;
     
-    printf("FILENAME: '%s'\n", buf);
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+    
+    printf("FILENAME: '%s' => '%s'\n", buf, ubuf);
     
     /* TODO continue implementing here, right now we pretend never to find any files */
     
