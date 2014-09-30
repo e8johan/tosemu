@@ -69,14 +69,32 @@ named test-* in the tests sub-directory.
 
 
 
-Tracing
+Hacking
 =======
+
+Tracing
+-------
 
 The `config.h` file contains defines for enabling extremely verbose trace
 messages. This is a great tool when debugging a subsystem, e.g. bios or aes.
 
 There is no dependecy to `config.h`, so a clean build is needed for changes to 
 take effect.
+
+Endianess
+---------
+
+As the m68k is a big endian architecture, while the current development 
+architecture, x86, is little endian, conversion is sometimes needed. However,
+in most cases, it is not.
+
+When interacting with the CPU through the `m68k_read_*`, `m68k_write_*`,
+`pop_*`, `peek_*`, `push_*`, all values are expected to be in host endianess,
+i.e. no conversion is necessary. When interacting directly with the TOS memory,
+i.e. manipulating a memory area such as `te->appmem`, endianess is a factor.
+Here, the functions `endianize_16` and `endianize_32` help with the conversion.
+By always using these methods, it will be possible to run tosemu on host
+systems that are either big or little endian.
 
 
 
