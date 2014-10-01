@@ -96,6 +96,15 @@ Here, the functions `endianize_16` and `endianize_32` help with the conversion.
 By always using these methods, it will be possible to run tosemu on host
 systems that are either big or little endian.
 
+Variable Scope
+--------------
+
+In order to provide abstraction and separation of namespaces, different 
+subsystems are separated into different code modules. Header files ending with 
+`_p.h` are local to such a namespace, i.e. `gemdos_p.h` is local to GEMDOS. 
+Depending on the complexity of the subsystems, further subdivision is possible, 
+i.e. GEMDOS is split into multiple modules while BIOS is not.
+
 
 
 Licensing
