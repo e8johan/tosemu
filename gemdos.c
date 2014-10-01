@@ -21,6 +21,7 @@
 #include "gemdos.h"
 
 #include "gemdosmem_p.h"
+#include "gemdoscon_p.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,61 +41,6 @@
 #include "gemdos_p.h"
 
 /* GEMDOS functions */
-
-/* Console I/O functions *****************************************************/
-
-uint32_t GEMDOS_Cconin()
-{   
-    FUNC_TRACE_ENTER
-    
-    return getchar() & 0xff; /* TODO no shift key status, scancode */
-}
-
-uint32_t GEMDOS_Cconout()
-{
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x '%c'\n", peek_u16(2), peek_u16(2)&0xff);
-    }
-
-    putchar(peek_u16(2)&0xff);
-    return 0;
-}
-
-uint32_t GEMDOS_Cconis()
-{
-    FUNC_TRACE_ENTER
-
-    if (console_input_available())
-        return -1;
-    else
-        return 0;
-}
-
-uint32_t GEMDOS_Cconos()
-{
-    FUNC_TRACE_ENTER
-
-    return -1; /* Always ready */
-}
-
-uint32_t GEMDOS_Cconws()
-{
-    uint32_t adr = peek_u32(2);
-    uint32_t res = 0;
-    uint8_t ch;
-
-    FUNC_TRACE_ENTER {
-        printf("    0x%x\n", adr);
-    }
-    
-    while((ch=m68k_read_disassembler_8(adr++)))
-    {
-        putchar(ch);
-        res++;
-    }
-    
-    return res;
-}
 
 /* File functions ************************************************************/
 

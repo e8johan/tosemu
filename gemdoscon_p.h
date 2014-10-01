@@ -18,20 +18,15 @@
  *
  */
 
-#ifndef GEMDOSMEM_H
-#define GEMDOSMEM_H
-
-#include "tossystem.h"
+#ifndef GEMDOSCON_H
+#define GEMDOSCON_H
 
 #include <stdint.h>
 
-/* GEMDOS functions */
+uint32_t GEMDOS_Cconin();
+uint32_t GEMDOS_Cconout();
+uint32_t GEMDOS_Cconis();
+uint32_t GEMDOS_Cconos();
+uint32_t GEMDOS_Cconws();
 
-void gemdos_mem_init(struct tos_environment *);
-void gemdos_mem_free();
-
-uint32_t GEMDOS_Mshrink();
-uint32_t GEMDOS_Malloc();
-uint32_t GEMDOS_Mfree();
-
-#endif /* GEMDOSMEM_H */
+#endif /* GEMDOSCON_H */
