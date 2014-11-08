@@ -164,13 +164,11 @@ uint32_t GEMDOS_Fsetdta()
     return 0;
 }
 
+/* TODO move to configuration */
+#define TOS_BASE_PATH "/home/e8johan/tos/"
+
 static int path_from_tos(char *tp, char *up)
 {
-    /* \ -> / */
-    /* Prepend prefix */
-    /* Make canonical */
-    /* Ensure within prefix */
-    
     
     char tbuf[PATH_MAX+1];
     int len;
@@ -179,11 +177,13 @@ static int path_from_tos(char *tp, char *up)
     
     memset(tbuf, 0, PATH_MAX+1);
     
-    strncpy(up, "/home/e8johan/tos/", PATH_MAX);
+    /* Prepend prefix */
+    strncpy(up, TOS_BASE_PATH, PATH_MAX);
     len = strlen(up);
     src = tp;
     dest = up + len;
     
+    /* Convert \ -> / */
     while(*src && len < PATH_MAX)
     {
         switch(*src)
@@ -210,10 +210,10 @@ static int path_from_tos(char *tp, char *up)
         ++ len;
     }
     
+    /* Make canonical */
     realpath(up, tbuf);
-    /* TODO work here */
-    printf("%d\n", strncmp(up, tbuf, 5+8+4+1));
-    if (strncmp(up, tbuf, 18))
+    /* Ensure within prefix */    
+    if (strncmp(up, tbuf, strlen(TOS_BASE_PATH)-1))
         return 0;
     
     return strlen(up);
@@ -244,6 +244,8 @@ uint32_t GEMDOS_Fsfirst()
         ++i;
     }
     
+    printf("FILENAME: '%s'\n", buf);
+
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
     
