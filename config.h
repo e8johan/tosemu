@@ -18,6 +18,15 @@
  *
  */
 
+#include <stdio.h>
+
+/* Base path of TOS file system root 
+ *
+ * This must end with a slash!
+ */
+
+#define TOS_BASE_PATH "/home/changeme/tos/"
+
 /* Enable and disable detailed tracing for the various sub-systems of tosemu */
 /* #define ENABLE_GEMDOS_TRACE */
 /* #define ENABLE_BIOS_TRACE */
