@@ -37,5 +37,6 @@ uint32_t GEMDOS_Fdatime();
 uint32_t GEMDOS_Fgetdta();
 uint32_t GEMDOS_Fsetdta();
 uint32_t GEMDOS_Fsfirst();
+uint32_t GEMDOS_Fsnext();
 
 #endif /* GEMDOSFILE_H */

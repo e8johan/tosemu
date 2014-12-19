@@ -23,16 +23,35 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <linux/limits.h>
 #include <time.h>
-#include <linux/limits.h>
 #include <string.h>
 #include <stdlib.h>
+#include <glob.h>
+#include <libgen.h>
 
 #include "m68k.h"
 #include "cpu.h"
+#include "utils.h"
+#include "memory.h"
 
 #include "gemdos_p.h"
+
+/* File structures ***********************************************************/
+
+#pragma pack(push,2)
+struct DTA
+{
+    uint8_t   d_reserved[21];  /* Reserved for GEMDOS */
+    uint8_t   d_attrib;        /* File attributes     */
+    uint16_t  d_time;          /* Time                */
+    uint16_t  d_date;          /* Date                */
+    uint32_t  d_length;        /* File length         */
+    int8_t    d_fname[14];     /* Filename            */
+};
+#pragma pack(pop)
 
 /* File functions ************************************************************/
 
@@ -142,34 +161,35 @@ uint32_t GEMDOS_Dgetdrv()
     return 2; /* C: */
 }
 
-uint32_t dta_adr;
+uint32_t dta_addr;
 
 uint32_t GEMDOS_Fgetdta()
 {
     FUNC_TRACE_ENTER
     
-    return dta_adr;
+    return dta_addr;
 }
 
 uint32_t GEMDOS_Fsetdta()
 {
-    uint32_t adr = peek_u32(2);
+    uint32_t addr = peek_u32(2);
     
     FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", adr);
+        printf("    0x%x\n", addr);
     }
-    
-    dta_adr = adr;
+        
+    dta_addr = addr;
     
     return 0;
 }
 
-/* TODO move to configuration */
-#define TOS_BASE_PATH "/home/e8johan/tos/"
-
+/* 
+ * Converts a TOS path to a host path 
+ *
+ * Returns the lenght of the resulting path on success, or zero on failure.
+ */
 static int path_from_tos(char *tp, char *up)
 {
-    
     char tbuf[PATH_MAX+1];
     int len;
     char *src, *dest;
@@ -210,8 +230,9 @@ static int path_from_tos(char *tp, char *up)
         ++ len;
     }
     
-    /* Make canonical */
+    /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
+    
     /* Ensure within prefix */    
     if (strncmp(up, tbuf, strlen(TOS_BASE_PATH)-1))
         return 0;
@@ -219,14 +240,88 @@ static int path_from_tos(char *tp, char *up)
     return strlen(up);
 }
 
+struct globitem;
+struct globitem {
+    glob_t *g;
+    int id;
+    
+    struct globitem *next;
+};
+
+struct globitem *globhead = 0;
+
+glob_t *gemdos_prepare_dta(int *id)
+{
+    static int sid = 42;
+    glob_t *res;
+    struct globitem *item;
+    
+    sid ++;
+    res = malloc(sizeof(glob_t));
+    item = malloc(sizeof(struct globitem));
+    
+    item->g = res;
+    item->id = sid;
+    item->next = globhead;
+    globhead = item;
+    
+    *id = sid;
+    return res;
+}
+
+glob_t *gemdos_find_dta(int *id)
+{
+    struct globitem *ptr = globhead;
+    while (ptr) {
+        if (ptr->id == *id)
+            return ptr->g;
+        ptr = ptr->next;
+    }
+    
+    return 0;
+}
+
+/* TODO where would be a good place to call this? Fsnext? */
+void gemdos_clear_dta(int *id)
+{
+    struct globitem *ptr, *pptr;
+    
+    pptr = 0;
+    ptr = globhead;
+    while (ptr) {
+        if (ptr->id == *id) {
+            if (pptr)
+                pptr->next = ptr->next;
+            else
+                globhead = ptr->next;
+            
+            globfree(ptr->g);
+            free(ptr);
+            
+            return;
+        }
+        pptr = ptr;
+        ptr = ptr->next;
+    }
+}
+
 uint32_t GEMDOS_Fsfirst()
 {
+    glob_t *gres;
+    struct stat sres;
+    struct tm *lt;
+
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+
     int i;
-    
-    uint16_t attr = peek_u16(6);
+    int gres_id;
+    char *bn;
+
+    struct DTA *dta;
+
     uint32_t filename = peek_u32(2);
+    uint16_t attr = peek_u16(6);
     
     FUNC_TRACE_ENTER_ARGS {
         printf("    filename: 0x%x, attr: 0x%x\n", filename, attr);
@@ -234,6 +329,8 @@ uint32_t GEMDOS_Fsfirst()
     
     memset(buf, 0, PATH_MAX+1);
     memset(ubuf, 0, PATH_MAX+1);
+    
+    gres = gemdos_prepare_dta(&gres_id);
     
     i=1;
     buf[0] = m68k_read_disassembler_8(filename);
@@ -244,26 +341,145 @@ uint32_t GEMDOS_Fsfirst()
         ++i;
     }
     
-    printf("FILENAME: '%s'\n", buf);
-
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
     
-    printf("FILENAME: '%s' => '%s'\n", buf, ubuf);
+    /* TODO, take attr into account */
     
-    /* TODO continue implementing here, right now we pretend never to find any files */
+    if ((i = glob(ubuf, 0, 0, gres)) == 0) {
+        if (gres->gl_pathc>0) {
+            stat(gres->gl_pathv[0], &sres);
+            lt = localtime(&sres.st_mtime);
+            
+            dta = (struct DTA*)(tos_mem_to_host_mem(dta_addr));
+            
+            ((int*)dta)[0] = gres_id;
+            ((int*)dta)[1] = 0;
+            
+            /* 
+            Bit 0:  File is write-protected
+            Bit 1:  File is hidden
+            Bit 2:  System file
+            Bit 3:  Volume label (diskette name)
+            Bit 4:  Directory
+            Bit 5:  Archive bit 
+            */
+            dta->d_attrib = (S_ISDIR(sres.st_mode)?0x10:0);
+            
+            /*
+            0-4 Seconds in units of two (0-29)
+            5-10    Minutes (0-59)
+            11-15   Hours (0-23)
+            */
+            dta->d_time = endianize_16(
+                            (lt->tm_sec / 2) |
+                            (lt->tm_min << 5) |
+                            (lt->tm_hour << 11));
+            
+            /*
+            0-4 Day (1-31)
+            5-8     Month (1-12)
+            9-15    Year (0-119, 0= 1980)
+            */
+            dta->d_date = endianize_16(
+                            lt->tm_mday |
+                          ((lt->tm_mon+1) << 5) |
+                          ((lt->tm_year-80) << 9));
+            
+            dta->d_length = endianize_32(sres.st_size);
+            
+            bn = basename(gres->gl_pathv[0]);
+            memset(dta->d_fname, 0, 14);
+            strncpy((char*)dta->d_fname, bn, 13);
+        }
+    } else {
+        switch(i)
+        {
+            case GLOB_NOSPACE:
+            case GLOB_ABORTED:
+            case GLOB_NOMATCH:
+                return GEMDOS_EFILNF;
+            default:
+                return GEMDOS_EFILNF;
+        }
+    }
     
-    /* Find the file path */
-    /* Do a diropen */
-    /* Populate (initialize) the dta */
-    /* Decide if we want the opendir ref as a part of the m68k ram DTA, or outside */
+    return GEMDOS_E_OK;
+}
+
+uint32_t GEMDOS_Fsnext()
+{
+    glob_t *gres;
+    struct stat sres;
+    struct tm *lt;
+
+    int i;
+    int gres_id;
+    char *bn;
+
+    struct DTA *dta;
+
+    FUNC_TRACE_ENTER
     
-    return GEMDOS_EFILNF;
+    dta = (struct DTA*)(tos_mem_to_host_mem(dta_addr));
+    gres = gemdos_find_dta((int*)dta);
+    i = ((int*)dta)[1] + 1;
+    ((int*)dta)[1] = i;
+    
+    /* TODO, take attr into account */
+
+    if (i < gres->gl_pathc) {
+        stat(gres->gl_pathv[i], &sres);
+        lt = localtime(&sres.st_mtime);
+            
+        /* 
+        Bit 0:  File is write-protected
+        Bit 1:  File is hidden
+        Bit 2:  System file
+        Bit 3:  Volume label (diskette name)
+        Bit 4:  Directory
+        Bit 5:  Archive bit 
+        */
+        dta->d_attrib = (S_ISDIR(sres.st_mode)?0x10:0);
+        
+        /*
+        0-4 Seconds in units of two (0-29)
+        5-10    Minutes (0-59)
+        11-15   Hours (0-23)
+        */
+        dta->d_time = endianize_16(
+                        (lt->tm_sec / 2) |
+                        (lt->tm_min << 5) |
+                        (lt->tm_hour << 11));
+        
+        /*
+        0-4 Day (1-31)
+        5-8     Month (1-12)
+        9-15    Year (0-119, 0= 1980)
+        */
+        dta->d_date = endianize_16(
+                        lt->tm_mday |
+                        ((lt->tm_mon+1) << 5) |
+                        ((lt->tm_year-80) << 9));
+        
+        dta->d_length = endianize_32(sres.st_size);
+        
+        bn = basename(gres->gl_pathv[0]);
+        memset(dta->d_fname, 0, 14);
+        strncpy((char*)dta->d_fname, bn, 13);
+    }
+    else
+    {
+        return GEMDOS_ENMFIL;
+    }
+
+            
+    return GEMDOS_E_OK;   
 }
 
 void gemdos_file_init(struct tos_environment *te)
 {
-    dta_adr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
+    dta_addr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
 }
 
 void gemdos_file_free()
