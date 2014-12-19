@@ -115,6 +115,27 @@ struct _memarea *find_memarea(uint32_t address)
     return area;
 }
 
+void *tos_mem_to_host_mem(uint32_t address)
+{
+    struct _memarea *area = find_memarea(address);
+    
+    if (!area) {
+        halt_execution();
+        printf("Attempted to get direct access to non-existing memory at 0x%x\n", address);
+        return 0;
+    }
+    
+    if (area->write != ptr_write || area->read != ptr_read)
+    {
+        halt_execution();
+        printf("Attempted to get direct access to non-mapped memory at 0x%x\n", address);
+        return 0;
+    }
+    
+    return &(((uint8_t *)area->ptr)[address - area->base]);
+}
+
+
 /* These are the real read/write functions */
 
 uint8_t tos_read(uint32_t address)

@@ -61,6 +61,8 @@ struct _memarea {
 int add_ptr_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr);
 int add_fnct_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea *, uint32_t), void (*write)(struct _memarea *, uint32_t, uint8_t));
 
+void *tos_mem_to_host_mem(uint32_t address);
+
 /* Remove memory areas, return 0 on success */
 int remove_memory_area(uint32_t base);
 
