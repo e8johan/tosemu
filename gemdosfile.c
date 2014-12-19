@@ -414,7 +414,6 @@ uint32_t GEMDOS_Fsnext()
     struct tm *lt;
 
     int i;
-    int gres_id;
     char *bn;
 
     struct DTA *dta;
@@ -464,7 +463,7 @@ uint32_t GEMDOS_Fsnext()
         
         dta->d_length = endianize_32(sres.st_size);
         
-        bn = basename(gres->gl_pathv[0]);
+        bn = basename(gres->gl_pathv[i]);
         memset(dta->d_fname, 0, 14);
         strncpy((char*)dta->d_fname, bn, 13);
     }

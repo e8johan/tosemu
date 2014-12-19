@@ -70,7 +70,7 @@ uint32_t GEMDOS_Cconws()
     uint32_t res = 0;
     uint8_t ch;
 
-    FUNC_TRACE_ENTER {
+    FUNC_TRACE_ENTER_ARGS {
         printf("    0x%x\n", adr);
     }
     
