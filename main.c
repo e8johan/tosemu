@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     }
     
     /* Check that the binary starts with the magix 0x601a sequence */
-    if( ((char*)binary_data)[0] != 0x60 && ((char*)binary_data)[1] == 0x1a)
+    if( ((char*)binary_data)[0] != 0x60 || ((char*)binary_data)[1] != 0x1a)
     {
         printf("Error: invalid magic in '%s'\n", argv[argc-1]);
         close(binary_file);
