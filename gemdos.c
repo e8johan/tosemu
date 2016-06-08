@@ -186,7 +186,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Flink NULL
 #define GEMDOS_Flock NULL
 #define GEMDOS_Fmidipipe NULL
-#define GEMDOS_Fopen NULL
 #define GEMDOS_Foutstat NULL
 #define GEMDOS_Fpipe NULL
 #define GEMDOS_Fputchar NULL

@@ -476,6 +476,18 @@ uint32_t GEMDOS_Fsnext()
     return GEMDOS_E_OK;   
 }
 
+uint32_t GEMDOS_Fopen()
+{
+    uint32_t filename = peek_u32(2);
+    uint16_t mode = peek_u16(6);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    filename: 0x%x, mode: 0x%x\n", filename, mode);
+    }
+
+    return GEMDOS_EFILNF;
+}
+
 void gemdos_file_init(struct tos_environment *te)
 {
     dta_addr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
