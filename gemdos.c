@@ -188,12 +188,10 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Foutstat NULL
 #define GEMDOS_Fpipe NULL
 #define GEMDOS_Fputchar NULL
-#define GEMDOS_Fread NULL
 #define GEMDOS_Freadlink NULL
 #define GEMDOS_Frename NULL
 #define GEMDOS_Fselect NULL
 #define GEMDOS_Fsymlink NULL
-#define GEMDOS_Fwrite NULL
 #define GEMDOS_Fxattr GEMDOS_Unknown
 #define GEMDOS_Maddalt NULL
 #define GEMDOS_Mxalloc NULL

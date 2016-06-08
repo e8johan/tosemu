@@ -566,6 +566,16 @@ uint32_t GEMDOS_Fclose()
     return GEMDOS_E_OK;
 }
 
+uint32_t GEMDOS_Fread()
+{
+    return GEMDOS_EIHNDL;
+}
+
+uint32_t GEMDOS_Fwrite()
+{
+    return GEMDOS_EIHNDL;
+}
+
 void gemdos_file_init(struct tos_environment *te)
 {
     int i;
