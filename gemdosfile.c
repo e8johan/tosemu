@@ -53,6 +53,15 @@ struct DTA
 };
 #pragma pack(pop)
 
+struct fhandle
+{
+    FILE *f;
+    uint32_t flags;
+};
+
+#define HANDLES 10
+#define HANDLE_ALLOCATED 0x001
+
 /* File functions ************************************************************/
 
 uint32_t GEMDOS_Fseek()
@@ -476,11 +485,16 @@ uint32_t GEMDOS_Fsnext()
     return GEMDOS_E_OK;   
 }
 
+static struct fhandle handles[HANDLES];
+
 uint32_t GEMDOS_Fopen()
 {
-    int i;
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+
+    const char *m;
+    FILE *f;
+    int i, h;
 
     uint32_t filename = peek_u32(2);
     uint16_t mode = peek_u16(6);
@@ -504,12 +518,53 @@ uint32_t GEMDOS_Fopen()
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
 
-    return GEMDOS_EFILNF;
+    switch(mode & 0x3)
+    {
+    case 0:
+        m = "r";
+        break;
+    case 1:
+        m = "w";
+        break;
+    case 2:
+        m = "r+";
+        break;
+    case 3:
+        return GEMDOS_EINVAL;
+        break;
+    }
+
+    f = fopen(ubuf, m);
+    if (f == NULL)
+        return GEMDOS_EFILNF;
+
+    h = -1;
+    for (i = 0; i < HANDLES; i++)
+    {
+        if (handles[i].flags & HANDLE_ALLOCATED)
+	    continue;
+	h = i;
+    }
+
+    if (h == -1)
+        return GEMDOS_ENHNDL;
+
+    handles[h].f = f;
+    handles[h].flags = HANDLE_ALLOCATED;
+
+    return h;
 }
 
 void gemdos_file_init(struct tos_environment *te)
 {
+    int i;
+
     dta_addr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
+
+    memset(handles, 0, sizeof handles);
+    /* Handles 0-5 are reserved. */
+    for (i = 0; i < 6; i++)
+        handles[i].flags = HANDLE_ALLOCATED;
 }
 
 void gemdos_file_free()
