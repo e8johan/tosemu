@@ -478,12 +478,31 @@ uint32_t GEMDOS_Fsnext()
 
 uint32_t GEMDOS_Fopen()
 {
+    int i;
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
     uint32_t filename = peek_u32(2);
     uint16_t mode = peek_u16(6);
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    filename: 0x%x, mode: 0x%x\n", filename, mode);
     }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    
+    i=1;
+    buf[0] = m68k_read_disassembler_8(filename);
+    
+    while(buf[i-1] && i<PATH_MAX)
+    {
+        buf[i] = m68k_read_disassembler_8(filename+i);
+        ++i;
+    }
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
 
     return GEMDOS_EFILNF;
 }
