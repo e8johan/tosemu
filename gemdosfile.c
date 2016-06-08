@@ -555,6 +555,17 @@ uint32_t GEMDOS_Fopen()
     return h;
 }
 
+uint32_t GEMDOS_Fclose()
+{
+    uint16_t h = peek_u16(2);
+
+    if (!(handles[h].flags & HANDLE_ALLOCATED))
+        return GEMDOS_EIHNDL;
+
+    fclose(handles[h].f);
+    return GEMDOS_E_OK;
+}
+
 void gemdos_file_init(struct tos_environment *te)
 {
     int i;

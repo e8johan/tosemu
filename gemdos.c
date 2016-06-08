@@ -175,7 +175,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fattrib NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
-#define GEMDOS_Fclose NULL
 #define GEMDOS_Fcntl GEMDOS_Unknown
 #define GEMDOS_Fcreate NULL
 #define GEMDOS_Fdelete NULL
