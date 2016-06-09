@@ -175,7 +175,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fattrib NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
-#define GEMDOS_Fclose NULL
 #define GEMDOS_Fcntl GEMDOS_Unknown
 #define GEMDOS_Fcreate NULL
 #define GEMDOS_Fdelete NULL
@@ -186,16 +185,13 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Flink NULL
 #define GEMDOS_Flock NULL
 #define GEMDOS_Fmidipipe NULL
-#define GEMDOS_Fopen NULL
 #define GEMDOS_Foutstat NULL
 #define GEMDOS_Fpipe NULL
 #define GEMDOS_Fputchar NULL
-#define GEMDOS_Fread NULL
 #define GEMDOS_Freadlink NULL
 #define GEMDOS_Frename NULL
 #define GEMDOS_Fselect NULL
 #define GEMDOS_Fsymlink NULL
-#define GEMDOS_Fwrite NULL
 #define GEMDOS_Fxattr GEMDOS_Unknown
 #define GEMDOS_Maddalt NULL
 #define GEMDOS_Mxalloc NULL
