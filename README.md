@@ -2,6 +2,8 @@ TOSEMU
 An emulated environment to TOS applications.
 Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
 
+[![Build Status](https://travis-ci.org/e8johan/tosemu.svg?branch=master)](https://travis-ci.org/e8johan/tosemu)
+
 Introduction
 ============
 
