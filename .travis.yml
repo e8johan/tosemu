@@ -2,4 +2,4 @@ sudo: required
 dist: trusty
 language: c
 install: sh ./install-deps.sh
-script: make
+script: make check

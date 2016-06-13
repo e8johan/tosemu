@@ -15,7 +15,7 @@ LDFLAGS = -lc
 
 all: bin/tosemu
 
-.PHONY: tests
+.PHONY: tests check
 
 tests:
 	$(MAKE) -C tests/
@@ -36,6 +36,9 @@ $(MUSASHIGENERATEDFILES): bin/m64kmake Musashi/m68k_in.c
 bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
 	$(CC) $(CFLAGS) $< -o $@
+
+check: bin/tosemu
+	$(MAKE) -C tests check
 
 # Clean up the source tree
 clean:
