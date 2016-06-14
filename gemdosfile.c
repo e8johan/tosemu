@@ -242,9 +242,11 @@ static int path_from_tos(char *tp, char *up)
     /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
     
+#if 0 /* Temporarily disabled? */
     /* Ensure within prefix */    
     if (strncmp(up, tbuf, strlen(TOS_BASE_PATH)-1))
         return 0;
+#endif
     
     return strlen(up);
 }
