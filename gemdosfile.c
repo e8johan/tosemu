@@ -242,9 +242,11 @@ static int path_from_tos(char *tp, char *up)
     /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
     
+#if 0 /* Temporarily disabled? */
     /* Ensure within prefix */    
     if (strncmp(up, tbuf, strlen(TOS_BASE_PATH)-1))
         return 0;
+#endif
     
     return strlen(up);
 }
@@ -542,8 +544,9 @@ uint32_t GEMDOS_Fopen()
     for (i = 0; i < HANDLES; i++)
     {
         if (handles[i].flags & HANDLE_ALLOCATED)
-	    continue;
-	h = i;
+            continue;
+        h = i;
+        break;
     }
 
     if (h == -1)
@@ -555,20 +558,51 @@ uint32_t GEMDOS_Fopen()
     return h;
 }
 
+static int invalid_handle(uint16_t h)
+{
+    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED);
+}
+
 uint32_t GEMDOS_Fclose()
 {
     uint16_t h = peek_u16(2);
 
-    if (!(handles[h].flags & HANDLE_ALLOCATED))
+    if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
+    handles[h].flags = 0;
     fclose(handles[h].f);
     return GEMDOS_E_OK;
 }
 
 uint32_t GEMDOS_Fread()
 {
-    return GEMDOS_EIHNDL;
+    uint16_t h = peek_u16(2);
+    uint32_t len = peek_u32(4);
+    uint32_t buf = peek_u32(8);
+    uint8_t *tmp;
+    size_t n;
+    int i;
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    tmp = malloc(len);
+    if (tmp == NULL)
+        return GEMDOS_ENSMEM;
+
+    n = fread(tmp, 1, len, handles[h].f);
+    if (ferror(handles[h].f))
+    {
+        free(tmp);
+        return GEMDOS_EINTRN;
+    }
+
+    for (i = 0; i < n; i++)
+        m68k_write_memory_8(buf+i, tmp[i]);
+
+    free(tmp);
+    return n;
 }
 
 uint32_t GEMDOS_Fwrite()
