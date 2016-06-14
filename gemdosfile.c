@@ -558,14 +558,16 @@ uint32_t GEMDOS_Fopen()
     return h;
 }
 
+static int invalid_handle(uint16_t h)
+{
+    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED);
+}
+
 uint32_t GEMDOS_Fclose()
 {
     uint16_t h = peek_u16(2);
 
-    if (h >= HANDLES)
-        return GEMDOS_EIHNDL;
-
-    if (!(handles[h].flags & HANDLE_ALLOCATED))
+    if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
     handles[h].flags = 0;
@@ -575,7 +577,32 @@ uint32_t GEMDOS_Fclose()
 
 uint32_t GEMDOS_Fread()
 {
-    return GEMDOS_EIHNDL;
+    uint16_t h = peek_u16(2);
+    uint32_t len = peek_u32(4);
+    uint32_t buf = peek_u32(8);
+    uint8_t *tmp;
+    size_t n;
+    int i;
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    tmp = malloc(len);
+    if (tmp == NULL)
+        return GEMDOS_ENSMEM;
+
+    n = fread(tmp, 1, len, handles[h].f);
+    if (ferror(handles[h].f))
+    {
+        free(tmp);
+        return GEMDOS_EINTRN;
+    }
+
+    for (i = 0; i < n; i++)
+        m68k_write_memory_8(buf+i, tmp[i]);
+
+    free(tmp);
+    return n;
 }
 
 uint32_t GEMDOS_Fwrite()
