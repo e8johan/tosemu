@@ -544,8 +544,9 @@ uint32_t GEMDOS_Fopen()
     for (i = 0; i < HANDLES; i++)
     {
         if (handles[i].flags & HANDLE_ALLOCATED)
-	    continue;
-	h = i;
+            continue;
+        h = i;
+        break;
     }
 
     if (h == -1)
@@ -564,6 +565,7 @@ uint32_t GEMDOS_Fclose()
     if (!(handles[h].flags & HANDLE_ALLOCATED))
         return GEMDOS_EIHNDL;
 
+    handles[h].flags = 0;
     fclose(handles[h].f);
     return GEMDOS_E_OK;
 }

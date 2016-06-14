@@ -1,5 +1,6 @@
 # Each testname is build from a source file with the file name extension .s
-STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal c-helloworld
+STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal c-helloworld \
+          Fopen
 
 CC=m68k-atari-mint-gcc
 TOSEMU=../bin/tosemu
@@ -19,6 +20,7 @@ check: all
 	$(TOSEMU) test-Cconout > out && test "`cat out`" = 'Hello World!'
 	$(TOSEMU) test-Cconws > out && test "`cat out`" = 'Hello World!'
 	$(TOSEMU) test-Fstraversal
+	$(TOSEMU) test-Fopen
 	$(TOSEMU) test-c-helloworld
 
 clean:
