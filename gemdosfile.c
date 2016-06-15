@@ -620,6 +620,8 @@ void gemdos_file_init(struct tos_environment *te)
     /* Handles 0-5 are reserved. */
     for (i = 0; i < 6; i++)
         handles[i].flags = HANDLE_ALLOCATED;
+    handles[0].f = stdin;
+    handles[1].f = stdout;
 }
 
 void gemdos_file_free()
