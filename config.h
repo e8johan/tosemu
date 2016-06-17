@@ -25,7 +25,7 @@
  * This must end with a slash!
  */
 
-#define TOS_BASE_PATH "./"
+#define TOS_BASE_PATH ""
 
 /* Enable and disable detailed tracing for the various sub-systems of tosemu */
 /* #define ENABLE_GEMDOS_TRACE */

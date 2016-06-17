@@ -42,5 +42,7 @@ uint32_t GEMDOS_Fopen();
 uint32_t GEMDOS_Fclose();
 uint32_t GEMDOS_Fread();
 uint32_t GEMDOS_Fwrite();
+uint32_t GEMDOS_Dgetpath();
+uint32_t GEMDOS_Dsetpath();
 
 #endif /* GEMDOSFILE_H */

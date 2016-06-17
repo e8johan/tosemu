@@ -192,6 +192,47 @@ uint32_t GEMDOS_Fsetdta()
     return 0;
 }
 
+static int get_path(char *buf, uint32_t address)
+{
+    int i=1;
+    buf[0] = m68k_read_disassembler_8(address);
+    
+    while(buf[i-1] && i<PATH_MAX)
+    {
+        buf[i] = m68k_read_disassembler_8(address+i);
+        ++i;
+    }
+
+    return i;
+}
+
+uint32_t GEMDOS_Dgetpath()
+{
+    uint32_t addr = peek_u32(2);
+    uint16_t drive = peek_u32(6);
+    char buf[256];
+    char ubuf[PATH_MAX+1];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x, drive=%d\n", addr, drive);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    getcwd(ubuf, sizeof ubuf);
+
+    i=0;
+    do
+    {
+        m68k_write_memory_8(addr+i, ubuf[i]);
+        ++i;
+    }
+    while(ubuf[i-1]!=0 && i<PATH_MAX);
+
+    return 0;
+}
+
 /* 
  * Converts a TOS path to a host path 
  *
@@ -249,6 +290,29 @@ static int path_from_tos(char *tp, char *up)
 #endif
     
     return strlen(up);
+}
+
+uint32_t GEMDOS_Dsetpath()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[256];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if (chdir(ubuf))
+      printf("chdir error\n");
+
+    return 0;
 }
 
 struct globitem;
@@ -343,14 +407,7 @@ uint32_t GEMDOS_Fsfirst()
     
     gres = gemdos_prepare_dta(&gres_id);
     
-    i=1;
-    buf[0] = m68k_read_disassembler_8(filename);
-    
-    while(buf[i-1] && i<PATH_MAX)
-    {
-        buf[i] = m68k_read_disassembler_8(filename+i);
-        ++i;
-    }
+    get_path(buf, filename);
     
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
@@ -508,14 +565,7 @@ uint32_t GEMDOS_Fopen()
     memset(buf, 0, PATH_MAX+1);
     memset(ubuf, 0, PATH_MAX+1);
     
-    i=1;
-    buf[0] = m68k_read_disassembler_8(filename);
-    
-    while(buf[i-1] && i<PATH_MAX)
-    {
-        buf[i] = m68k_read_disassembler_8(filename+i);
-        ++i;
-    }
+    get_path(buf, filename);
 
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;

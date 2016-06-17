@@ -164,14 +164,12 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Ddelete NULL
 #define GEMDOS_Dfree NULL
 #define GEMDOS_Dgetcwd NULL
-#define GEMDOS_Dgetpath NULL
 #define GEMDOS_Dlock NULL
 #define GEMDOS_Dopendir NULL
 #define GEMDOS_Dpathconf NULL
 #define GEMDOS_Dreaddir NULL
 #define GEMDOS_Drewinddir NULL
 #define GEMDOS_Dsetdrv NULL
-#define GEMDOS_Dsetpath NULL
 #define GEMDOS_Fattrib NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
