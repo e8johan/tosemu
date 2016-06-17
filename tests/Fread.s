@@ -46,6 +46,23 @@ _start:
         trap    #1
         addq.l   #6,sp
         
+        pea     buf
+        move.l  #1,-(sp)
+        move.w  #0,-(sp)        | keyboard/stdin
+        move.w  #63,-(sp)       | call Fread
+        trap    #1
+        lea     12(sp),sp
+
+        cmp.l   #1,d0           | check success
+        bne.s   fail
+        
+        clr.w   d0
+        move.b  buf,d0
+        move.w  d0,-(sp)
+        move.w  #2,-(sp)        | call Cconout
+        trap    #1
+        addq.l   #4,sp
+
         clr.w   -(sp)           | call Pterm0
         trap    #1
         

@@ -22,8 +22,9 @@ check: all
 	$(TOSEMU) test-Fstraversal
 	$(TOSEMU) test-Fopen
 	$(TOSEMU) test-Fclose
-	$(TOSEMU) test-Fread > out
+	echo x | $(TOSEMU) test-Fread > out
 	head -c100 Makefile >out2
+	echo -n x >> out2
 	cmp out out2
 	rm out2
 	$(TOSEMU) test-Supexec
