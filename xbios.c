@@ -41,6 +41,26 @@ uint32_t XBIOS_Getrez()
     return 8;
 }
 
+static uint32_t dreg[5], areg[4];
+
+static void save_regs(void)
+{
+    int i;
+    for(i=0; i<5; i++)
+        dreg[i] = m68k_get_reg(0, M68K_REG_D3+i);
+    for(i=0; i<4; i++)
+        areg[i] = m68k_get_reg(0, M68K_REG_A3+i);
+}
+
+static void restore_regs(void)
+{
+    int i;
+    for(i=0; i<5; i++)
+        m68k_set_reg(M68K_REG_D3+i, dreg[i]);
+    for(i=0; i<4; i++)
+        m68k_set_reg(M68K_REG_A3+i, areg[i]);
+}
+
 /* Supexec has been implemented using magic memory, which provides a mechanism 
  * for triggering a callback. The general idea is:
  * 
@@ -54,7 +74,8 @@ uint32_t XBIOS_Getrez()
  * registered for this purpose, resulting in calls to magic_xbios_supexec_read.
  * When 0x201 is called, the PC is popped from the stack before the supervisor
  * mode is disabled, PC updated and D0 set to 0 (the XBIOS return code for no
- * error).
+ * error).  The instruction at 0x200 will be executed before the PC update
+ * takes effect, so the memory reads return a NOP at that address.
  */
 uint32_t XBIOS_Supexec()
 {
@@ -64,6 +85,8 @@ uint32_t XBIOS_Supexec()
         printf("    0x%x\n", lv0);
     }
     
+    save_regs();
+
     enable_supervisor_mode();
     push_u32(m68k_get_reg(0, M68K_REG_PC));
     push_u32(0x200);
@@ -77,12 +100,15 @@ uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address)
 {
     uint32_t lv0;
     printf("ADDRESS: 0x%x\n", address);
-    if (address == 0x201)
+    if (address == 0x200)
+        return 0x4e;
+    else if (address == 0x201)
     {
         lv0 = pop_u32();
         disable_supervisor_mode();
         m68k_set_reg(M68K_REG_PC, lv0);
-        m68k_set_reg(M68K_REG_D0, 0);    
+        restore_regs();
+        return 0x71;
     }
     
     return 0;
