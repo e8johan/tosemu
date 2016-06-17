@@ -315,6 +315,29 @@ uint32_t GEMDOS_Dsetpath()
     return 0;
 }
 
+uint32_t GEMDOS_Dcreate()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if(mkdir(ubuf, 0777) != 0)
+        return GEMDOS_EACCDN;
+
+    return 0;
+}
+
 struct globitem;
 struct globitem {
     glob_t *g;
