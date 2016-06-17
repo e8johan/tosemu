@@ -1,6 +1,6 @@
 # Each testname is build from a source file with the file name extension .s
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal c-helloworld \
-          Fopen Fclose Fread Supexec Dcreate
+          Fopen Fclose Fread Supexec Dcreate Fcreate
 
 CC=m68k-atari-mint-gcc
 TOSEMU=../bin/tosemu
@@ -29,6 +29,7 @@ check: all
 	rm out2
 	$(TOSEMU) test-Supexec
 	$(TOSEMU) test-Dcreate && rmdir DNAME
+	$(TOSEMU) test-Fcreate && rm FNAME
 	$(TOSEMU) test-c-helloworld
 
 clean:

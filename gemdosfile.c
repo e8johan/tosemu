@@ -22,6 +22,7 @@
 
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -338,6 +339,49 @@ uint32_t GEMDOS_Dcreate()
     return 0;
 }
 
+static struct fhandle handles[HANDLES];
+
+static int get_handle(FILE *f)
+{
+    int i;
+    for (i = 0; i < HANDLES; i++)
+    {
+        if (handles[i].flags & HANDLE_ALLOCATED)
+            continue;
+        handles[i].f = f;
+        handles[i].flags = HANDLE_ALLOCATED;
+        return i;
+    }
+    return -1;
+}
+
+uint32_t GEMDOS_Fcreate()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+    int h, fd;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    fd = creat(ubuf, 0777);
+    if (fd < 0)
+        return GEMDOS_EACCDN;
+
+    h = get_handle(fdopen(fd, "w"));
+
+    return h;
+}
+
 struct globitem;
 struct globitem {
     glob_t *g;
@@ -567,8 +611,6 @@ uint32_t GEMDOS_Fsnext()
     return GEMDOS_E_OK;   
 }
 
-static struct fhandle handles[HANDLES];
-
 uint32_t GEMDOS_Fopen()
 {
     char buf[PATH_MAX+1];
@@ -576,7 +618,7 @@ uint32_t GEMDOS_Fopen()
 
     const char *m;
     FILE *f;
-    int i, h;
+    int h;
 
     uint32_t filename = peek_u32(2);
     uint16_t mode = peek_u16(6);
@@ -613,20 +655,9 @@ uint32_t GEMDOS_Fopen()
     if (f == NULL)
         return GEMDOS_EFILNF;
 
-    h = -1;
-    for (i = 0; i < HANDLES; i++)
-    {
-        if (handles[i].flags & HANDLE_ALLOCATED)
-            continue;
-        h = i;
-        break;
-    }
-
+    h = get_handle(f);
     if (h == -1)
         return GEMDOS_ENHNDL;
-
-    handles[h].f = f;
-    handles[h].flags = HANDLE_ALLOCATED;
 
     return h;
 }
