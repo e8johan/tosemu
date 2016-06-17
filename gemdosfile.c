@@ -711,7 +711,36 @@ uint32_t GEMDOS_Fread()
 
 uint32_t GEMDOS_Fwrite()
 {
-    return GEMDOS_EIHNDL;
+    uint16_t h = peek_u16(2);
+    uint32_t len = peek_u32(4);
+    uint32_t buf = peek_u32(8);
+    uint8_t *tmp;
+    size_t n;
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d, len: %d, buf: %x\n", h, len , buf);
+    }
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    tmp = malloc(len);
+    if (tmp == NULL)
+        return GEMDOS_ENSMEM;
+
+    for (i = 0; i < len; i++)
+        tmp[i] = m68k_read_memory_8(buf+i);
+
+    n = fwrite(tmp, 1, len, handles[h].f);
+    if (ferror(handles[h].f))
+    {
+        free(tmp);
+        return GEMDOS_EINTRN;
+    }
+
+    free(tmp);
+    return n;
 }
 
 void gemdos_file_init(struct tos_environment *te)
