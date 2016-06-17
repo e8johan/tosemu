@@ -388,7 +388,12 @@ void gemdos_trap()
     for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
         if (GEMDOS_functions[i].id == fnct) {
             if (GEMDOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, GEMDOS_functions[i].fnct());
+                uint32_t r = GEMDOS_functions[i].fnct();
+#ifdef ENABLE_GEMDOS_TRACE
+                printf("Return from %s: %d = 0x%x\n",
+                       GEMDOS_functions[i].name, r, r);
+#endif
+                m68k_set_reg(M68K_REG_D0, r);
             } else {
                 halt_execution();
                 printf("GEMDOS %s (0x%x) not implemented\n", GEMDOS_functions[i].name, fnct);
