@@ -137,6 +137,11 @@ uint32_t GEMDOS_Super()
     return res;
 }    
 
+uint32_t GEMDOS_Sversion()
+{
+    return 0x1500;
+}
+
 /* Used to tag Mint-only calls that should not halt execution, but are not implemented */
 uint32_t GEMDOS_Unknown();
 
@@ -227,7 +232,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Pwait3 NULL
 #define GEMDOS_Pwaitpid NULL
 #define GEMDOS_Salert NULL
-#define GEMDOS_Sversion NULL
 #define GEMDOS_Pyield NULL
 #define GEMDOS_Sysconf NULL
 #define GEMDOS_Talarm NULL
