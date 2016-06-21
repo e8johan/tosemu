@@ -38,6 +38,8 @@ struct tos_environment {
              ssize;
 
     struct basepage *bp;
+
+    char *base_path;
 };
 
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t binary_size);

@@ -63,6 +63,8 @@ struct fhandle
 #define HANDLES 10
 #define HANDLE_ALLOCATED 0x001
 
+static struct tos_environment *tos_env;
+
 /* File functions ************************************************************/
 
 uint32_t GEMDOS_Fseek()
@@ -249,7 +251,7 @@ static int path_from_tos(char *tp, char *up)
     memset(tbuf, 0, PATH_MAX+1);
     
     /* Prepend prefix */
-    strncpy(up, TOS_BASE_PATH, PATH_MAX);
+    strncpy(up, tos_env->base_path, PATH_MAX);
     len = strlen(up);
     src = tp;
     dest = up + len;
@@ -284,11 +286,12 @@ static int path_from_tos(char *tp, char *up)
     /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
     
-#if 0 /* Temporarily disabled? */
-    /* Ensure within prefix */    
-    if (strncmp(up, tbuf, strlen(TOS_BASE_PATH)-1))
-        return 0;
-#endif
+    if (tos_env->base_path[0] != 0)
+    {
+        /* Ensure within prefix */    
+        if (strncmp(up, tbuf, strlen(tos_env->base_path)-1))
+            return 0;
+    }
     
     return strlen(up);
 }
@@ -794,6 +797,8 @@ void gemdos_file_init(struct tos_environment *te)
         handles[i].flags = HANDLE_ALLOCATED;
     handles[0].f = stdin;
     handles[1].f = stdout;
+
+    tos_env = te;
 }
 
 void gemdos_file_free()

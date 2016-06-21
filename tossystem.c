@@ -81,6 +81,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     uint8_t *ptr = 0;
     uint32_t *ptr32 = 0;
     uint32_t adr = 0;
+    char *path;
     
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
@@ -197,6 +198,22 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
                 }
             }
         }
+    }
+
+    path = getenv("TOS_BASE_PATH");
+    if (path == NULL)
+        te->base_path = "";
+    else
+    {
+        int n = strlen(path);
+        te->base_path = malloc(n + 2);
+        if (te->base_path == NULL)
+        {
+            exit(1);
+        }
+        strcpy(te->base_path, path);
+        te->base_path[n] = '/';
+        te->base_path[n+1] = 0;
     }
     
     /* TODO Move into CPU initialization */
