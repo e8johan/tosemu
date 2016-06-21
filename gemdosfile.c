@@ -339,6 +339,29 @@ uint32_t GEMDOS_Dcreate()
     return 0;
 }
 
+uint32_t GEMDOS_Fdelete()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if (unlink(ubuf) != 0)
+        return GEMDOS_EFILNF;
+
+    return 0;
+}
+
 static struct fhandle handles[HANDLES];
 
 static int get_handle(FILE *f)
