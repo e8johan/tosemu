@@ -137,6 +137,11 @@ uint32_t GEMDOS_Super()
     return res;
 }    
 
+uint32_t GEMDOS_Sversion()
+{
+    return 0x1500;
+}
+
 /* Used to tag Mint-only calls that should not halt execution, but are not implemented */
 uint32_t GEMDOS_Unknown();
 
@@ -160,23 +165,19 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Crawio NULL
 #define GEMDOS_Dclosedir NULL
 #define GEMDOS_Dcntl NULL
-#define GEMDOS_Dcreate NULL
 #define GEMDOS_Ddelete NULL
 #define GEMDOS_Dfree NULL
 #define GEMDOS_Dgetcwd NULL
-#define GEMDOS_Dgetpath NULL
 #define GEMDOS_Dlock NULL
 #define GEMDOS_Dopendir NULL
 #define GEMDOS_Dpathconf NULL
 #define GEMDOS_Dreaddir NULL
 #define GEMDOS_Drewinddir NULL
 #define GEMDOS_Dsetdrv NULL
-#define GEMDOS_Dsetpath NULL
 #define GEMDOS_Fattrib NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
 #define GEMDOS_Fcntl GEMDOS_Unknown
-#define GEMDOS_Fcreate NULL
 #define GEMDOS_Fdelete NULL
 #define GEMDOS_Fdup NULL
 #define GEMDOS_Fforce NULL
@@ -231,7 +232,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Pwait3 NULL
 #define GEMDOS_Pwaitpid NULL
 #define GEMDOS_Salert NULL
-#define GEMDOS_Sversion NULL
 #define GEMDOS_Pyield NULL
 #define GEMDOS_Sysconf NULL
 #define GEMDOS_Talarm NULL
@@ -392,7 +392,12 @@ void gemdos_trap()
     for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
         if (GEMDOS_functions[i].id == fnct) {
             if (GEMDOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, GEMDOS_functions[i].fnct());
+                uint32_t r = GEMDOS_functions[i].fnct();
+#ifdef ENABLE_GEMDOS_TRACE
+                printf("Return from %s: %d = 0x%x\n",
+                       GEMDOS_functions[i].name, r, r);
+#endif
+                m68k_set_reg(M68K_REG_D0, r);
             } else {
                 halt_execution();
                 printf("GEMDOS %s (0x%x) not implemented\n", GEMDOS_functions[i].name, fnct);

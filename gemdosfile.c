@@ -22,6 +22,7 @@
 
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -192,6 +193,47 @@ uint32_t GEMDOS_Fsetdta()
     return 0;
 }
 
+static int get_path(char *buf, uint32_t address)
+{
+    int i=1;
+    buf[0] = m68k_read_disassembler_8(address);
+    
+    while(buf[i-1] && i<PATH_MAX)
+    {
+        buf[i] = m68k_read_disassembler_8(address+i);
+        ++i;
+    }
+
+    return i;
+}
+
+uint32_t GEMDOS_Dgetpath()
+{
+    uint32_t addr = peek_u32(2);
+    uint16_t drive = peek_u32(6);
+    char buf[256];
+    char ubuf[PATH_MAX+1];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x, drive=%d\n", addr, drive);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    getcwd(ubuf, sizeof ubuf);
+
+    i=0;
+    do
+    {
+        m68k_write_memory_8(addr+i, ubuf[i]);
+        ++i;
+    }
+    while(ubuf[i-1]!=0 && i<PATH_MAX);
+
+    return 0;
+}
+
 /* 
  * Converts a TOS path to a host path 
  *
@@ -249,6 +291,95 @@ static int path_from_tos(char *tp, char *up)
 #endif
     
     return strlen(up);
+}
+
+uint32_t GEMDOS_Dsetpath()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[256];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if (chdir(ubuf))
+      printf("chdir error\n");
+
+    return 0;
+}
+
+uint32_t GEMDOS_Dcreate()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if(mkdir(ubuf, 0777) != 0)
+        return GEMDOS_EACCDN;
+
+    return 0;
+}
+
+static struct fhandle handles[HANDLES];
+
+static int get_handle(FILE *f)
+{
+    int i;
+    for (i = 0; i < HANDLES; i++)
+    {
+        if (handles[i].flags & HANDLE_ALLOCATED)
+            continue;
+        handles[i].f = f;
+        handles[i].flags = HANDLE_ALLOCATED;
+        return i;
+    }
+    return -1;
+}
+
+uint32_t GEMDOS_Fcreate()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+    int h, fd;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    fd = creat(ubuf, 0777);
+    if (fd < 0)
+        return GEMDOS_EACCDN;
+
+    h = get_handle(fdopen(fd, "w"));
+
+    return h;
 }
 
 struct globitem;
@@ -343,14 +474,7 @@ uint32_t GEMDOS_Fsfirst()
     
     gres = gemdos_prepare_dta(&gres_id);
     
-    i=1;
-    buf[0] = m68k_read_disassembler_8(filename);
-    
-    while(buf[i-1] && i<PATH_MAX)
-    {
-        buf[i] = m68k_read_disassembler_8(filename+i);
-        ++i;
-    }
+    get_path(buf, filename);
     
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
@@ -487,8 +611,6 @@ uint32_t GEMDOS_Fsnext()
     return GEMDOS_E_OK;   
 }
 
-static struct fhandle handles[HANDLES];
-
 uint32_t GEMDOS_Fopen()
 {
     char buf[PATH_MAX+1];
@@ -496,7 +618,7 @@ uint32_t GEMDOS_Fopen()
 
     const char *m;
     FILE *f;
-    int i, h;
+    int h;
 
     uint32_t filename = peek_u32(2);
     uint16_t mode = peek_u16(6);
@@ -508,14 +630,7 @@ uint32_t GEMDOS_Fopen()
     memset(buf, 0, PATH_MAX+1);
     memset(ubuf, 0, PATH_MAX+1);
     
-    i=1;
-    buf[0] = m68k_read_disassembler_8(filename);
-    
-    while(buf[i-1] && i<PATH_MAX)
-    {
-        buf[i] = m68k_read_disassembler_8(filename+i);
-        ++i;
-    }
+    get_path(buf, filename);
 
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
@@ -540,20 +655,9 @@ uint32_t GEMDOS_Fopen()
     if (f == NULL)
         return GEMDOS_EFILNF;
 
-    h = -1;
-    for (i = 0; i < HANDLES; i++)
-    {
-        if (handles[i].flags & HANDLE_ALLOCATED)
-            continue;
-        h = i;
-        break;
-    }
-
+    h = get_handle(f);
     if (h == -1)
         return GEMDOS_ENHNDL;
-
-    handles[h].f = f;
-    handles[h].flags = HANDLE_ALLOCATED;
 
     return h;
 }
@@ -607,7 +711,36 @@ uint32_t GEMDOS_Fread()
 
 uint32_t GEMDOS_Fwrite()
 {
-    return GEMDOS_EIHNDL;
+    uint16_t h = peek_u16(2);
+    uint32_t len = peek_u32(4);
+    uint32_t buf = peek_u32(8);
+    uint8_t *tmp;
+    size_t n;
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d, len: %d, buf: %x\n", h, len , buf);
+    }
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    tmp = malloc(len);
+    if (tmp == NULL)
+        return GEMDOS_ENSMEM;
+
+    for (i = 0; i < len; i++)
+        tmp[i] = m68k_read_memory_8(buf+i);
+
+    n = fwrite(tmp, 1, len, handles[h].f);
+    if (ferror(handles[h].f))
+    {
+        free(tmp);
+        return GEMDOS_EINTRN;
+    }
+
+    free(tmp);
+    return n;
 }
 
 void gemdos_file_init(struct tos_environment *te)
