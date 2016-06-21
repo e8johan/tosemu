@@ -311,7 +311,7 @@ uint32_t GEMDOS_Dsetpath()
         return GEMDOS_EFILNF;
 
     if (chdir(ubuf))
-      printf("chdir error\n");
+        perror("chdir");
 
     return 0;
 }
@@ -339,6 +339,29 @@ uint32_t GEMDOS_Dcreate()
     return 0;
 }
 
+uint32_t GEMDOS_Fdelete()
+{
+    uint32_t addr = peek_u32(2);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    addr: 0x%x\n", addr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    get_path(buf, addr);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if (unlink(ubuf) != 0)
+        return GEMDOS_EFILNF;
+
+    return 0;
+}
+
 static struct fhandle handles[HANDLES];
 
 static int get_handle(FILE *f)
@@ -353,6 +376,21 @@ static int get_handle(FILE *f)
         return i;
     }
     return -1;
+}
+
+static void make_dirs(char *path)
+{
+    char *start, *end;
+
+    start = path;
+    while ((end = strchr(start, '/')) != NULL)
+    {
+        *end = 0;
+        if (mkdir(path, 0777) < 0 && errno != EEXIST)
+            perror("mkdir");
+        *end = '/';
+        start = end + 1;
+    }
 }
 
 uint32_t GEMDOS_Fcreate()
@@ -373,6 +411,7 @@ uint32_t GEMDOS_Fcreate()
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
 
+    make_dirs(ubuf);
     fd = creat(ubuf, 0777);
     if (fd < 0)
         return GEMDOS_EACCDN;
