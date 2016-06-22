@@ -37,6 +37,14 @@ uint32_t GEMDOS_Cconin()
     return getchar() & 0xff; /* TODO no shift key status, scancode */
 }
 
+uint32_t GEMDOS_Cnecin()
+{   
+    FUNC_TRACE_ENTER
+    
+    /* TODO: turn off not echo. */
+    return getchar() & 0xff; /* TODO no shift key status, scancode */
+}
+
 uint32_t GEMDOS_Cconout()
 {
     FUNC_TRACE_ENTER_ARGS {

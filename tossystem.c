@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <inttypes.h>
 
@@ -75,7 +76,24 @@ struct exec_header {
 
 int keepongoing;
 
-int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size)
+static void copy_cmdlin(char *dest, int argc, char **argv)
+{
+    char *start = dest;
+    int i, n = 0;
+
+    for (i = 0; i < argc; i++)
+    {
+        dest[n] = ' ';
+        n++;
+        strcpy(dest+n, argv[i]);
+        n += strlen(argv[i]);
+    }
+
+    *start = n-1;
+}
+
+int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size,
+                         int argc, char **argv)
 {
     struct exec_header *header;
     uint8_t *ptr = 0;
@@ -153,7 +171,8 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
      * te->bp->p_dta; */
     te->bp->p_parent = 0;
     te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory */
-    /* TODO te->bp->p_cmdlin[128];*/
+    te->bp->p_dta = 0x800 + offsetof(struct basepage, p_cmdlin);
+    copy_cmdlin((void *)te->bp->p_cmdlin, argc, argv);
         
     reset_memory();
     add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);

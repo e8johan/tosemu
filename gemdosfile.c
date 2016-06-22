@@ -63,6 +63,13 @@ struct fhandle
 #define HANDLES 10
 #define HANDLE_ALLOCATED 0x001
 
+#define ATTR_READ_ONLY  0x01
+#define ATTR_HIDDEN     0x02
+#define ATTR_SYSTEM     0x04
+#define ATTR_LABEL      0x08
+#define ATTR_DIRECTORY  0x10
+#define ATTR_ARCHIVE    0x20
+
 static struct tos_environment *tos_env;
 
 /* File functions ************************************************************/
@@ -489,6 +496,16 @@ void gemdos_clear_dta(int *id)
     }
 }
 
+static uint16_t mode_to_attrib(mode_t mode)
+{
+  uint16_t attrib = 0;
+
+  if (S_ISDIR(mode))
+      attrib |= ATTR_DIRECTORY;
+
+  return attrib;
+}
+
 uint32_t GEMDOS_Fsfirst()
 {
     glob_t *gres;
@@ -541,7 +558,7 @@ uint32_t GEMDOS_Fsfirst()
             Bit 4:  Directory
             Bit 5:  Archive bit 
             */
-            dta->d_attrib = (S_ISDIR(sres.st_mode)?0x10:0);
+            dta->d_attrib = mode_to_attrib(sres.st_mode);
             
             /*
             0-4 Seconds in units of two (0-29)
@@ -616,7 +633,7 @@ uint32_t GEMDOS_Fsnext()
         Bit 4:  Directory
         Bit 5:  Archive bit 
         */
-        dta->d_attrib = (S_ISDIR(sres.st_mode)?0x10:0);
+        dta->d_attrib = mode_to_attrib(sres.st_mode);
         
         /*
         0-4 Seconds in units of two (0-29)
@@ -702,6 +719,35 @@ uint32_t GEMDOS_Fopen()
         return GEMDOS_ENHNDL;
 
     return h;
+}
+
+uint32_t GEMDOS_Fattrib()
+{
+    struct stat st;
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+
+    uint32_t filename = peek_u32(2);
+    uint16_t wflag = peek_u16(6);
+    uint16_t attr = peek_u16(8);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    filename: 0x%x, wflag: %d, attr: 0x%x\n",
+               filename, wflag, attr);
+    }
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    
+    get_path(buf, filename);
+
+    if (!path_from_tos(buf, ubuf))
+        return GEMDOS_EFILNF;
+
+    if (stat(ubuf, &st) < 0)
+        return GEMDOS_EFILNF;
+
+    return mode_to_attrib(st.st_mode);
 }
 
 static int invalid_handle(uint16_t h)

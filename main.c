@@ -79,25 +79,26 @@ int main(int argc, char **argv)
     void *binary_data;
     struct stat sb;
     struct tos_environment te;
+    int argb = 1;
     
     verbose = 0;
     
     /* Program usage */
-    if (argc != 2 && argc != 3)
+    if (argc < 2)
     {
-        printf("Usage: tosemu [-v] <binary>\n\n\t<binary> name of binary to execute\n");
+        printf("Usage: tosemu [-v] <binary> [<args>]\n\n\t<binary> name of binary to execute\n");
         return -1;
     }
     
     /* Check if we want to be verbose */
-    if (argc == 3)
+    if (argc >= 3 && strcmp("-v", argv[1]) == 0)
     {
-        if (strcmp("-v", argv[1]) == 0)
-            verbose = -1;
+        verbose = -1;
+        argb++;
     }
 
     /* Open the provided file */
-    binary_file = open(argv[argc-1], O_RDONLY);
+    binary_file = open(argv[argb], O_RDONLY);
     if (binary_file == -1)
     {
         printf("Error: failed to open '%s'\n", argv[argc-1]);
@@ -124,8 +125,12 @@ int main(int argc, char **argv)
         return -1;
     }
     
+    argb++;
+    argv += argb;
+    argc -= argb;
+
     /* Setup a TOS environment for the binary */
-    if (init_tos_environment(&te, binary_data, sb.st_size))
+    if (init_tos_environment(&te, binary_data, sb.st_size, argc, argv))
     {
         printf("Error: failed to initialize TOS environment\n");
         close(binary_file);
