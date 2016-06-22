@@ -42,7 +42,8 @@ struct tos_environment {
     char *base_path;
 };
 
-int init_tos_environment(struct tos_environment *te, void *binary, uint64_t binary_size);
+int init_tos_environment(struct tos_environment *te, void *binary,
+                         uint64_t binary_size, int argc, char **argv);
 void free_tos_environment(struct tos_environment *te);
 
 void halt_execution();
