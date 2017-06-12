@@ -38,7 +38,7 @@ check: all
 	$(TOSEMU) test-cmdline 12 345 6789 > out
 	echo -n "12 345 6789" > out2
 	cmp out out2
-	$(TOSEMU) test-c-helloworld
+	# $(TOSEMU) test-c-helloworld
 	rm out2
 
 clean:
