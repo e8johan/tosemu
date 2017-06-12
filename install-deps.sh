@@ -31,8 +31,7 @@ cf+H6gqLMIpF/APBmS35VffaUgVgKdQIC99jCd6QlTg0LYRSU4saxs4kXsM=
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-echo deb http://vincent.riviere.free.fr/debian/ trusty contrib | sudo tee -a /etc/apt/sources.list
-echo deb-src http://vincent.riviere.free.fr/debian/ trusty contrib | sudo tee -a /etc/apt/sources.list
+sudo add-apt-repository -y ppa:vriviere/ppa
 
 sudo apt-get update -ym
 sudo apt-get install -ym cross-mint-essential
