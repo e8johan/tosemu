@@ -101,7 +101,7 @@ int main(int argc, char **argv)
     binary_file = open(argv[argb], O_RDONLY);
     if (binary_file == -1)
     {
-        printf("Error: failed to open '%s'\n", argv[argc-1]);
+        printf("Error: failed to open '%s'\n", argv[argb]);
         return -1;
     }
     
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     binary_data = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, binary_file, 0);
     if (!binary_data)
     {
-        printf("Error: failed to mmap '%s'\n", argv[argc-1]);
+        printf("Error: failed to mmap '%s'\n", argv[argb]);
         close(binary_file);
         return -1;
     }
@@ -120,7 +120,7 @@ int main(int argc, char **argv)
     /* Check that the binary starts with the magix 0x601a sequence */
     if( ((char*)binary_data)[0] != 0x60 || ((char*)binary_data)[1] != 0x1a)
     {
-        printf("Error: invalid magic in '%s'\n", argv[argc-1]);
+        printf("Error: invalid magic in '%s'\n", argv[argb]);
         close(binary_file);
         return -1;
     }
