@@ -165,7 +165,12 @@ void bios_trap()
     for(i=0; i<=sizeof(BIOS_functions)/sizeof(struct BIOS_function); ++i) {
         if (BIOS_functions[i].id == fnct) {
             if (BIOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, BIOS_functions[i].fnct());
+                uint32_t r = BIOS_functions[i].fnct();
+#ifdef ENABLE_BIOS_TRACE
+                printf("Return from %s: %d = 0x%x\n",
+                       BIOS_functions[i].name, r, r);
+#endif
+                m68k_set_reg(M68K_REG_D0, r);
             } else {
                 halt_execution();
                 printf("BIOS %s (0x%x) not implemented\n", BIOS_functions[i].name, fnct);
