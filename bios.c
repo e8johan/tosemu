@@ -32,6 +32,22 @@
 #define BIOS_TRACE_CONTEXT
 #include "config.h"
 
+uint32_t BIOS_Setexc()
+{
+    uint16_t nm = peek_u16(2);
+    uint32_t vec = peek_u32(4);
+    uint32_t old;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    nm: 0x%x, vec: 0x%x\n", nm, vec);
+    }
+
+    old = m68k_read_memory_32(4*nm);
+    m68k_write_memory_32(4*nm, vec);
+
+    return old;
+}
+
 uint32_t BIOS_Bconin()
 {
     uint16_t dev = peek_u16(2);
@@ -115,7 +131,6 @@ uint32_t BIOS_Bcostat()
 #define BIOS_Kbshift NULL
 #define BIOS_Mediach NULL
 #define BIOS_Rwabs NULL
-#define BIOS_Setexc NULL
 #define BIOS_Tickcal NULL
 
 /* BIOS function table according to

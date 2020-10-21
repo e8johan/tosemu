@@ -175,7 +175,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     copy_cmdlin((void *)te->bp->p_cmdlin, argc, argv);
         
     reset_memory();
-    add_ptr_memory_area("staticmem0", MEMORY_SUPERREAD, 0x0, 0x1ff, te->staticmem0);
+    add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x1ff, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x600-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
