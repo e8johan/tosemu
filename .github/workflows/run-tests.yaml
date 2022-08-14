@@ -1,0 +1,12 @@
+name: Run all test cases
+on:
+    - pull_request
+
+jobs:
+    run-tests:
+        runs-on: ubuntu-latest
+        steps:
+            run: ¦
+                apt-get install build-essential
+                sh ./install-deps.sh
+                make check
