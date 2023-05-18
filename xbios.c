@@ -121,7 +121,38 @@ void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t 
     halt_execution();
 }
 
+uint32_t XBIOS_Keytbl()
+{
+    uint32_t unshift = peek_u32(2);
+    uint32_t shift = peek_u32(6);
+    uint32_t capslock = peek_u32(10);
 
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    unshift : 0x%x\n    shift   : 0x%x\n    capslock: 0x%x\n", unshift, shift, capslock);
+    }
+
+    /* TODO to support writing to these tables, the keyboard mapping needs to
+     * be supported in general. At the moment, the system relies on the mapping
+     * of the host system.
+     */
+    if (unshift != 0xffffffff)
+    {
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (unshift)\n");
+        halt_execution();
+    }
+    if (shift != 0xffffffff)
+    {
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (shift)\n");
+        halt_execution();
+    }
+    if (capslock != 0xffffffff)
+    {
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (capslock)\n");
+        halt_execution();
+    }
+
+    return 0; /* TODO return a pointer to the table in some pre-allocated place in ST RAM */
+}
 
 /* Table of non-implemented XBIOS functions */
 
@@ -192,7 +223,6 @@ void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t 
 #define XBIOS_Jenabint NULL
 #define XBIOS_Kbdvbase NULL
 #define XBIOS_Kbrate NULL
-#define XBIOS_Keytbl NULL
 #define XBIOS_Locksnd NULL
 #define XBIOS_Logbase NULL
 #define XBIOS_Metainit NULL
