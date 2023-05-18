@@ -99,7 +99,6 @@ uint32_t XBIOS_Supexec()
 uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address)
 {
     uint32_t lv0;
-    printf("ADDRESS: 0x%x\n", address);
     if (address == 0x200)
         return 0x4e;
     else if (address == 0x201)
