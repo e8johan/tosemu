@@ -21,6 +21,7 @@
 #include "gemdoscon_p.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "cpu.h"
 #include "utils.h"
@@ -89,4 +90,50 @@ uint32_t GEMDOS_Cconws()
     }
     
     return res;
+}
+
+uint32_t GEMDOS_Cconrs()
+{
+    char buf[257]; /* Max len on ST side is 256 */
+
+    /* This is a pointer to a LINE struct, i.e.
+     *
+     * typedef struct
+     * {
+     *   uint8_t   maxlen;        * Maximum line length *
+     *   uint8_t   actuallen;     * Current line length *
+     *   int8_t    buffer[255];   * Line buffer         *
+     * } LINE;
+     */
+    uint32_t lineptr = peek_u32(2);
+
+    uint8_t maxlen = m68k_read_memory_8(lineptr);
+
+    fgets(buf, maxlen, stdin);
+    int len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n')
+    {
+        /* Remove final \n */
+        buf[len] = '\0';
+        len --;
+    }
+
+    if (len > maxlen)
+    {
+        /* Truncate buffer string if necessary */
+        len = maxlen;
+        buf[len] = '\0';
+    }
+
+    m68k_write_memory_8(lineptr+1, len);
+    char *ptr = buf;
+    lineptr += 2;
+    do
+    {
+        m68k_write_memory_8(lineptr, *ptr);
+        ptr ++;
+        lineptr ++;
+    } while (*ptr != '\0');
+
+    return 0;
 }
