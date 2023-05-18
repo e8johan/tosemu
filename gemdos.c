@@ -159,8 +159,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Cauxout NULL
 #define GEMDOS_Cprnos NULL
 #define GEMDOS_Cprnout NULL
-#define GEMDOS_Crawcin NULL
-#define GEMDOS_Crawio NULL
 #define GEMDOS_Dclosedir NULL
 #define GEMDOS_Dcntl NULL
 #define GEMDOS_Ddelete NULL

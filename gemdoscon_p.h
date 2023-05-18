@@ -30,5 +30,7 @@ uint32_t GEMDOS_Cconos();
 uint32_t GEMDOS_Cconws();
 uint32_t GEMDOS_Cnecin();
 uint32_t GEMDOS_Cconrs();
+uint32_t GEMDOS_Crawio();
+uint32_t GEMDOS_Crawcin();
 
 #endif /* GEMDOSCON_H */

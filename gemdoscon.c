@@ -22,6 +22,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include "cpu.h"
 #include "utils.h"
@@ -136,4 +138,72 @@ uint32_t GEMDOS_Cconrs()
     } while (*ptr != '\0');
 
     return 0;
+}
+
+uint32_t GEMDOS_Crawio()
+{
+    uint32_t w = peek_u16(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", w);
+    }
+
+    if (w == 0xff)
+    {
+        if (console_input_available())
+        {
+            struct termios t;
+            tcflag_t temp;
+
+            /* Disable buffering */
+            tcgetattr(STDIN_FILENO, &t);
+            temp = t.c_lflag;
+            t.c_lflag &= ~ICANON;;
+            tcsetattr(STDIN_FILENO, TCSANOW, &t);
+
+            uint32_t res = getchar() & 0xff; /* TODO no shift key status, scancode */
+
+            /* Restore echoing */
+            t.c_lflag = temp ;
+            tcsetattr(STDIN_FILENO, TCSANOW, &t);
+
+            return res;
+        }
+        else
+            return 0;
+    }
+    else
+    {
+        /* Write character to stdout */
+        putchar(w&0xff);
+    }
+
+    return 0;
+}
+
+uint32_t GEMDOS_Crawcin()
+{
+    /*FUNC_TRACE_ENTER*/
+
+    if (console_input_available())
+    {
+        struct termios t;
+        tcflag_t temp;
+
+        /* Disable buffering and echoing */
+        tcgetattr(STDIN_FILENO, &t);
+        temp = t.c_lflag;
+        t.c_lflag &= ~( ICANON | ECHO );;
+        tcsetattr(STDIN_FILENO, TCSANOW, &t);
+
+        uint32_t res = getchar() & 0xff; /* TODO no shift key status, scancode */
+
+        /* Restore echoing */
+        t.c_lflag = temp;
+        tcsetattr(STDIN_FILENO, TCSANOW, &t);
+
+        return res;
+    }
+    else
+        return 0;
 }
