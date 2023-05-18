@@ -89,7 +89,7 @@ uint32_t GEMDOS_Fseek()
     
     uint16_t seekmode = peek_u16(8);
     uint16_t handle = peek_u16(6);
-    uint32_t offset = peek_u32(2);
+    int32_t offset = peek_s32(2);
     off_t ret;
     int whence;
     
