@@ -220,7 +220,6 @@ uint32_t GEMDOS_Dgetpath()
 {
     uint32_t addr = peek_u32(2);
     uint16_t drive = peek_u32(6);
-    char buf[256];
     char ubuf[PATH_MAX+1];
     int i;
 
@@ -228,7 +227,6 @@ uint32_t GEMDOS_Dgetpath()
         printf("    addr: 0x%x, drive=%d\n", addr, drive);
     }
 
-    memset(buf, 0, PATH_MAX+1);
     memset(ubuf, 0, PATH_MAX+1);
     getcwd(ubuf, sizeof ubuf);
 
@@ -306,7 +304,7 @@ static int path_from_tos(char *tp, char *up)
 uint32_t GEMDOS_Dsetpath()
 {
     uint32_t addr = peek_u32(2);
-    char buf[256];
+    char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
 
     FUNC_TRACE_ENTER_ARGS {
