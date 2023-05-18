@@ -116,7 +116,7 @@ uint32_t GEMDOS_Cconrs()
     if (len > 0 && buf[len-1] == '\n')
     {
         /* Remove final \n */
-        buf[len] = '\0';
+        buf[len-1] = '\0';
         len --;
     }
 
