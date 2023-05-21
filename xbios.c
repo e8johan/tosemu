@@ -120,6 +120,8 @@ void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t 
     halt_execution();
 }
 
+/* Keyboard table functions **************************************************/
+
 uint32_t XBIOS_Keytbl()
 {
     uint32_t unshift = peek_u32(2);
@@ -136,27 +138,32 @@ uint32_t XBIOS_Keytbl()
      */
     if (unshift != 0xffffffff)
     {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (unshift)\n");
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (unshift)\n"); /* TODO */
         halt_execution();
     }
     if (shift != 0xffffffff)
     {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (shift)\n");
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (shift)\n"); /* TODO */
         halt_execution();
     }
     if (capslock != 0xffffffff)
     {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (capslock)\n");
+        printf("XBIOS Keytbl: Altering the keyboard table is not supported (capslock)\n"); /* TODO */
         halt_execution();
     }
 
     return 0; /* TODO return a pointer to the table in some pre-allocated place in ST RAM */
 }
+uint32_t XBIOS_Bioskeys()
+{
+    /* TODO this is a nop, as we do not use the keyboard tables at the moment */
+    return 0;
+}
+
 
 /* Table of non-implemented XBIOS functions */
 
 #define XBIOS_Bconmap NULL
-#define XBIOS_Bioskeys NULL
 #define XBIOS_Blitmode NULL
 #define XBIOS_Buffoper NULL
 #define XBIOS_Buffptr NULL
