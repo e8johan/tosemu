@@ -67,7 +67,25 @@ of tosemu. The tests are compiled with the m68k-atari-mint cross-tools built by
   http://vincent.riviere.free.fr/soft/m68k-atari-mint/
 
 To build the tests, simply run make tests, this will result in a set of binaries
-named test-* in the tests sub-directory.
+named test-* in the tests sub-directory. Run `make check` to build and run them.
+
+Self-hosted tests
+-----------------
+
+The `tests/devpac` subdirectory contains the same test cases written in the
+syntax of HiSoft Devpac 3.10's Gen assembler. These are not cross assembled on
+the host - they are built by running `GEN.TTP` itself inside tosemu, so the test
+run exercises a real, non-trivial TOS application as well as the binaries it
+produces.
+
+These tests need a Devpac 3.10 installation. Point `TOS_ROOT` at the directory
+containing `devpac31`, which defaults to a `tos_root` next to the tosemu source
+tree:
+
+  `make devpac-check TOS_ROOT=/path/to/tos_root`
+
+Note that Gen only recognises CR and CR/LF as line terminators, so the sources
+in `tests/devpac` are stored with CR/LF endings.
 
 
 

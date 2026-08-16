@@ -15,10 +15,15 @@ LDFLAGS = -lc
 
 all: bin/tosemu
 
-.PHONY: tests check
+.PHONY: tests check devpac-tests devpac-check
 
 tests:
 	$(MAKE) -C tests/
+
+# Test cases assembled by tosemu itself, using Devpac's GEN.TTP. These need a
+# Devpac 3.10 installation, see tests/devpac/Makefile.
+devpac-tests: bin/tosemu
+	$(MAKE) -C tests/devpac
 
 OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
 
@@ -48,6 +53,9 @@ bin/m64kmake: Musashi/m68kmake.c
 check: bin/tosemu
 	$(MAKE) -C tests check
 
+devpac-check: bin/tosemu
+	$(MAKE) -C tests/devpac check
+
 # Clean up the source tree
 clean:
 	$(RM) *.o Musashi/*.o
@@ -55,3 +63,4 @@ clean:
 	$(RM) bin/*
 	$(RM) -d gen/ bin/
 	$(MAKE) -C tests/ clean
+	$(MAKE) -C tests/devpac clean
