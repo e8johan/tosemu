@@ -126,9 +126,20 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->bsize = endianize_32(header->bsize); 
     te->ssize = endianize_32(header->ssize);
     
-    /* Copy segments into app memory */
-    memcpy(te->appmem, ((uint8_t*)binary) + sizeof(struct exec_header), te->tsize + te->dsize + te->ssize);
-        
+    /* Ensure that the binary fits in the available user RAM */
+    if (te->tsize + te->dsize + te->bsize > te->size)
+    {
+        printf("Error: Binary too large for the available user RAM\n");
+        return -1;
+    }
+
+    /* Copy the text and data segments into app memory. The symbol table that
+     * follows them in the file is not loaded, TOS only uses it for debugging. */
+    memcpy(te->appmem, ((uint8_t*)binary) + sizeof(struct exec_header), te->tsize + te->dsize);
+
+    /* The BSS is zeroed by TOS when loading a program */
+    memset(((uint8_t*)te->appmem) + te->tsize + te->dsize, 0, te->bsize);
+
     /* Allocate basepage */
     te->bp = malloc(sizeof(struct basepage));
     
