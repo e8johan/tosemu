@@ -19,6 +19,9 @@ platform they where meant for. TOSEMU executes 68k applications on non-68k
 CPUs, and provides an OS wrapper layer, translating TOS calls to system calls 
 native to the host operating system.
 
+I use LLM technology to speed things along from time to time. Feel free to join
+in by adding functionality, reporting bugs or helping out in any other way.
+
 
 
 Building
