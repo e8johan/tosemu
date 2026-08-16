@@ -513,6 +513,10 @@ uint32_t GEMDOS_Fcreate()
     if (!path_from_tos(buf, ubuf))
         return GEMDOS_EFILNF;
 
+    FUNC_TRACE_ARGS {
+        printf("    path: '%s' -> '%s'\n", buf, ubuf);
+    }
+
     make_dirs(ubuf);
     fd = creat(ubuf, 0777);
     if (fd < 0)
@@ -800,6 +804,10 @@ uint32_t GEMDOS_Fopen()
     case 3:
         return GEMDOS_EINVAL;
         break;
+    }
+
+    FUNC_TRACE_ARGS {
+        printf("    path: '%s' -> '%s'\n", buf, ubuf);
     }
 
     f = fopen(ubuf, m);

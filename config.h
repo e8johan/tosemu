@@ -36,7 +36,11 @@
     (defined(ENABLE_VDI_TRACE) && defined(VDI_TRACE_CONTEXT))
 #define     FUNC_TRACE_ENTER      printf("Enter %s\n", __func__);
 #define     FUNC_TRACE_ENTER_ARGS printf("Enter %s\n", __func__); if(1)
+/* Trace additional arguments further down a function, i.e. without repeating
+ * the "Enter" line */
+#define     FUNC_TRACE_ARGS       if(1)
 #else
 #define     FUNC_TRACE_ENTER
 #define     FUNC_TRACE_ENTER_ARGS if(0)
+#define     FUNC_TRACE_ARGS       if(0)
 #endif
