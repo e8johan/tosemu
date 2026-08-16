@@ -397,7 +397,7 @@ void xbios_trap()
     uint16_t fnct = peek_u16(0);
     int i;
     
-    for(i=0; i<=sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
+    for(i=0; i<sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
         if (XBIOS_functions[i].id == fnct) {
             if (XBIOS_functions[i].fnct) {
                 m68k_set_reg(M68K_REG_D0, XBIOS_functions[i].fnct());

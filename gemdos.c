@@ -383,7 +383,7 @@ void gemdos_trap()
     uint16_t fnct = peek_u16(0);
     int i;
     
-    for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
+    for(i=0; i<sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
         if (GEMDOS_functions[i].id == fnct) {
             if (GEMDOS_functions[i].fnct) {
                 uint32_t r = GEMDOS_functions[i].fnct();
@@ -415,7 +415,7 @@ uint32_t GEMDOS_Unknown()
         fnct = peek_u16(0);
         printf("    func: 0x%x\n", fnct);
 
-        for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i)
+        for(i=0; i<sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i)
             if (GEMDOS_functions[i].id == fnct)
                 if (GEMDOS_functions[i].fnct)
                     printf("    %s\n", GEMDOS_functions[i].name);        

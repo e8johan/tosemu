@@ -162,7 +162,7 @@ void bios_trap()
     uint16_t fnct = peek_u16(0);
     int i;
     
-    for(i=0; i<=sizeof(BIOS_functions)/sizeof(struct BIOS_function); ++i) {
+    for(i=0; i<sizeof(BIOS_functions)/sizeof(struct BIOS_function); ++i) {
         if (BIOS_functions[i].id == fnct) {
             if (BIOS_functions[i].fnct) {
                 uint32_t r = BIOS_functions[i].fnct();
