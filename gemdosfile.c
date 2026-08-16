@@ -487,7 +487,8 @@ static void make_dirs(char *path)
     while ((end = strchr(start, '/')) != NULL)
     {
         *end = 0;
-        if (mkdir(path, 0777) < 0 && errno != EEXIST)
+        /* Skip the root itself, and any empty component from a doubled '/' */
+        if (end != path && mkdir(path, 0777) < 0 && errno != EEXIST)
             perror("mkdir");
         *end = '/';
         start = end + 1;
