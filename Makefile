@@ -20,17 +20,25 @@ all: bin/tosemu
 tests:
 	$(MAKE) -C tests/
 
+OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
+
 # Main emulator target
-bin/tosemu: $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
+bin/tosemu: $(OBJECTS)
 	$(LD) $(LDFLAGS) $^ -o $@
 
-# Needed to create a dependency to the generated files
-main.o: main.c $(MUSASHIGENERATEDFILES)
+# Every object needs the generated m68kops.h, so none of them may be compiled
+# before m64kmake has run
+$(OBJECTS): $(MUSASHIGENERATEDFILES)
 
-# Files generated using m64kmake
-$(MUSASHIGENERATEDFILES): bin/m64kmake Musashi/m68k_in.c
+# Files generated using m64kmake. One run produces all of them, so they hang
+# off a single stamp target to keep parallel builds from running it more than
+# once at a time.
+$(MUSASHIGENERATEDFILES): gen/.stamp
+
+gen/.stamp: bin/m64kmake Musashi/m68k_in.c
 	mkdir -p gen/
 	bin/m64kmake gen/ Musashi/m68k_in.c > /dev/null
+	touch $@
 
 # The m64kmake generator
 bin/m64kmake: Musashi/m68kmake.c
