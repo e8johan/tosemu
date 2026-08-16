@@ -80,6 +80,7 @@ int main(int argc, char **argv)
     struct stat sb;
     struct tos_environment te;
     int argb = 1;
+    uint32_t sp;
     
     verbose = 0;
     
@@ -149,8 +150,11 @@ int main(int argc, char **argv)
 
     /* TODO is this really correct, or should it be the MSP? If so, why does that not work? */
     m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
-    m68k_set_reg(M68K_REG_USP, te.size-4); /* user stack pointer */
-    m68k_write_memory_32(te.size, 0x800); /* big endian 0x800 */
+    /* The 68000 takes an address error on an odd stack pointer, so keep the
+     * initial user stack even. The application finds its basepage at 4(sp). */
+    sp = (te.size - 4) & ~1u;
+    m68k_set_reg(M68K_REG_USP, sp); /* user stack pointer */
+    m68k_write_memory_32(sp + 4, 0x800); /* big endian 0x800 */
     m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
     disable_supervisor_mode();
     
