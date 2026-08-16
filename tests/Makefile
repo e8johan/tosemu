@@ -1,18 +1,20 @@
-# Each testname is build from a source file with the file name extension .s
-STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal c-helloworld \
+# Each testname in STESTNAME is built from a source file with the file name
+# extension .s, each one in CTESTNAME from a source file with the extension .c
+STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline
+CTESTNAME=c-helloworld
 
 CC=m68k-atari-mint-gcc
 TOSEMU=../bin/tosemu
 
-all: $(addprefix test-,$(basename $(STESTNAME) $(CTESTNAME)))
+all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 
 test-%: %.s
-	m68k-atari-mint-gcc $< -Wa,-S -nostdlib -o $@
+	$(CC) $< -Wa,-S -nostdlib -o $@
 
 test-%: %.c
-	m68k-atari-mint-gcc $< -o $@
+	$(CC) $< -o $@
 
 check: all
 	$(TOSEMU) test-Pterm0
@@ -38,8 +40,11 @@ check: all
 	$(TOSEMU) test-cmdline 12 345 6789 > out
 	echo -n "12 345 6789" > out2
 	cmp out out2
-	# $(TOSEMU) test-c-helloworld
-	rm out2
+	# The C library writes text mode line endings, i.e. CRLF, to files
+	$(TOSEMU) test-c-helloworld > out
+	printf 'Hello World!\r\n' > out2
+	cmp out out2
+	$(RM) out out2
 
 clean:
-	$(RM) $(addprefix test-,$(basename $(STESTNAME) $(CTESTNAME)))
+	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

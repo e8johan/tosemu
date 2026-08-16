@@ -127,12 +127,19 @@ uint32_t GEMDOS_Fseek()
     errno = 0;
     if (fseek(handles[handle].f, offset, whence) != 0)
     {
+        /* A failed seek must not leave the error indicator set, or every
+         * later read or write on the handle would be reported as failed. */
+        clearerr(handles[handle].f);
+
         switch(errno)
         {
         case EBADF:
             return GEMDOS_EIHNDL;
         case ESPIPE:
-            return GEMDOS_EACCDN;
+            /* MiNTLib derives errno as -<GEMDOS code>, and its stdio only
+             * accepts ESPIPE as "this handle has no position". Anything else
+             * makes it drop the buffered data instead of writing it. */
+            return GEMDOS_ESPIPE;
         case EINVAL:
             return GEMDOS_EINVAL;
         case EOVERFLOW:
@@ -878,11 +885,19 @@ uint32_t GEMDOS_Fread()
     if (tmp == NULL)
         return GEMDOS_ENSMEM;
 
+    /* The error indicator is sticky, so clear it to make sure that what we
+     * look at afterwards was caused by this read alone. */
+    errno = 0;
+    clearerr(handles[h].f);
+
     n = fread(tmp, 1, len, handles[h].f);
     if (ferror(handles[h].f))
     {
+        int err = errno;
+
+        clearerr(handles[h].f);
         free(tmp);
-        return GEMDOS_EINTRN;
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
 
     for (i = 0; i < n; i++)
@@ -915,11 +930,19 @@ uint32_t GEMDOS_Fwrite()
     for (i = 0; i < len; i++)
         tmp[i] = m68k_read_memory_8(buf+i);
 
+    /* The error indicator is sticky, so clear it to make sure that what we
+     * look at afterwards was caused by this write alone. */
+    errno = 0;
+    clearerr(handles[h].f);
+
     n = fwrite(tmp, 1, len, handles[h].f);
     if (ferror(handles[h].f))
     {
+        int err = errno;
+
+        clearerr(handles[h].f);
         free(tmp);
-        return GEMDOS_EINTRN;
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
 
     free(tmp);
@@ -939,6 +962,7 @@ void gemdos_file_init(struct tos_environment *te)
         handles[i].flags = HANDLE_ALLOCATED;
     handles[0].f = stdin;
     handles[1].f = stdout;
+    handles[2].f = stderr;
 
     tos_env = te;
 }

@@ -28,6 +28,8 @@
 
 #define GEMDOS_E_OK    (0)
 
+#define GEMDOS_ESPIPE  (-6)  /* Illegal seek, i.e. seek on a pipe or device */
+
 #define GEMDOS_EINVAL  (-25) /* Mint */
 
 #define GEMDOS_EINVFN  (-32)
