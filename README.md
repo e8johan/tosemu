@@ -98,6 +98,17 @@ Here, the functions `endianize_16` and `endianize_32` help with the conversion.
 By always using these methods, it will be possible to run tosemu on host
 systems that are either big or little endian.
 
+File names
+----------
+
+TOS file systems are case insensitive, and most TOS applications rely on this,
+happily asking for `FILE.TXT` when the file is called `file.txt` - Gen for
+instance upper cases every include file name. Host file systems usually are not
+case insensitive, so `path_from_tos` in `gemdosfile.c` resolves each path
+component against the host, accepting a component that only differs in case.
+Components without a match are left alone, so `Fcreate` and `Dcreate` still
+create names exactly as the application spelled them.
+
 Variable Scope
 --------------
 

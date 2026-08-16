@@ -29,6 +29,7 @@
 #include <linux/limits.h>
 #include <time.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <glob.h>
 #include <libgen.h>
@@ -261,8 +262,80 @@ uint32_t GEMDOS_Dgetpath()
     return 0;
 }
 
-/* 
- * Converts a TOS path to a host path 
+/*
+ * TOS file systems are case insensitive, while most host file systems are not.
+ * Programs therefore happily ask for FILE.TXT when the host knows the file as
+ * file.txt - Gen for instance upper cases every include file name.
+ *
+ * Resolve the host path in place, replacing every component that does not
+ * exist verbatim with one that only differs in case, if the host has such a
+ * component. Components without a match are left untouched, so that Fcreate
+ * and Dcreate still create names exactly as the application spelled them.
+ */
+static void resolve_case(char *path)
+{
+    char *cur, *sep;
+    DIR *dir;
+    struct dirent *de;
+
+    if (access(path, F_OK) == 0)
+        return; /* The path exists exactly as spelled */
+
+    cur = path;
+    if (*cur == '/')
+        ++cur; /* The root is always spelled correctly */
+
+    while (*cur)
+    {
+        sep = strchr(cur, '/');
+        if (sep == cur)
+        {
+            /* Empty component, e.g. from a doubled separator */
+            ++cur;
+            continue;
+        }
+
+        if (sep)
+            *sep = 0;
+
+        if (access(path, F_OK) != 0)
+        {
+            if (cur == path)
+                dir = opendir(".");
+            else if (cur == path + 1)
+                dir = opendir("/");
+            else
+            {
+                cur[-1] = 0;
+                dir = opendir(path);
+                cur[-1] = '/';
+            }
+
+            if (dir)
+            {
+                while ((de = readdir(dir)) != NULL)
+                {
+                    if (strcasecmp(de->d_name, cur) == 0)
+                    {
+                        /* A case insensitive match has the same length */
+                        strcpy(cur, de->d_name);
+                        break;
+                    }
+                }
+                closedir(dir);
+            }
+        }
+
+        if (!sep)
+            break;
+
+        *sep = '/';
+        cur = sep + 1;
+    }
+}
+
+/*
+ * Converts a TOS path to a host path
  *
  * Returns the lenght of the resulting path on success, or zero on failure.
  */
@@ -307,7 +380,9 @@ static int path_from_tos(char *tp, char *up)
         ++ src;
         ++ len;
     }
-    
+
+    resolve_case(up);
+
     /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
     
