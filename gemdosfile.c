@@ -72,6 +72,14 @@ struct fhandle
 
 static struct tos_environment *tos_env;
 
+static struct fhandle handles[HANDLES];
+
+static int invalid_handle(uint16_t h)
+{
+    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED)
+           || (handles[h].f == NULL);
+}
+
 /* File functions ************************************************************/
 
 uint32_t GEMDOS_Fseek()
@@ -90,13 +98,16 @@ uint32_t GEMDOS_Fseek()
     uint16_t seekmode = peek_u16(8);
     uint16_t handle = peek_u16(6);
     int32_t offset = peek_s32(2);
-    off_t ret;
+    long ret;
     int whence;
-    
+
     FUNC_TRACE_ENTER_ARGS {
         printf("    offset: 0x%x, handle: 0x%x, seekmode: 0x%x\n", offset, handle, seekmode);
     }
-    
+
+    if (invalid_handle(handle))
+        return GEMDOS_EIHNDL;
+
     switch (seekmode)
     {
     case 0: /* From start of file */
@@ -111,10 +122,9 @@ uint32_t GEMDOS_Fseek()
     default:
         return GEMDOS_EINVAL;
     }
-    
-    ret = lseek(handle, offset, whence);
-    
-    if (ret < 0)
+
+    errno = 0;
+    if (fseek(handles[handle].f, offset, whence) != 0)
     {
         switch(errno)
         {
@@ -130,7 +140,12 @@ uint32_t GEMDOS_Fseek()
             return GEMDOS_EINTRN;
         }
     }
-    
+
+    /* Fseek returns the resulting absolute position in the file */
+    ret = ftell(handles[handle].f);
+    if (ret < 0)
+        return GEMDOS_EINTRN;
+
     return ret;
 }
 
@@ -144,13 +159,20 @@ uint32_t GEMDOS_Fdatime()
     uint16_t wflag = peek_u16(8);
     uint16_t handle = peek_u16(6);
     uint32_t ptr = peek_u32(2);
-    
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: 0x%x, wflag: %d, ptr: 0x%x\n", handle, wflag, ptr);
+    }
+
+    if (invalid_handle(handle))
+        return GEMDOS_EIHNDL;
+
     if (wflag == 0)
     {
         /* Read time */
-        
-        ret = fstat(handle, &buf);
-        
+
+        ret = fstat(fileno(handles[handle].f), &buf);
+
         if (!ret)
         {
             lt = localtime(&buf.st_mtime);
@@ -166,8 +188,6 @@ uint32_t GEMDOS_Fdatime()
                   
             return 0;
         }
-        else if (ret == EBADF)
-            return GEMDOS_EIHNDL;
         else
             return GEMDOS_EINTRN;
     }
@@ -369,8 +389,6 @@ uint32_t GEMDOS_Fdelete()
 
     return 0;
 }
-
-static struct fhandle handles[HANDLES];
 
 static int get_handle(FILE *f)
 {
@@ -746,11 +764,6 @@ uint32_t GEMDOS_Fattrib()
         return GEMDOS_EFILNF;
 
     return mode_to_attrib(st.st_mode);
-}
-
-static int invalid_handle(uint16_t h)
-{
-    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED);
 }
 
 uint32_t GEMDOS_Fclose()
