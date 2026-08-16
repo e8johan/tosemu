@@ -178,11 +178,12 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->bp->p_dlen = endianize_32(te->dsize);
     te->bp->p_bbase = endianize_32(endianize_32(te->bp->p_dbase) + endianize_32(te->bp->p_dlen));
     te->bp->p_blen = endianize_32(te->bsize);
-    /* TODO, Disk Transfer Address, http://www.yardley.cc/atarsi/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem
-     * te->bp->p_dta; */
     te->bp->p_parent = 0;
-    te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory */
-    te->bp->p_dta = 0x800 + offsetof(struct basepage, p_cmdlin);
+    te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory,
+                                             * which happens to be a valid, empty, environment */
+    /* TOS defaults the Disk Transfer Address to the command line in the
+     * basepage, http://www.yardley.cc/atari/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem */
+    te->bp->p_dta = endianize_32(0x800 + offsetof(struct basepage, p_cmdlin));
     copy_cmdlin((void *)te->bp->p_cmdlin, argc, argv);
         
     reset_memory();

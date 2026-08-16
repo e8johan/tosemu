@@ -846,7 +846,8 @@ void gemdos_file_init(struct tos_environment *te)
 {
     int i;
 
-    dta_addr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
+    /* TOS defaults the DTA to the command line in the basepage */
+    dta_addr = 0x000880;
 
     memset(handles, 0, sizeof handles);
     /* Handles 0-5 are reserved. */
