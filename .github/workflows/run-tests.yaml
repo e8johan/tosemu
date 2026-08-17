@@ -6,7 +6,12 @@ jobs:
     run-tests:
         runs-on: ubuntu-latest
         steps:
+            # The VDI comes from the EmuTOS submodule, which a plain checkout
+            # leaves as an empty directory
             - uses: actions/checkout@v2
+              with:
+                submodules: recursive
             - run: |
                 sh ./install-deps.sh
                 make check
+                make emuvdi-check

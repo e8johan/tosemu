@@ -27,8 +27,25 @@ in by adding functionality, reporting bugs or helping out in any other way.
 Building
 ========
 
-TOSEMU is self contained for now, so a simple `make` should do it. The resulting 
-binary can be found in the bin directory.
+A simple `make` should do it. The resulting binary can be found in the bin
+directory.
+
+The VDI comes from EmuTOS rather than being written again, so the tree is no
+longer self contained: it carries EmuTOS as a submodule in `3rdparty/emutos`.
+Clone with
+
+    git clone --recurse-submodules <url>
+
+or, in a tree that is already checked out,
+
+    git submodule update --init
+
+The submodule is never edited. Everything that adapts EmuTOS to a hosted build
+lives in `emuvdi/`, which has a README of its own explaining how. The
+`make emuvdi-check` target draws with the ported VDI and compares the result
+against what it should have drawn; unlike the other tests it builds for the
+host rather than for the emulated machine, because what it is checking is the
+port.
 
 The `make clean` target produces a clean source tree.
 

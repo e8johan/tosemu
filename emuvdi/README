@@ -1,0 +1,96 @@
+emuvdi - the EmuTOS VDI, built for the host
+===========================================
+
+tosemu translates TOS calls rather than emulating a machine, and the VDI is far
+too large a thing to write again when a free one already exists. EmuTOS carries
+a VDI descended from the GEM sources Caldera released under the GPL in 1999,
+and it is the same licence as tosemu.
+
+It arrives as a submodule, 3rdparty/emutos, pinned to VERSION_1_4. The
+submodule is read only: nothing in it is edited, and everything that adapts it
+lives here. That is the opposite of how Musashi is carried, which is vendored
+and patched, with the patch invisible in the tree.
+
+
+What is used
+------------
+
+The drawing files, compiled as they stand, about ten thousand lines:
+
+    vdi_line.c vdi_raster.c vdi_textblit.c vdi_text.c vdi_fill.c
+    vdi_col.c vdi_bezier.c vdi_gdp.c vdi_marker.c vdi_misc.c
+    util/intmath.c
+
+Not used, because they are the parts a hosted VDI has to answer for itself:
+
+    vdi_main.c vdi_control.c   the freestanding boot and the trap entry
+    vdi_mouse.c vdi_input.c    the pointer and the input, which belong to the
+                               compositor
+    vdi_esc.c                  terminal escapes
+    every .S                   see below
+
+
+How it is adapted
+-----------------
+
+Three levers, no edits.
+
+1. Include order. asm.h and intmath.h here come first on the include path, so
+   the EmuTOS sources reach these rather than EmuTOS's own. The originals are
+   m68k inline assembly; every macro in them has a portable meaning.
+
+   Shadowing intmath.h means providing min, max and Isqrt as well, since
+   EmuTOS keeps them there. Isqrt itself is portable C and is compiled from
+   the submodule.
+
+2. biosbind.h and xbiosbind.h, likewise shadowed. The originals are trap
+   instructions. The VDI reaches the BIOS only to hang its timer routine on a
+   vector, and the XBIOS only to set and read palette registers.
+
+3. -D__mcoldfire__, which is the interesting one. EmuTOS uses it as its
+   "target without m68k inline assembly" switch, and all seven uses of it in
+   the files above mean exactly that. It is what selects the C rotate macros,
+   the C bit_blt in vdi_raster.c, and the C loops in vdi_line.c, and it sets
+   ASM_BLIT_IS_AVAILABLE to 0 so that none of the assembly is wanted. That is
+   why no .S file is built and why no file here is a copy of one there.
+
+   The claim is not true of the host in any other sense, so the config knobs
+   it would otherwise flip are pinned explicitly in the Makefile rather than
+   left to follow from it. All of them concern hardware that is not there:
+   the MFP timer, ColdFire RS232, cache control, the PMMU, CPU detection.
+
+Should a file ever genuinely need editing, it is copied into this directory and
+compiled in place of the submodule's, with a header saying which revision it
+came from and what changed. That list is currently empty. If it reaches three
+or so, fork EmuTOS instead and point the submodule at the fork, so the changes
+get a history and can go back upstream.
+
+
+What is here
+------------
+
+    asm.h        the m68k inline assembly of EmuTOS's asm.h, in C
+    intmath.h    the same for intmath.h, plus min, max and Isqrt
+    biosbind.h   the one BIOS call the VDI makes
+    xbiosbind.h  the palette calls the VDI makes
+    hostvars.c   the globals the VDI draws through, which EmuTOS keeps in
+                 assembly because line-A needs them at fixed offsets
+    vditest.c    draws into a surface and prints it, so that the port is
+                 checked by looking at pixels rather than at whether it built
+
+
+Things that bite
+----------------
+
+get_start_addr, which turns a pixel column into an address, lives in
+vdi_misc.c beside the timer code. That file is wanted for the one and not the
+other, which is why it is built rather than replaced.
+
+mul_div_round rounds by doubling, adding or subtracting one, and arithmetic
+shifting. A divide is not the same function: it truncates towards zero where a
+shift goes towards minus infinity.
+
+The drawing helpers assume the VDI entry point ran first. polyline draws
+nothing at all unless LN_MASK holds a line style, which draw_pline is what
+normally sets. A handler that calls a helper directly has to set up what the
+entry point would have, and getting it wrong is silent.

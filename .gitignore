@@ -13,3 +13,4 @@ tests/lattice/out2
 *.o
 bin/
 gen/
+emuvdi/obj/
