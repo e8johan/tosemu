@@ -29,9 +29,16 @@
 #include "cpu.h"
 #include "m68k.h"
 #include "utils.h"
+#include "drives.h"
 
 #define BIOS_TRACE_CONTEXT
 #include "config.h"
+
+/* BIOS return values, http://toshyp.atari.org/en/003003.html */
+
+#define BIOS_E_OK    (0)
+#define BIOS_ERROR   (-1) /* Generic error */
+#define BIOS_EDRVNR  (-2) /* Drive not ready */
 
 uint32_t BIOS_Setexc()
 {
@@ -44,7 +51,11 @@ uint32_t BIOS_Setexc()
     }
 
     old = m68k_read_memory_32(4*nm);
-    m68k_write_memory_32(4*nm, vec);
+
+    /* -1 asks for the current vector without installing a new one,
+     * http://toshyp.atari.org/en/003004.html */
+    if (vec != 0xffffffff)
+        m68k_write_memory_32(4*nm, vec);
 
     return old;
 }
@@ -124,15 +135,84 @@ uint32_t BIOS_Bcostat()
     }
 }
 
+/* Timer functions ***********************************************************/
+
+uint32_t BIOS_Tickcal()
+{
+    FUNC_TRACE_ENTER
+
+    /* The system timer runs at 50 Hz on every ST, so a tick is 20 ms */
+    return 20;
+}
+
+/* Drive functions ***********************************************************/
+
+uint32_t BIOS_Drvmap()
+{
+    FUNC_TRACE_ENTER
+
+    return drive_map();
+}
+
+uint32_t BIOS_Mediach()
+{
+    uint16_t dev = peek_u16(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    dev: 0x%x\n", dev);
+    }
+
+    return drive_mediach(dev);
+}
+
+/* Keyboard functions ********************************************************/
+
+/* The host tells us nothing about the state of the modifier keys, so remember
+ * what the application last set and report that back to it. An application
+ * that sets a state and reads it again then sees its own value, rather than a
+ * zero it never asked for. */
+static uint32_t kbshift_state;
+
+uint32_t BIOS_Kbshift()
+{
+    int16_t mode = peek_s16(2);
+    uint32_t previous = kbshift_state;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    mode: %d\n", mode);
+    }
+
+    if (mode >= 0)
+        kbshift_state = mode;
+
+    return previous;
+}
+
+/* Memory functions **********************************************************/
+
+uint32_t BIOS_Getmpb()
+{
+    uint32_t ptr = peek_u32(2);
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    ptr: 0x%x\n", ptr);
+    }
+
+    /* An _MPB is three pointers to the OS memory descriptor lists. tosemu
+     * manages memory itself, see gemdosmem.c, so there are no lists to point
+     * at. Zero the structure rather than leaving the caller with whatever its
+     * buffer happened to hold. */
+    for (i = 0; i < 3; ++i)
+        m68k_write_memory_32(ptr + 4*i, 0);
+
+    return BIOS_E_OK;
+}
+
 /* Table of non-implemented BIOS functions */
 
-#define BIOS_Drvmap NULL
 #define BIOS_Getbpb NULL
-#define BIOS_Getmpb NULL
-#define BIOS_Kbshift NULL
-#define BIOS_Mediach NULL
 #define BIOS_Rwabs NULL
-#define BIOS_Tickcal NULL
 
 /* What a table entry does when it has no implementation.
  *
@@ -161,11 +241,15 @@ struct BIOS_function BIOS_functions[] = {
     {"Bconstat", BIOS_Bconstat, 0x01, FN_HALT, 0},
     {"Bcostat", BIOS_Bcostat, 0x08, FN_HALT, 0},
     {"Drvmap", BIOS_Drvmap, 0x0A, FN_HALT, 0},
-    {"Getbpb", BIOS_Getbpb, 0x07, FN_HALT, 0},
+    /* No BIOS parameter block to hand out, there is no TOS file system here */
+    {"Getbpb", BIOS_Getbpb, 0x07, FN_STUB, 0},
     {"Getmpb", BIOS_Getmpb, 0x00, FN_HALT, 0},
     {"Kbshift", BIOS_Kbshift, 0x0B, FN_HALT, 0},
     {"Mediach", BIOS_Mediach, 0x09, FN_HALT, 0},
-    {"Rwabs", BIOS_Rwabs, 0x04, FN_HALT, 0},
+    /* Drives are backed by host directories, so there are no sectors to move.
+     * Answering "drive not ready" is honest; a fake success would let an
+     * application believe it had written something. */
+    {"Rwabs", BIOS_Rwabs, 0x04, FN_STUB, BIOS_EDRVNR},
     {"Setexc", BIOS_Setexc, 0x05, FN_HALT, 0},
     {"Tickcal", BIOS_Tickcal, 0x06, FN_HALT, 0}
 };
