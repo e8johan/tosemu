@@ -57,13 +57,29 @@ struct DTA
 };
 #pragma pack(pop)
 
-struct fhandle
+/*
+ * The handle table is the process' list of open files. Fdup and Fforce both
+ * make a second handle refer to a file another handle already has open, so the
+ * open file lives in a structure of its own, counting the handles pointing at
+ * it. Closing one of them then leaves the file open for the others.
+ */
+struct openfile
 {
     FILE *f;
+    int refs;
+};
+
+struct fhandle
+{
+    struct openfile *of;
     uint32_t flags;
 };
 
-#define HANDLES 10
+/* Handles 0-5 are the standard handles every process starts with, and are the
+ * only ones Fforce may redirect. GEMDOS lets a process open 40 files on top of
+ * those. */
+#define STD_HANDLES 6
+#define HANDLES (STD_HANDLES+40)
 #define HANDLE_ALLOCATED 0x001
 
 #define ATTR_READ_ONLY  0x01
@@ -80,7 +96,43 @@ static struct fhandle handles[HANDLES];
 static int invalid_handle(uint16_t h)
 {
     return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED)
-           || (handles[h].f == NULL);
+           || (handles[h].of == NULL);
+}
+
+/* The stream a handle refers to. Only call this once invalid_handle said no. */
+static FILE *handle_file(uint16_t h)
+{
+    return handles[h].of->f;
+}
+
+static struct openfile *open_stream(FILE *f)
+{
+    struct openfile *of = malloc(sizeof *of);
+
+    if (of == NULL)
+        return NULL;
+
+    of->f = f;
+    of->refs = 1;
+
+    return of;
+}
+
+/*
+ * Drops one handle's reference to a file, closing it once no handle is left.
+ *
+ * The streams tosemu inherited from the host outlive the application, so they
+ * are unlinked from the table but never closed.
+ */
+static void release_stream(struct openfile *of)
+{
+    if (of == NULL || --of->refs > 0)
+        return;
+
+    if (of->f != stdin && of->f != stdout && of->f != stderr)
+        fclose(of->f);
+
+    free(of);
 }
 
 /* File functions ************************************************************/
@@ -127,11 +179,11 @@ uint32_t GEMDOS_Fseek()
     }
 
     errno = 0;
-    if (fseek(handles[handle].f, offset, whence) != 0)
+    if (fseek(handle_file(handle), offset, whence) != 0)
     {
         /* A failed seek must not leave the error indicator set, or every
          * later read or write on the handle would be reported as failed. */
-        clearerr(handles[handle].f);
+        clearerr(handle_file(handle));
 
         switch(errno)
         {
@@ -152,7 +204,7 @@ uint32_t GEMDOS_Fseek()
     }
 
     /* Fseek returns the resulting absolute position in the file */
-    ret = ftell(handles[handle].f);
+    ret = ftell(handle_file(handle));
     if (ret < 0)
         return GEMDOS_EINTRN;
 
@@ -181,7 +233,7 @@ uint32_t GEMDOS_Fdatime()
     {
         /* Read time */
 
-        ret = fstat(fileno(handles[handle].f), &buf);
+        ret = fstat(fileno(handle_file(handle)), &buf);
 
         if (!ret)
         {
@@ -534,14 +586,16 @@ uint32_t GEMDOS_Fdelete()
     return 0;
 }
 
-static int get_handle(FILE *f)
+/* Opening a file never hands out one of the standard handles, so the search
+ * starts past them even when the application has closed one. */
+static int get_handle(struct openfile *of)
 {
     int i;
-    for (i = 0; i < HANDLES; i++)
+    for (i = STD_HANDLES; i < HANDLES; i++)
     {
         if (handles[i].flags & HANDLE_ALLOCATED)
             continue;
-        handles[i].f = f;
+        handles[i].of = of;
         handles[i].flags = HANDLE_ALLOCATED;
         return i;
     }
@@ -571,6 +625,7 @@ uint32_t GEMDOS_Fcreate()
     char ubuf[PATH_MAX+1];
     int32_t err;
     int h, fd;
+    struct openfile *of;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -593,7 +648,16 @@ uint32_t GEMDOS_Fcreate()
     if (fd < 0)
         return GEMDOS_EACCDN;
 
-    h = get_handle(fdopen(fd, "w"));
+    of = open_stream(fdopen(fd, "w"));
+    if (of == NULL)
+        return GEMDOS_ENSMEM;
+
+    h = get_handle(of);
+    if (h == -1)
+    {
+        release_stream(of);
+        return GEMDOS_ENHNDL;
+    }
 
     return h;
 }
@@ -847,6 +911,7 @@ uint32_t GEMDOS_Fopen()
 
     const char *m;
     FILE *f;
+    struct openfile *of;
     int h;
 
     uint32_t filename = peek_u32(2);
@@ -889,11 +954,72 @@ uint32_t GEMDOS_Fopen()
     if (f == NULL)
         return GEMDOS_EFILNF;
 
-    h = get_handle(f);
+    of = open_stream(f);
+    if (of == NULL)
+    {
+        fclose(f);
+        return GEMDOS_ENSMEM;
+    }
+
+    h = get_handle(of);
     if (h == -1)
+    {
+        release_stream(of);
         return GEMDOS_ENHNDL;
+    }
 
     return h;
+}
+
+uint32_t GEMDOS_Fdup()
+{
+    uint16_t h = peek_u16(2);
+    int n;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d\n", h);
+    }
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    n = get_handle(handles[h].of);
+    if (n == -1)
+        return GEMDOS_ENHNDL;
+
+    handles[h].of->refs++;
+
+    return n;
+}
+
+uint32_t GEMDOS_Fforce()
+{
+    uint16_t stdh = peek_u16(2);
+    uint16_t h = peek_u16(4);
+    struct openfile *of;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    stdh: %d, handle: %d\n", stdh, h);
+    }
+
+    /* Only the handles a process starts out with can be redirected */
+    if (stdh >= STD_HANDLES)
+        return GEMDOS_EIHNDL;
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    /* Claim the new file before letting go of the old one, so that redirecting
+     * a handle onto itself does not close the file in between */
+    of = handles[h].of;
+    of->refs++;
+
+    release_stream(handles[stdh].of);
+
+    handles[stdh].of = of;
+    handles[stdh].flags = HANDLE_ALLOCATED;
+
+    return GEMDOS_E_OK;
 }
 
 uint32_t GEMDOS_Fattrib()
@@ -931,11 +1057,17 @@ uint32_t GEMDOS_Fclose()
 {
     uint16_t h = peek_u16(2);
 
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d\n", h);
+    }
+
     if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
     handles[h].flags = 0;
-    fclose(handles[h].f);
+    release_stream(handles[h].of);
+    handles[h].of = NULL;
+
     return GEMDOS_E_OK;
 }
 
@@ -958,14 +1090,14 @@ uint32_t GEMDOS_Fread()
     /* The error indicator is sticky, so clear it to make sure that what we
      * look at afterwards was caused by this read alone. */
     errno = 0;
-    clearerr(handles[h].f);
+    clearerr(handle_file(h));
 
-    n = fread(tmp, 1, len, handles[h].f);
-    if (ferror(handles[h].f))
+    n = fread(tmp, 1, len, handle_file(h));
+    if (ferror(handle_file(h)))
     {
         int err = errno;
 
-        clearerr(handles[h].f);
+        clearerr(handle_file(h));
         free(tmp);
         return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
@@ -1003,14 +1135,14 @@ uint32_t GEMDOS_Fwrite()
     /* The error indicator is sticky, so clear it to make sure that what we
      * look at afterwards was caused by this write alone. */
     errno = 0;
-    clearerr(handles[h].f);
+    clearerr(handle_file(h));
 
-    n = fwrite(tmp, 1, len, handles[h].f);
-    if (ferror(handles[h].f))
+    n = fwrite(tmp, 1, len, handle_file(h));
+    if (ferror(handle_file(h)))
     {
         int err = errno;
 
-        clearerr(handles[h].f);
+        clearerr(handle_file(h));
         free(tmp);
         return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
@@ -1030,12 +1162,13 @@ void gemdos_file_init(struct tos_environment *te)
     drive_register(DRIVE_C, &host_volume);
 
     memset(handles, 0, sizeof handles);
-    /* Handles 0-5 are reserved. */
-    for (i = 0; i < 6; i++)
+    /* Handles 0-5 are reserved. Only the three the host gave us refer to
+     * anything, the rest are allocated but have no file behind them. */
+    for (i = 0; i < STD_HANDLES; i++)
         handles[i].flags = HANDLE_ALLOCATED;
-    handles[0].f = stdin;
-    handles[1].f = stdout;
-    handles[2].f = stderr;
+    handles[0].of = open_stream(stdin);
+    handles[1].of = open_stream(stdout);
+    handles[2].of = open_stream(stderr);
 
     tos_env = te;
 }
