@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline
-CTESTNAME=c-helloworld c-drives c-bios
+CTESTNAME=c-helloworld c-drives c-bios c-xbios
 
 CC=m68k-atari-mint-gcc
 TOSEMU=../bin/tosemu
@@ -46,6 +46,7 @@ check: all
 	cmp out out2
 	$(TOSEMU) test-c-drives > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
+	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	$(RM) out out2
 
 clean:
