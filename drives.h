@@ -1,8 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
- * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
  * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
- * 
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -19,36 +18,30 @@
  *
  */
 
-#ifndef GEMDOSFILE_H
-#define GEMDOSFILE_H
+#ifndef DRIVES_H
+#define DRIVES_H
 
 #include <stdint.h>
 
-#include "tossystem.h"
+/* The drives tosemu presents to the application.
+ *
+ * This is the public face of the GEMDOS drive table, so that BIOS can answer
+ * Drvmap and Mediach without reaching into GEMDOS internals. Everything else
+ * about a drive is private to GEMDOS, see gemdosdrive_p.h.
+ */
 
-/* GEMDOS functions */
+/* Bitmap of the drives that exist, bit 0 is A: and bit 25 is Z: */
+uint32_t drive_map(void);
 
-void gemdos_file_init(struct tos_environment *);
-void gemdos_file_free();
+/* Whether the media in a drive may have been swapped, using the encoding of
+ * the BIOS Mediach call:
+ *
+ *   0  the media has not changed
+ *   1  the media may have changed
+ *   2  the media has definitely changed
+ *
+ * A drive that does not exist reports 0.
+ */
+int drive_mediach(int drive);
 
-uint32_t GEMDOS_Dgetdrv();
-uint32_t GEMDOS_Dsetdrv();
-
-uint32_t GEMDOS_Fseek();
-uint32_t GEMDOS_Fdatime();
-uint32_t GEMDOS_Fgetdta();
-uint32_t GEMDOS_Fsetdta();
-uint32_t GEMDOS_Fsfirst();
-uint32_t GEMDOS_Fsnext();
-uint32_t GEMDOS_Fopen();
-uint32_t GEMDOS_Fclose();
-uint32_t GEMDOS_Fread();
-uint32_t GEMDOS_Fwrite();
-uint32_t GEMDOS_Dgetpath();
-uint32_t GEMDOS_Dsetpath();
-uint32_t GEMDOS_Dcreate();
-uint32_t GEMDOS_Fcreate();
-uint32_t GEMDOS_Fdelete();
-uint32_t GEMDOS_Fattrib();
-
-#endif /* GEMDOSFILE_H */
+#endif /* DRIVES_H */

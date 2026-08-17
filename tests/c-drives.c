@@ -1,0 +1,78 @@
+/*
+ * TOSEMU - an emulated environment for TOS applications
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
+
+/* The drive table. tosemu presents a single drive, C:, backed by the host
+ * file system. These are the assertions a second drive has to keep working. */
+
+#include <stdio.h>
+#include <mint/osbind.h>
+
+#define DRIVE_C     (2)
+#define MAP_C       (1L << DRIVE_C)
+#define E_DRIVE     (-46)
+
+static int n;
+static int fails;
+
+static void check(long got, long want, const char *name)
+{
+    n++;
+    if (got == want)
+        printf("ok %d - %s\n", n, name);
+    else
+    {
+        fails++;
+        printf("not ok %d - %s (got %ld, want %ld)\n", n, name, got, want);
+    }
+}
+
+int main(int argc, char **argv)
+{
+    long h;
+
+    check(Dgetdrv(), DRIVE_C, "Dgetdrv reports C:");
+    check(Dsetdrv(DRIVE_C), MAP_C, "Dsetdrv C: returns the drive map");
+    check(Dgetdrv(), DRIVE_C, "Dgetdrv still reports C:");
+
+    /* A: is not there, so the request is ignored rather than obeyed */
+    check(Dsetdrv(0), MAP_C, "Dsetdrv A: returns the drive map");
+    check(Dgetdrv(), DRIVE_C, "Dsetdrv A: left the current drive alone");
+
+    /* A path on a drive that does not exist must be refused, not turned into
+     * a host path with the prefix still in it */
+    check(Fcreate("A:\\DRVTEST", 0), E_DRIVE, "Fcreate on A: fails with EDRIVE");
+    check(Fopen("A:\\DRVTEST", 0), E_DRIVE, "Fopen on A: fails with EDRIVE");
+    check(Dcreate("A:\\DRVTEST"), E_DRIVE, "Dcreate on A: fails with EDRIVE");
+
+    /* The same path on C:, and without a prefix at all, still works */
+    h = Fcreate("C:\\DRVTEST", 0);
+    check(h >= 0, 1, "Fcreate on C: succeeds");
+    if (h >= 0)
+        Fclose(h);
+    check(Fdelete("DRVTEST"), 0, "Fdelete without a drive prefix succeeds");
+
+    h = Fcreate("DRVTEST", 0);
+    check(h >= 0, 1, "Fcreate without a drive prefix succeeds");
+    if (h >= 0)
+        Fclose(h);
+    check(Fdelete("C:\\DRVTEST"), 0, "Fdelete on C: succeeds");
+
+    return fails;
+}

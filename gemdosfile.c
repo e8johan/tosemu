@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -40,6 +41,7 @@
 #include "memory.h"
 
 #include "gemdos_p.h"
+#include "gemdosdrive_p.h"
 
 /* File structures ***********************************************************/
 
@@ -205,7 +207,24 @@ uint32_t GEMDOS_Fdatime()
 
 uint32_t GEMDOS_Dgetdrv()
 {
-    return 2; /* C: */
+    FUNC_TRACE_ENTER
+
+    return drive_current();
+}
+
+uint32_t GEMDOS_Dsetdrv()
+{
+    uint16_t drive = peek_u16(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    drive: %d\n", drive);
+    }
+
+    /* TOS ignores a request for a drive that is not there, and always answers
+     * with the drive map, http://toshyp.atari.org/en/00500b.html */
+    drive_set_current(drive);
+
+    return drive_map();
 }
 
 uint32_t dta_addr;
@@ -247,13 +266,17 @@ static int get_path(char *buf, uint32_t address)
 uint32_t GEMDOS_Dgetpath()
 {
     uint32_t addr = peek_u32(2);
-    uint16_t drive = peek_u32(6);
+    uint16_t drive = peek_u16(6);
     char ubuf[PATH_MAX+1];
     int i;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x, drive=%d\n", addr, drive);
     }
+
+    /* Drive 0 means the current drive, anything else names one directly */
+    if (drive != 0 && !drive_volume(drive - 1))
+        return GEMDOS_EDRIVE;
 
     memset(ubuf, 0, PATH_MAX+1);
     getcwd(ubuf, sizeof ubuf);
@@ -342,25 +365,26 @@ static void resolve_case(char *path)
 }
 
 /*
- * Converts a TOS path to a host path
+ * Converts a TOS path, without its drive prefix, to a host path
  *
- * Returns the lenght of the resulting path on success, or zero on failure.
+ * Returns 0 on success, or a negative GEMDOS error.
  */
-static int path_from_tos(char *tp, char *up)
+static int32_t host_resolve(const char *tp, char *up)
 {
     char tbuf[PATH_MAX+1];
     int len;
-    char *src, *dest;
+    const char *src;
+    char *dest;
     int prev_slash = 1;
-    
+
     memset(tbuf, 0, PATH_MAX+1);
-    
+
     /* Prepend prefix */
     strncpy(up, tos_env->base_path, PATH_MAX);
     len = strlen(up);
     src = tp;
     dest = up + len;
-    
+
     /* Convert \ -> / */
     while(*src && len < PATH_MAX)
     {
@@ -392,15 +416,47 @@ static int path_from_tos(char *tp, char *up)
 
     /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
     realpath(up, tbuf);
-    
+
     if (tos_env->base_path[0] != 0)
     {
-        /* Ensure within prefix */    
+        /* Ensure within prefix */
         if (strncmp(up, tbuf, strlen(tos_env->base_path)-1))
-            return 0;
+            return GEMDOS_EFILNF;
     }
-    
-    return strlen(up);
+
+    return GEMDOS_E_OK;
+}
+
+/* The host file system never has its media swapped */
+static int host_mediach(void)
+{
+    return 0;
+}
+
+static struct volume host_volume = {
+    "host",
+    host_resolve,
+    host_mediach
+};
+
+/*
+ * Converts a TOS path to a host path, resolving the drive it refers to
+ *
+ * Returns 0 on success, or a negative GEMDOS error.
+ */
+static int32_t path_from_tos(char *tp, char *up)
+{
+    const char *rest;
+    struct volume *v;
+    int drive;
+
+    drive = drive_from_path(tp, &rest);
+    if (drive < 0)
+        return GEMDOS_EDRIVE;
+
+    v = drive_volume(drive);
+
+    return v->resolve(rest, up);
 }
 
 uint32_t GEMDOS_Dsetpath()
@@ -408,6 +464,7 @@ uint32_t GEMDOS_Dsetpath()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -417,8 +474,9 @@ uint32_t GEMDOS_Dsetpath()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (chdir(ubuf))
         perror("chdir");
@@ -431,6 +489,7 @@ uint32_t GEMDOS_Dcreate()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -440,8 +499,9 @@ uint32_t GEMDOS_Dcreate()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if(mkdir(ubuf, 0777) != 0)
         return GEMDOS_EACCDN;
@@ -454,6 +514,7 @@ uint32_t GEMDOS_Fdelete()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -463,8 +524,9 @@ uint32_t GEMDOS_Fdelete()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (unlink(ubuf) != 0)
         return GEMDOS_EFILNF;
@@ -507,6 +569,7 @@ uint32_t GEMDOS_Fcreate()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
     int h, fd;
 
     FUNC_TRACE_ENTER_ARGS {
@@ -517,8 +580,9 @@ uint32_t GEMDOS_Fcreate()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     FUNC_TRACE_ARGS {
         printf("    path: '%s' -> '%s'\n", buf, ubuf);
@@ -617,6 +681,7 @@ uint32_t GEMDOS_Fsfirst()
 
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     int i;
     int gres_id;
@@ -638,8 +703,9 @@ uint32_t GEMDOS_Fsfirst()
     
     get_path(buf, filename);
     
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
     
     /* TODO, take attr into account */
     
@@ -777,6 +843,7 @@ uint32_t GEMDOS_Fopen()
 {
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     const char *m;
     FILE *f;
@@ -794,8 +861,9 @@ uint32_t GEMDOS_Fopen()
     
     get_path(buf, filename);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     switch(mode & 0x3)
     {
@@ -833,6 +901,7 @@ uint32_t GEMDOS_Fattrib()
     struct stat st;
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     uint32_t filename = peek_u32(2);
     uint16_t wflag = peek_u16(6);
@@ -848,8 +917,9 @@ uint32_t GEMDOS_Fattrib()
     
     get_path(buf, filename);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (stat(ubuf, &st) < 0)
         return GEMDOS_EFILNF;
@@ -955,6 +1025,9 @@ void gemdos_file_init(struct tos_environment *te)
 
     /* TOS defaults the DTA to the command line in the basepage */
     dta_addr = 0x000880;
+
+    /* tosemu presents the host file system as C: */
+    drive_register(DRIVE_C, &host_volume);
 
     memset(handles, 0, sizeof handles);
     /* Handles 0-5 are reserved. */
