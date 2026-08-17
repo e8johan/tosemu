@@ -39,10 +39,20 @@
 #include "vdi_defs.h"
 #include "lineavars.h"
 
+#include "obdefs.h"
+#include "aesdefs.h"
+#include "aesext.h"
+#include "struct.h"
+#include "gemlib.h"
+#include "gsxdefs.h"
+
 #include "emuvdi.h"
 
 /* EmuTOS's dispatcher, vdi_main.c */
 void screen(void);
+
+/* The AES's VDI interface, aes/gemgsxif.c */
+void gsx_init(void);
 
 /* Ours, in fonts.c and hostvars.c */
 void host_font_init(void);
@@ -57,6 +67,21 @@ void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
                            uint16_t planes)
 {
     host_surface_select(base, width, height, planes);
+}
+
+void emuvdi_aes_init()
+{
+    gsx_init();
+}
+
+void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
+                        int16_t *wbox, int16_t *hbox)
+{
+    *handle = gl_handle;
+    *wchar = gl_wchar;
+    *hchar = gl_hchar;
+    *wbox = gl_wbox;
+    *hbox = gl_hbox;
 }
 
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,

@@ -79,4 +79,8 @@ void aes_appl_reset();
 uint32_t AES_appl_init();
 uint32_t AES_appl_exit();
 
+/* Graphics functions, aesgraf.c */
+
+uint32_t AES_graf_handle();
+
 #endif /* AES_P_H */

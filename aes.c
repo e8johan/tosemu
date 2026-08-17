@@ -159,7 +159,6 @@ uint32_t aes_global()
 #define AES_graf_shrinkbox  NULL
 #define AES_graf_watchbox   NULL
 #define AES_graf_slidebox   NULL
-#define AES_graf_handle     NULL
 #define AES_graf_mouse      NULL
 #define AES_graf_mkstate    NULL
 #define AES_scrp_read       NULL

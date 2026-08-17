@@ -48,6 +48,10 @@
 #define FN_HALT (0)
 #define FN_STUB (1)
 
+/* Readies GEM the first time either half is asked for anything. Returns 0
+ * after saying why not, having halted. */
+int gem_start();
+
 /* The two halves, called from gem_trap */
 void aes_trap();
 void vdi_trap();

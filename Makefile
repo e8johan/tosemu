@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aes.c aesappl.c vdi.c surface.c \
+              gem.c aes.c aesappl.c aesgraf.c vdi.c surface.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files

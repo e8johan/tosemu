@@ -123,10 +123,53 @@ int main(int argc, char **argv)
     check(_AESapid, id, "the binding sees its own identifier");
     check(appl_exit(), 1, "appl_exit through the binding succeeds");
 
+    /*
+     * How an application is meant to reach the screen: appl_init, then
+     * graf_handle for the workstation the AES already has open, then a virtual
+     * workstation of its own against it. No physical workstation is opened
+     * anywhere, which is the point.
+     */
+    {
+        short wchar, hchar, wbox, hbox, phys, vwk;
+        short work_in[11], work_out[57];
+        short pxy[4], pel, index;
+        short j;
+
+        id = appl_init();
+        check(id > 0, 1, "appl_init before asking for a workstation");
+
+        phys = graf_handle(&wchar, &hchar, &wbox, &hbox);
+        check(phys > 0, 1, "graf_handle gives the AES's workstation");
+        check(wchar > 0 && hchar > 0, 1, "graf_handle reports a character size");
+        check(wbox >= wchar && hbox >= hchar, 1,
+              "a box is at least as large as the character in it");
+
+        for (j = 0; j < 10; j++)
+            work_in[j] = 1;
+        work_in[10] = 2;
+
+        vwk = phys;
+        v_opnvwk(work_in, &vwk, work_out);
+        check(vwk > 0, 1, "v_opnvwk opens a workstation against it");
+        check(vwk != phys, 1, "and it is not the AES's own");
+
+        /* Draw in it, and read the pixel back */
+        vswr_mode(vwk, MD_REPLACE);
+        vsf_interior(vwk, FIS_SOLID);
+        vsf_color(vwk, 1);
+        pxy[0] = 4; pxy[1] = 4; pxy[2] = 12; pxy[3] = 12;
+        v_bar(vwk, pxy);
+
+        v_get_pixel(vwk, 8, 8, &pel, &index);
+        check(index, 1, "and drawing in it reaches the screen");
+
+        v_clsvwk(vwk);
+        check(appl_exit(), 1, "appl_exit after closing the workstation");
+    }
+
     /* The VDI has its own parameter block, a different shape from the AES one.
-     * None of it is implemented yet, but v_updwk is a call with nothing to do
-     * rather than a call that is missing, so it has to come back. Reaching the
-     * count below is what proves it did. */
+     * v_updwk is a call with nothing to do rather than one that is missing, so
+     * it has to come back rather than stop the emulator. */
     v_updwk(1);
     check(1, 1, "v_updwk returns through the VDI trap");
 

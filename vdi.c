@@ -52,7 +52,6 @@
 #include "gem_p.h"
 #include "vdi_p.h"
 #include "tossystem.h"
-#include "surface.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -191,20 +190,6 @@ static char *vdi_name(int16_t opcode)
 /* Handing a call to the VDI ***********************************************/
 
 /*
- * The screen every workstation is opened against.
- *
- * An ST low resolution screen, until there is somewhere for the choice to
- * come from. The VDI works out which resolution to report from how many
- * planes this has, so the two cannot disagree.
- */
-#define SCREEN_WIDTH  (320)
-#define SCREEN_HEIGHT (200)
-#define SCREEN_PLANES (4)
-
-static struct surface *screen;
-static int vdi_ready;
-
-/*
  * The arrays the VDI is handed, in host memory.
  *
  * A VDI call names its arrays by address in the emulated memory, and the VDI
@@ -221,32 +206,10 @@ static int16_t h_ptsin[VDI_PTSIN_MAX];
 static int16_t h_intout[VDI_INTOUT_MAX];
 static int16_t h_ptsout[VDI_PTSOUT_MAX];
 
-static int vdi_start()
-{
-    if (vdi_ready)
-        return 1;
-
-    screen = surface_create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_PLANES);
-    if (!screen)
-    {
-        halt_execution();
-        printf("VDI: no room for a %dx%d screen\n", SCREEN_WIDTH, SCREEN_HEIGHT);
-        return 0;
-    }
-
-    surface_select(screen);
-    emuvdi_init();
-
-    vdi_ready = 1;
-
-    return 1;
-}
-
 void vdi_reset()
 {
-    surface_free(screen);
-    screen = 0;
-    vdi_ready = 0;
+    /* The screen belongs to GEM rather than to either half of it, and
+     * gem_reset lets it go */
 }
 
 void vdi_trap()
@@ -291,7 +254,7 @@ void vdi_trap()
         return;
     }
 
-    if (!vdi_start())
+    if (!gem_start())
         return;
 
     /* In */

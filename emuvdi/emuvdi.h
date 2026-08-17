@@ -56,6 +56,21 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout);
 
 /*
+ * Opens the workstation the AES draws through, and works out the sizes it
+ * reports: how wide and tall a character is, and how large a box has to be to
+ * hold one. Call after emuvdi_init and after a surface is selected.
+ */
+void emuvdi_aes_init();
+
+/*
+ * What graf_handle answers with. The handle is the AES's own workstation, and
+ * an application opens a virtual one against it rather than opening a physical
+ * one of its own.
+ */
+void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
+                        int16_t *wbox, int16_t *hbox);
+
+/*
  * Whether the VDI has a function for this opcode. Everything it does not is
  * either a call no driver ever implemented or one of the GDOS extensions,
  * which arrive on their own range well above the VDI proper.

@@ -38,7 +38,51 @@
 
 #include "gem_p.h"
 #include "tossystem.h"
+#include "surface.h"
+#include "emuvdi/emuvdi.h"
 #include "m68k.h"
+
+/*
+ * The screen, which both halves of GEM draw on and which neither owns.
+ *
+ * An ST low resolution screen, until there is somewhere for the choice to come
+ * from. The VDI works out which resolution to report from how many planes this
+ * has, so the two cannot disagree.
+ */
+#define SCREEN_WIDTH  (320)
+#define SCREEN_HEIGHT (200)
+#define SCREEN_PLANES (4)
+
+static struct surface *screen;
+static int started;
+
+/*
+ * Readies GEM, the first time anything asks for it.
+ *
+ * Either half can be the first to be called: an application that draws without
+ * a window reaches the VDI first, and one that opens a window reaches the AES
+ * first, so neither can be the one to set the other up.
+ */
+int gem_start()
+{
+    if (started)
+        return 1;
+
+    screen = surface_create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_PLANES);
+    if (!screen)
+    {
+        halt_execution();
+        printf("GEM: no room for a %dx%d screen\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+        return 0;
+    }
+
+    surface_select(screen);
+    emuvdi_init();
+
+    started = 1;
+
+    return 1;
+}
 
 void gem_trap()
 {
@@ -64,6 +108,10 @@ void gem_reset()
 {
     aes_reset();
     vdi_reset();
+
+    surface_free(screen);
+    screen = 0;
+    started = 0;
 }
 
 /* Parameter block arrays ***************************************************/

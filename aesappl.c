@@ -30,6 +30,8 @@
 
 #include "aes_p.h"
 
+#include "gem_p.h"
+#include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
 /* The identifier of the running application, or -1 before it has asked for
@@ -75,11 +77,22 @@ uint32_t AES_appl_init()
 
     FUNC_TRACE_ENTER
 
+    /*
+     * The AES draws through a workstation of its own, which it opens here
+     * rather than when GEM starts: an application that only ever calls the VDI
+     * has no use for it, and opening one costs a screen's worth of state.
+     */
+    if (!gem_start())
+        return AES_ERROR;
+
     /* Calling appl_init twice is not an error worth failing over, and an
      * application that does it means to carry on with the identifier it
      * already has rather than to be given a second one. */
     if (ap_id < 0)
+    {
+        emuvdi_aes_init();
         ap_id = 1;
+    }
 
     m68k_write_memory_16(g + AES_GLOBAL_VERSION, AES_VERSION);
     m68k_write_memory_16(g + AES_GLOBAL_COUNT, AES_APPS);
