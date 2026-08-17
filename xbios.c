@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -178,7 +179,7 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Dsp_BlkHandShake NULL
 #define XBIOS_Dsp_BlkUnpacked NULL
 #define XBIOS_Dsp_BlkWords NULL
-#define XBIOS_Dsp_DoGlock NULL
+#define XBIOS_Dsp_DoBlock NULL
 #define XBIOS_Dsp_ExecBoot NULL
 #define XBIOS_Dsp_ExecProg NULL
 #define XBIOS_Dsp_FlushSubroutines NULL
@@ -195,7 +196,7 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Dsp_LoadProg NULL
 #define XBIOS_Dsp_LoadSubroutine NULL
 #define XBIOS_Dsp_Lock NULL
-#define XBIOS_Dsp_LodToBunary NULL
+#define XBIOS_Dsp_LodToBinary NULL
 #define XBIOS_Dsp_MultBlocks NULL
 #define XBIOS_Dsp_OutStream NULL
 #define XBIOS_Dsp_RemoveInterrupts NULL
@@ -220,7 +221,7 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Flopver NULL
 #define XBIOS_Flopwr NULL
 #define XBIOS_Gettime NULL
-#define XBIOS_Glaccess NULL
+#define XBIOS_Giaccess NULL
 #define XBIOS_Gpio NULL
 #define XBIOS_Ikbdws NULL
 #define XBIOS_Initmous NULL
@@ -237,7 +238,7 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_NVMaccess NULL
 #define XBIOS_Offgibit NULL
 #define XBIOS_Ongibit NULL
-#define XBIOS_Physbse NULL
+#define XBIOS_Physbase NULL
 #define XBIOS_Protobt NULL
 #define XBIOS_Prtblk NULL
 #define XBIOS_Puntaes NULL
@@ -264,10 +265,9 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_VsetMask NULL
 #define XBIOS_VsetMode NULL
 #define XBIOS_VsetRGB NULL
-#define XBIOS_VsetScreen NULL
 #define XBIOS_VsetSync NULL
 #define XBIOS_Vsync NULL
-#define XBIOS_WavePlay NULL
+#define XBIOS_Waveplay NULL
 #define XBIOS_Xbtimer NULL
 
 /* XBIOS function table according to
@@ -296,7 +296,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Dsp_BlkHandShake", XBIOS_Dsp_BlkHandShake, 0x61},
     {"Dsp_BlkUnpacked", XBIOS_Dsp_BlkUnpacked, 0x62},
     {"Dsp_BlkWords", XBIOS_Dsp_BlkWords, 0x7B},
-    {"Dsp_DoGlock", XBIOS_Dsp_DoGlock, 0x60},
+    {"Dsp_DoBlock", XBIOS_Dsp_DoBlock, 0x60},
     {"Dsp_ExecBoot", XBIOS_Dsp_ExecBoot, 0x6E},
     {"Dsp_ExecProg", XBIOS_Dsp_ExecProg, 0x6D},
     {"Dsp_FlushSubroutines", XBIOS_Dsp_FlushSubroutines, 0x73},
@@ -313,7 +313,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Dsp_LoadProg", XBIOS_Dsp_LoadProg, 0x6C},
     {"Dsp_LoadSubroutine", XBIOS_Dsp_LoadSubroutine, 0x74},
     {"Dsp_Lock", XBIOS_Dsp_Lock, 0x68},
-    {"Dsp_LodToBunary", XBIOS_Dsp_LodToBunary, 0x6F},
+    {"Dsp_LodToBinary", XBIOS_Dsp_LodToBinary, 0x6F},
     {"Dsp_MultBlocks", XBIOS_Dsp_MultBlocks, 0x7F},
     {"Dsp_OutStream", XBIOS_Dsp_OutStream, 0x64},
     {"Dsp_RemoveInterrupts", XBIOS_Dsp_RemoveInterrupts, 0x66},
@@ -339,7 +339,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Flopwr", XBIOS_Flopwr, 0x09},
     {"Getrez",      XBIOS_Getrez, 0x04},
     {"Gettime", XBIOS_Gettime, 0x17},
-    {"Glaccess", XBIOS_Glaccess, 0x1C},
+    {"Giaccess", XBIOS_Giaccess, 0x1C},
     {"Gpio", XBIOS_Gpio, 0x8A},
     {"Ikbdws", XBIOS_Ikbdws, 0x19},
     {"Initmous", XBIOS_Initmous, 0x00},
@@ -357,7 +357,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"NVMaccess", XBIOS_NVMaccess, 0x2E},
     {"Offgibit", XBIOS_Offgibit, 0x1D},
     {"Ongibit", XBIOS_Ongibit, 0x1E},
-    {"Physbse", XBIOS_Physbse, 0x02},
+    {"Physbase", XBIOS_Physbase, 0x02},
     {"Protobt", XBIOS_Protobt, 0x12},
     {"Prtblk", XBIOS_Prtblk, 0x24},
     {"Puntaes", XBIOS_Puntaes, 0x27},
@@ -371,6 +371,9 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Setmontracks", XBIOS_Setmontracks, 0x86},
     {"Setpalette", XBIOS_Setpalette, 0x06},
     {"Setprt", XBIOS_Setprt, 0x21},
+    /* VsetScreen shares this id. It is the Falcon superset of the same
+     * call and the two cannot be told apart from the stack, so Setscreen
+     * answers for both. */
     {"Setscreen", XBIOS_Setscreen, 0x05},
     {"Settime", XBIOS_Settime, 0x16},
     {"Settracks", XBIOS_Settracks, 0x85},
@@ -385,10 +388,9 @@ struct XBIOS_function XBIOS_functions[] = {
     {"VsetMask", XBIOS_VsetMask, 0x92},
     {"VsetMode", XBIOS_VsetMode, 0x58},
     {"VsetRGB", XBIOS_VsetRGB, 0x5D},
-    {"VsetScreen", XBIOS_VsetScreen, 0x05},
     {"VsetSync", XBIOS_VsetSync, 0x5A},
     {"Vsync", XBIOS_Vsync, 0x25},
-    {"WavePlay", XBIOS_WavePlay, 0xA5},
+    {"Waveplay", XBIOS_Waveplay, 0xA5},
     {"Xbtimer", XBIOS_Xbtimer, 0x1F}
 };
 
