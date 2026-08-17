@@ -10,12 +10,21 @@
 #
 #   make TOS_ROOT=/path/to/tos_root check
 
-TESTNAMES = c-helloworld c-drives c-bios
+# c-drives and c-bios are built by running the passes one at a time, c-hello
+# by LC.TTP, the driver that looks them up along PATH and Pexecs each of them
+# itself. A failure then says whether the passes or the driver broke.
+TESTNAMES   = c-drives c-bios
+LCTESTNAMES = c-hello
 
 TOS_ROOT ?= ../../../tos_root
-LATTICE   = $(TOS_ROOT)/lattice
+
+# LC.TTP builds the path to each pass out of PATH and hands it to Pexec, and a
+# TOS program expects the entries there to name a drive rather than to be
+# relative to wherever it happens to have been started
+LATTICE   = $(abspath $(TOS_ROOT)/lattice)
 TOSEMU    = ../../bin/tosemu
 
+LC    = $(LATTICE)/BIN/LC.TTP
 LC1   = $(LATTICE)/BIN/LC1.TTP
 LC2   = $(LATTICE)/BIN/LC2.TTP
 CLINK = $(LATTICE)/BIN/CLINK.TTP
@@ -25,8 +34,8 @@ CLINK = $(LATTICE)/BIN/CLINK.TTP
 # PATH here only reaches LC1, the recipes name every host program by path.
 LC1ENV = INCLUDE=$(LATTICE)/H/ PATH=$(LATTICE)/BIN/
 
-PROGRAMS = $(addsuffix .PRG,$(TESTNAMES))
-OBJECTS  = $(addsuffix .o,$(TESTNAMES))
+PROGRAMS = $(addsuffix .PRG,$(TESTNAMES)) $(addsuffix .ttp,$(LCTESTNAMES))
+OBJECTS  = $(addsuffix .o,$(TESTNAMES) $(LCTESTNAMES))
 
 all: $(PROGRAMS)
 
@@ -49,9 +58,16 @@ all: $(PROGRAMS)
 	              'LIB $(LATTICE)/LIB/LC.LIB' > $*.lnk
 	$(TOSEMU) $(CLINK) WITH $*.lnk
 
+# The driver compiles and links in one go, writing its own control file for
+# CLink and naming the result .ttp. A source file has to fit the 8.3 of a TOS
+# file system: the command line the driver hands a pass is sized for one, and
+# a longer name reaches the compiler cut short.
+%.ttp: %.c
+	$(LC1ENV) LIB=$(LATTICE)/LIB/ $(TOSEMU) $(LC) -L $<
+
 check: all
 	# The C library writes text mode line endings, i.e. CRLF, to files
-	$(TOSEMU) c-helloworld.PRG > out
+	$(TOSEMU) c-hello.ttp > out
 	printf 'Hello World!\r\n' > out2
 	cmp out out2
 	$(TOSEMU) c-drives.PRG > out; ! grep -q '^not ok' out
@@ -59,7 +75,8 @@ check: all
 	$(RM) out out2
 
 clean:
-	$(RM) $(PROGRAMS) $(OBJECTS) $(addsuffix .q,$(TESTNAMES))
-	$(RM) $(addsuffix .lnk,$(TESTNAMES)) out out2
+	$(RM) $(PROGRAMS) $(OBJECTS)
+	$(RM) $(addsuffix .q,$(TESTNAMES) $(LCTESTNAMES))
+	$(RM) $(addsuffix .lnk,$(TESTNAMES) $(LCTESTNAMES)) out out2
 
 .PHONY: all check clean

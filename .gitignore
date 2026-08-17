@@ -5,6 +5,7 @@ tests/devpac/*.PRG
 tests/devpac/out
 tests/devpac/out2
 tests/lattice/*.PRG
+tests/lattice/*.ttp
 tests/lattice/*.lnk
 tests/lattice/*.q
 tests/lattice/out
