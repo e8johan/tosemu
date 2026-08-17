@@ -83,6 +83,34 @@ void free_tos_environment(struct tos_environment *te);
  */
 char *tos_environment(uint32_t addr, uint32_t *len);
 
+/* A basepage and the program behind it start 0x100 apart */
+#define TOS_BASEPAGE_SIZE (0x100)
+
+/*
+ * Builds a basepage at base in the emulated memory, for a program owning the
+ * block that runs from base to base+len, and loads binary into it. The
+ * program itself goes 0x100 above the basepage.
+ *
+ * A null binary makes a basepage with no program behind it, which is what
+ * Pexec is asked for when it is only making room for one.
+ *
+ * Returns TOS_LOAD_OK, or why not. GEMDOS error codes belong to GEMDOS, so
+ * the caller is the one to turn these into them.
+ */
+#define TOS_LOAD_OK        (0)
+#define TOS_LOAD_BADFORMAT (-1)
+#define TOS_LOAD_NOROOM    (-2)
+
+int32_t place_program(uint32_t base, uint32_t len, const void *binary,
+                      uint64_t size, const char *cmdlin, uint32_t env,
+                      uint32_t parent);
+
+/*
+ * Hands the loop a program that is already in memory, which is what Pexec is
+ * asked for once another program has loaded one and set its basepage up.
+ */
+void exec_tos_basepage(uint32_t basepage);
+
 /*
  * Hands the loop an application to run in place of the one running now, which
  * is how Pexec starts a program. It cannot be started from where Pexec is

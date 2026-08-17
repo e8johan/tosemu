@@ -157,6 +157,127 @@ uint32_t bios_static_alloc(uint32_t len)
 }
 
 /*
+ * Applies a program's relocation table, which lists the places in it holding
+ * an address as the gaps between them.
+ *
+ * A binary is written as if it had been loaded at zero, so every one of those
+ * places has the address it really landed at added to it.
+ */
+static void relocate_program(uint32_t tbase, const void *binary)
+{
+    const struct exec_header *header = binary;
+    const uint8_t *ptr;
+    uint32_t adr;
+
+    if (header->absflag)
+        return;
+
+    ptr = (const uint8_t *)binary + sizeof(struct exec_header)
+        + endianize_32(header->tsize)
+        + endianize_32(header->dsize)
+        + endianize_32(header->ssize);
+
+    /* The table opens with the first address, and carries on with the gap to
+     * each of the ones after it */
+    adr = tbase + endianize_32(*(const uint32_t *)ptr);
+    ptr += 4;
+
+    if (adr == tbase)
+        return; /* A first offset of zero means there is nothing to relocate */
+
+    m68k_write_memory_32(adr, m68k_read_memory_32(adr) + tbase);
+
+    while (*ptr)
+    {
+        /* A gap of one is the mark for a jump of 254, which is how a gap too
+         * wide for a byte is written */
+        if (*ptr == 1)
+            adr += 0xfe;
+        else
+        {
+            adr += *ptr;
+            m68k_write_memory_32(adr, m68k_read_memory_32(adr) + tbase);
+        }
+
+        ptr++;
+    }
+}
+
+/* Copies a structure the emulator built into the memory of the machine */
+static void write_bytes(uint32_t addr, const void *src, uint32_t len)
+{
+    const uint8_t *from = src;
+    uint32_t i;
+
+    for (i = 0; i < len; i++)
+        m68k_write_memory_8(addr + i, from[i]);
+}
+
+int32_t place_program(uint32_t base, uint32_t len, const void *binary,
+                      uint64_t size, const char *cmdlin, uint32_t env,
+                      uint32_t parent)
+{
+    const struct exec_header *header = binary;
+    struct basepage bp;
+    uint32_t tsize = 0, dsize = 0, bsize = 0;
+
+    if (binary)
+    {
+        if (size < sizeof(struct exec_header))
+            return TOS_LOAD_BADFORMAT;
+
+        tsize = endianize_32(header->tsize);
+        dsize = endianize_32(header->dsize);
+        bsize = endianize_32(header->bsize);
+
+        if (size < sizeof(struct exec_header) + tsize + dsize)
+            return TOS_LOAD_BADFORMAT;
+    }
+
+    /* The basepage, the program and the memory it starts out with all have to
+     * fit in the block that was set aside for them */
+    if (len < TOS_BASEPAGE_SIZE ||
+        len - TOS_BASEPAGE_SIZE < tsize + dsize + bsize)
+        return TOS_LOAD_NOROOM;
+
+    memset(&bp, 0, sizeof bp);
+    bp.p_lowtpa = endianize_32(base);
+    bp.p_hitpa = endianize_32(base + len);
+    bp.p_tbase = endianize_32(base + TOS_BASEPAGE_SIZE);
+    bp.p_tlen = endianize_32(tsize);
+    bp.p_dbase = endianize_32(base + TOS_BASEPAGE_SIZE + tsize);
+    bp.p_dlen = endianize_32(dsize);
+    bp.p_bbase = endianize_32(base + TOS_BASEPAGE_SIZE + tsize + dsize);
+    bp.p_blen = endianize_32(bsize);
+    bp.p_parent = endianize_32(parent);
+    bp.p_env = endianize_32(env);
+    /* TOS defaults the Disk Transfer Address to the command line */
+    bp.p_dta = endianize_32(base + offsetof(struct basepage, p_cmdlin));
+    memcpy(bp.p_cmdlin, cmdlin, TOS_CMDLIN_SIZE);
+
+    write_bytes(base, &bp, sizeof bp);
+
+    if (binary)
+    {
+        write_bytes(base + TOS_BASEPAGE_SIZE,
+                    (const uint8_t *)binary + sizeof(struct exec_header),
+                    tsize + dsize);
+
+        /* The BSS is zeroed by TOS when loading a program */
+        {
+            uint32_t i, bss = base + TOS_BASEPAGE_SIZE + tsize + dsize;
+
+            for (i = 0; i < bsize; i++)
+                m68k_write_memory_8(bss + i, 0);
+        }
+
+        relocate_program(base + TOS_BASEPAGE_SIZE, binary);
+    }
+
+    return TOS_LOAD_OK;
+}
+
+/*
  * Writes an environment block into system RAM and returns its address.
  *
  * TOS stores the environment as a run of zero terminated NAME=value strings
@@ -296,9 +417,6 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                                 const char *env, uint32_t env_len)
 {
     struct exec_header *header;
-    uint8_t *ptr = 0;
-    uint32_t *ptr32 = 0;
-    uint32_t adr = 0;
     char *path;
     
     /* Ensure that binary is large enough to hold a header */
@@ -406,42 +524,9 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * registered, as it is written through the emulated memory */
     te->bp->p_env = endianize_32(place_environment(env, env_len));
 
-    /* Relocating the loaded binary, must take place after the "userram" has
-    * been registered, as it takes place in the memory of the tos machine */
-    if (!header->absflag) {
-        /* Move ptr to the start of the relocation data */
-        ptr = binary;                       /* start of file contents */
-        ptr += sizeof(struct exec_header);  /* skip header */
-        ptr += te->tsize;                   /* skip text segment */
-        ptr += te->dsize;                   /* skip data segment */
-        ptr += te->ssize;                   /* skip symbol table */
-        ptr32 = (uint32_t*)ptr;             /* address of initial offet */
-        ptr += 4;                           /* skip to start of relocation table */
-        /* first relocation address in the tos memory space */
-        adr = 0x900 + endianize_32(*ptr32);
-        
-        if (adr != 0x900) {
-            m68k_write_memory_32(adr, m68k_read_memory_32(adr) + 0x900);
-            while(*ptr)
-            {
-                switch(*ptr)
-                {
-                case 0:
-                    break;
-                case 1:
-                    adr += 0xfe;
-                    ptr ++;
-                    break;
-                default:
-                    adr += *ptr;
-                    ptr ++;
-                    m68k_write_memory_32(adr, m68k_read_memory_32(adr) + 0x900);
-
-                    break;
-                }
-            }
-        }
-    }
+    /* Relocating must take place after the "userram" has been registered, as
+     * it takes place in the memory of the tos machine */
+    relocate_program(0x900, binary);
 
     /* Always a string of its own, so that free_tos_environment can let go of
      * it without having to know where it came from */
@@ -487,9 +572,9 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
  * The application finds its basepage at 4(sp), and a 68000 takes an address
  * error on an odd stack pointer, so the initial user stack is kept even.
  */
-static void start_cpu(struct tos_environment *te)
+static void start_cpu(struct tos_environment *te, uint32_t basepage)
 {
-    uint32_t sp;
+    uint32_t sp, pc;
     int i;
 
     m68k_init();
@@ -508,10 +593,27 @@ static void start_cpu(struct tos_environment *te)
      * that not work? */
     m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
 
-    sp = (te->size - 4) & ~1u;
+    if (basepage == 0x800)
+    {
+        /* The application the machine was built around */
+        sp = (te->size - 4) & ~1u;
+        pc = 0x900;
+    }
+    else
+    {
+        /* A program another one loaded, which owns the block its basepage
+         * sits at the foot of. The basepage goes at 4(sp), so the stack has
+         * to start a longword further down than the end of that block. */
+        sp = m68k_read_disassembler_32(basepage
+                 + offsetof(struct basepage, p_hitpa));
+        sp = (sp - 8) & ~1u;
+        pc = m68k_read_disassembler_32(basepage
+                 + offsetof(struct basepage, p_tbase));
+    }
+
     m68k_set_reg(M68K_REG_USP, sp); /* user stack pointer */
-    m68k_write_memory_32(sp + 4, 0x800); /* big endian 0x800 */
-    m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
+    m68k_write_memory_32(sp + 4, basepage);
+    m68k_set_reg(M68K_REG_PC, pc); /* Set PC to the binary entry point */
     disable_supervisor_mode();
 }
 
@@ -519,12 +621,24 @@ static void start_cpu(struct tos_environment *te)
  * unwound, see exec_tos_binary */
 static struct {
     int active;
+    int replace;      /* Whether a machine has to be built, or one is there */
+    uint32_t basepage;
     void *binary;
     uint64_t binary_size;
     char cmdlin[TOS_CMDLIN_SIZE];
     char *env;
     uint32_t env_len;
 } pending;
+
+void exec_tos_basepage(uint32_t basepage)
+{
+    pending.active = 1;
+    pending.replace = 0;
+    pending.basepage = basepage;
+
+    /* Leave the loop, which is where the CPU can be pointed somewhere else */
+    halt_execution();
+}
 
 int exec_tos_binary(const char *host_path, const char *cmdlin,
                     char *env, uint32_t env_len)
@@ -540,6 +654,7 @@ int exec_tos_binary(const char *host_path, const char *cmdlin,
     }
 
     pending.active = 1;
+    pending.replace = 1;
     pending.binary = binary;
     pending.binary_size = size;
     memcpy(pending.cmdlin, cmdlin, TOS_CMDLIN_SIZE);
@@ -584,9 +699,11 @@ static int replace_application(struct tos_environment *te)
 
 void run_tos_environment(struct tos_environment *te)
 {
+    uint32_t basepage = 0x800; /* The application the machine was built for */
+
     for (;;)
     {
-        start_cpu(te);
+        start_cpu(te, basepage);
 
         keepongoing = 1;
         while (keepongoing)
@@ -597,11 +714,20 @@ void run_tos_environment(struct tos_environment *te)
         if (!pending.active)
             break;
 
-        if (replace_application(te))
+        pending.active = 0;
+
+        if (pending.replace)
         {
-            printf("Error: failed to start the program Pexec asked for\n");
-            break;
+            if (replace_application(te))
+            {
+                printf("Error: failed to start the program Pexec asked for\n");
+                break;
+            }
+
+            basepage = 0x800;
         }
+        else
+            basepage = pending.basepage;
     }
 }
 
