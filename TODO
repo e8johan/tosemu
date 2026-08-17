@@ -1,19 +1,27 @@
-- Move the whole execution loop into the tossystem module
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
-- Pexec, which is what a compiler driver needs. Lattice C's LC.TTP and LCC.TTP
-  look up lc1, lc2 and clink along PATH and Pexec each of them in turn, so the
-  passes have to be driven one at a time until it is there, see
-  tests/lattice/Makefile. Mode 0, load and go, is the one a driver uses, and
-  needs a second program in memory next to the running one: a TPA of its own,
-  a basepage whose p_parent points at the caller, and the child's exit code
-  handed back as the return value. Most of what the emulator keeps is global
-  today - the memory area list, the handle table, the DTA address - so either
-  those become per process, or a child saves and restores them around its run.
-  Handles are inherited rather than saved, that is what Fforce before a Pexec
-  is for.
+- The Pexec modes that are not there yet, see gemdosproc.c for the ones that
+  are and README for what a child inherits:
+    3, 4 and 6, loading a program without running it and running one that was
+      loaded. Needs the loader generalised to relocate to a Malloced base
+      rather than to the fixed 0x900.
+    5 and 7, creating a basepage and nothing else. No process involved, the
+      caller Mshrinks what it is given.
+    100, 104 and 106, the MiNT modes that do not wait for the child. Needs a
+      table of the children and their code pipes, and Pwait, Pwait3 and
+      Pwaitpid to collect them. Read the status encoding off toshyp rather
+      than assuming it.
+- A child gets the whole of memory rather than a TPA carved out of what its
+  parent left free, so it is handed more than TOS would give it. An
+  application that Mallocs before it Mshrinks gets nothing, where on TOS it
+  would get what the parent released.
 - The BIOS device handles, -1 CON:, -2 AUX: and -3 PRN:, which GEMDOS accepts
   everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
   tosemu has a console but no serial port or printer, so -1 is the one with an
   answer to give, and the other two keep reporting EIHNDL.
+- Console output goes straight to the host rather than through handle 1, so
+  Cconout and Cconws ignore an Fforce that redirected it.
+- Ptermres, which has nowhere to stay resident in.
+- remove_memory_area never advances its pointer, so it only ever finds the
+  first area. reset_memory happens to always ask for that one.

@@ -24,6 +24,7 @@
 #include "gemdosmem_p.h"
 #include "gemdoscon_p.h"
 #include "gemdosfile_p.h"
+#include "gemdosproc_p.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -36,26 +37,6 @@
 #include "gemdos_p.h"
 
 /* GEMDOS functions */
-
-/* Process management functions **********************************************/
-
-uint32_t GEMDOS_Pterm()
-{
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", peek_u16(2));
-    }
-
-    exit(peek_u16(2));
-    return 0;
-}
-        
-uint32_t GEMDOS_Pterm0()
-{
-    FUNC_TRACE_ENTER
-
-    exit(0);
-    return 0;
-}
 
 /* Date/time functions *******************************************************/
 
@@ -190,14 +171,11 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
 #define GEMDOS_Pdomain GEMDOS_Unknown
-#define GEMDOS_Pexec NULL
 #define GEMDOS_Pfork NULL
 #define GEMDOS_Pgetegid GEMDOS_Unknown
 #define GEMDOS_Pgeteuid GEMDOS_Unknown
 #define GEMDOS_Pgetgid GEMDOS_Unknown
 #define GEMDOS_Pgetpgrp NULL
-#define GEMDOS_Pgetpid NULL
-#define GEMDOS_Pgetppid NULL
 #define GEMDOS_Pgetuid GEMDOS_Unknown
 #define GEMDOS_Pkill NULL
 #define GEMDOS_Pmsg NULL
@@ -369,6 +347,14 @@ void gemdos_init(struct tos_environment *te)
     
     /* File management setup */
     gemdos_file_init(te);
+}
+
+void gemdos_reinit(struct tos_environment *te)
+{
+    /* The application that was running took its memory with it */
+    gemdos_mem_init(te);
+
+    gemdos_file_reinit(te);
 }
 
 void gemdos_free()

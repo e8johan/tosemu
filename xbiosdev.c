@@ -320,3 +320,13 @@ uint32_t XBIOS_Xbtimer()
 
     return XBIOS_E_OK;
 }
+
+void xbios_dev_reset()
+{
+    int i;
+
+    for (i = 0; i < IOREC_DEVICES; i++)
+        iorec[i] = 0;
+
+    kbdvecs = 0;
+}

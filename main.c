@@ -70,8 +70,7 @@ int main(int argc, char **argv)
     void *binary_data;
     uint64_t binary_size;
     struct tos_environment te;
-    char cmdlin[TOS_CMDLIN_MAX];
-    int cmdlin_len;
+    char cmdlin[TOS_CMDLIN_SIZE];
     char *env;
     uint32_t env_len;
     int argb = 1;
@@ -101,7 +100,7 @@ int main(int argc, char **argv)
     argc -= argb;
 
     /* The command line and the environment the application is started with */
-    cmdlin_len = host_cmdlin(cmdlin, argc, argv);
+    host_cmdlin(cmdlin, argc, argv);
     env = host_environment(&env_len);
     if (env == NULL)
     {
@@ -112,7 +111,7 @@ int main(int argc, char **argv)
 
     /* Setup a TOS environment for the binary */
     if (init_tos_environment(&te, binary_data, binary_size,
-                             cmdlin, cmdlin_len, env, env_len))
+                             cmdlin, env, env_len))
     {
         printf("Error: failed to initialize TOS environment\n");
         free(env);

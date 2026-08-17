@@ -62,6 +62,12 @@ static uint32_t palette_rgb[PALETTE_ENTRIES];
 static uint32_t video_mode;
 static uint32_t cursor_rate = 10; /* Blinks per second, the TOS default */
 
+void xbios_screen_reset()
+{
+    screen_phys = 0;
+    screen_log = 0;
+}
+
 static uint32_t screen_buffer(void)
 {
     if (!screen_phys)

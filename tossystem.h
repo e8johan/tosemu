@@ -44,9 +44,16 @@ struct tos_environment {
     char *base_path;
 };
 
-/* The longest command line text a basepage can hold. Its field is 128 bytes,
- * of which a length byte and a terminating zero are not text. */
-#define TOS_CMDLIN_MAX (126)
+/* The command line field of a basepage, and the longest text it can hold: the
+ * field also carries a length byte and a terminating zero.
+ *
+ * A length byte of 127 is not a length. It is the mark saying the arguments
+ * did not fit and were passed through the ARGV variable in the environment
+ * instead, so a command line is carried from one basepage to another as it
+ * stands rather than measured and rebuilt.
+ */
+#define TOS_CMDLIN_SIZE (128)
+#define TOS_CMDLIN_MAX  (TOS_CMDLIN_SIZE - 2)
 
 /* Maps a TOS binary, checking that it is one.
  *
@@ -57,18 +64,39 @@ void *map_tos_binary(const char *path, uint64_t *size);
 void unmap_tos_binary(void *binary, uint64_t size);
 
 /* The command line and the environment tosemu itself was started with, in the
- * form an application is handed them. host_cmdlin returns the length of the
- * text it wrote, which needs room for TOS_CMDLIN_MAX characters.
- * host_environment returns a block the caller frees.
+ * form an application is handed them. host_cmdlin fills in a whole command
+ * line field, so its buffer takes TOS_CMDLIN_SIZE bytes. host_environment
+ * returns a block the caller frees.
  */
-int host_cmdlin(char *buf, int argc, char **argv);
+void host_cmdlin(char *field, int argc, char **argv);
 char *host_environment(uint32_t *len);
 
 int init_tos_environment(struct tos_environment *te, void *binary,
                          uint64_t binary_size,
-                         const char *cmdlin, int cmdlin_len,
+                         const char *cmdlin,
                          const char *env, uint32_t env_len);
 void free_tos_environment(struct tos_environment *te);
+
+/* Copies an environment block out of the emulated memory, so that it survives
+ * the machine being rebuilt around another application. Returns a block the
+ * caller frees, in the form init_tos_environment expects.
+ */
+char *tos_environment(uint32_t addr, uint32_t *len);
+
+/*
+ * Hands the loop an application to run in place of the one running now, which
+ * is how Pexec starts a program. It cannot be started from where Pexec is
+ * called: that is inside a trap, and inside Musashi, neither of which survives
+ * the CPU being reset under them.
+ *
+ * The binary is mapped here rather than when the swap happens, so that a file
+ * that is not a program is reported to whoever called Pexec instead of being
+ * discovered once there is nowhere left to report it. Takes ownership of env.
+ *
+ * Returns 0, or -1 when the binary could not be mapped.
+ */
+int exec_tos_binary(const char *host_path, const char *cmdlin,
+                    char *env, uint32_t env_len);
 
 /* Runs the application until it terminates, or until something it asked for
  * turns out not to be implemented */

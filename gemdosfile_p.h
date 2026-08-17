@@ -29,6 +29,12 @@
 /* GEMDOS functions */
 
 void gemdos_file_init(struct tos_environment *);
+
+/* The part of the file state that belongs to the application rather than to
+ * the process running it: the DTA, and the searches going through it. The
+ * handle table and the drive table are inherited and stay as they are. */
+void gemdos_file_reinit(struct tos_environment *);
+
 void gemdos_file_free();
 
 uint32_t GEMDOS_Dgetdrv();

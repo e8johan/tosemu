@@ -219,26 +219,53 @@ char *host_environment(uint32_t *len)
     return block;
 }
 
-/*
- * Writes a command line into a basepage, as a length byte, the text, and a
- * terminating zero. Text beyond what the field holds is dropped, which is all
- * a TOS program can be handed.
- */
-static void set_cmdlin(char *dest, const char *text, int len)
-{
-    if (len > TOS_CMDLIN_MAX)
-        len = TOS_CMDLIN_MAX;
+/* Far more than a TOS environment ever holds, and small enough next to the
+ * system RAM that placing one still leaves room for a screen buffer. An
+ * application pointing Pexec at something that is not an environment is
+ * stopped here rather than walked after through the whole address space. */
+#define TOS_ENV_MAX (16*1024)
 
-    dest[0] = len;
-    memcpy(dest + 1, text, len);
-    dest[len + 1] = 0;
+char *tos_environment(uint32_t addr, uint32_t *len)
+{
+    char *block;
+    uint32_t n = 0;
+    uint32_t i;
+
+    /* Walk the strings until an empty one, which is what ends the block */
+    while (n < TOS_ENV_MAX && m68k_read_disassembler_8(addr + n) != 0)
+    {
+        while (n < TOS_ENV_MAX && m68k_read_disassembler_8(addr + n) != 0)
+            n++;
+        n++; /* The zero ending this string */
+    }
+    n++; /* The empty string ending the block */
+
+    if (n > TOS_ENV_MAX)
+        n = TOS_ENV_MAX;
+
+    block = malloc(n);
+    if (block == NULL)
+        return NULL;
+
+    for (i = 0; i < n; i++)
+        block[i] = m68k_read_disassembler_8(addr + i);
+
+    /* However odd what we were pointed at, what we pass on ends the way an
+     * environment has to */
+    block[n-1] = 0;
+
+    *len = n;
+
+    return block;
 }
 
 /* The command line of the application tosemu was asked to start, which is the
  * arguments after the binary with a space between them */
-int host_cmdlin(char *buf, int argc, char **argv)
+void host_cmdlin(char *field, int argc, char **argv)
 {
     int i, n = 0;
+
+    memset(field, 0, TOS_CMDLIN_SIZE);
 
     for (i = 0; i < argc; i++)
     {
@@ -251,18 +278,22 @@ int host_cmdlin(char *buf, int argc, char **argv)
             break;
 
         if (sep)
-            buf[n++] = ' ';
+            field[1 + n++] = ' ';
 
-        memcpy(buf + n, argv[i], len);
+        memcpy(field + 1 + n, argv[i], len);
         n += len;
     }
 
-    return n;
+    field[0] = n;
+    field[1 + n] = 0;
 }
 
-int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size,
-                         const char *cmdlin, int cmdlin_len,
-                         const char *env, uint32_t env_len)
+/* Builds the emulated machine around a binary, short of the subsystem setup,
+ * which differs between the first application and one replacing another */
+static int load_tos_environment(struct tos_environment *te, void *binary,
+                                uint64_t size,
+                                const char *cmdlin,
+                                const char *env, uint32_t env_len)
 {
     struct exec_header *header;
     uint8_t *ptr = 0;
@@ -277,12 +308,17 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         return -1;
     }
     
-    /* Setup "static" data areas */
-    te->staticmem0 = malloc(0x200);       /* 0x0 - 0x1ff */
-    te->staticmem1 = malloc(0x600-0x380); /* 0x380 - 0x5ff */
-    
+    /* Setup "static" data areas.
+     *
+     * Every area of the emulated machine starts out zeroed. A machine that is
+     * built a second time, which is what Pexec does in the process it forked,
+     * would otherwise be handed whatever the host heap still had in it, and
+     * an application would read what the one before it left behind. */
+    te->staticmem0 = calloc(1, 0x200);       /* 0x0 - 0x1ff */
+    te->staticmem1 = calloc(1, 0x600-0x380); /* 0x380 - 0x5ff */
+
     /* Create supervisor memory for a stack */
-    te->supermem = malloc(SUPERMEMSIZE);
+    te->supermem = calloc(1, SUPERMEMSIZE);
 
     /* RAM for the structures the system hands out pointers to */
     te->biosram = calloc(1, BIOSRAMSIZE);
@@ -290,7 +326,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* Setup a maximum size user RAM */
     te->size = 0xF9FFFF -0x000900;
-    te->appmem = malloc(te->size);
+    te->appmem = calloc(1, te->size);
     
     /* Copy segment sizes from header */
     header = (struct exec_header*)binary;
@@ -355,7 +391,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     /* TOS defaults the Disk Transfer Address to the command line in the
      * basepage, http://www.yardley.cc/atari/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem */
     te->bp->p_dta = endianize_32(0x800 + offsetof(struct basepage, p_cmdlin));
-    set_cmdlin((void *)te->bp->p_cmdlin, cmdlin, cmdlin_len);
+    memcpy(te->bp->p_cmdlin, cmdlin, TOS_CMDLIN_SIZE);
         
     reset_memory();
     add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x1ff, te->staticmem0);
@@ -407,22 +443,37 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         }
     }
 
+    /* Always a string of its own, so that free_tos_environment can let go of
+     * it without having to know where it came from */
     path = getenv("TOS_BASE_PATH");
     if (path == NULL)
-        te->base_path = "";
+        te->base_path = strdup("");
     else
     {
         int n = strlen(path);
         te->base_path = malloc(n + 2);
-        if (te->base_path == NULL)
+        if (te->base_path != NULL)
         {
-            exit(1);
+            strcpy(te->base_path, path);
+            te->base_path[n] = '/';
+            te->base_path[n+1] = 0;
         }
-        strcpy(te->base_path, path);
-        te->base_path[n] = '/';
-        te->base_path[n+1] = 0;
     }
-    
+
+    if (te->base_path == NULL)
+        return -1;
+
+
+    return 0;
+}
+
+int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size,
+                         const char *cmdlin,
+                         const char *env, uint32_t env_len)
+{
+    if (load_tos_environment(te, binary, size, cmdlin, env, env_len))
+        return -1;
+
     /* Initialize sub-systems */
     gemdos_init(te);
     /* TODO initialization other sub-systems here as well */
@@ -439,10 +490,19 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
 static void start_cpu(struct tos_environment *te)
 {
     uint32_t sp;
+    int i;
 
     m68k_init();
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
     m68k_pulse_reset();
+
+    /* A reset leaves the data and address registers as they were, which for an
+     * application replacing another one is whatever the one before it happened
+     * to be holding. Start it on a machine that has just been switched on. */
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_D0 + i, 0);
+    for (i = 0; i < 7; i++)
+        m68k_set_reg(M68K_REG_A0 + i, 0);
 
     /* TODO is this really correct, or should it be the MSP? If so, why does
      * that not work? */
@@ -455,13 +515,94 @@ static void start_cpu(struct tos_environment *te)
     disable_supervisor_mode();
 }
 
+/* The application the loop is to run once the trap that asked for it has
+ * unwound, see exec_tos_binary */
+static struct {
+    int active;
+    void *binary;
+    uint64_t binary_size;
+    char cmdlin[TOS_CMDLIN_SIZE];
+    char *env;
+    uint32_t env_len;
+} pending;
+
+int exec_tos_binary(const char *host_path, const char *cmdlin,
+                    char *env, uint32_t env_len)
+{
+    void *binary;
+    uint64_t size;
+
+    binary = map_tos_binary(host_path, &size);
+    if (binary == NULL)
+    {
+        free(env);
+        return -1;
+    }
+
+    pending.active = 1;
+    pending.binary = binary;
+    pending.binary_size = size;
+    memcpy(pending.cmdlin, cmdlin, TOS_CMDLIN_SIZE);
+    pending.env = env;
+    pending.env_len = env_len;
+
+    /* Leave the loop, which is where the swap can happen */
+    halt_execution();
+
+    return 0;
+}
+
+/*
+ * Replaces the running application with the one exec_tos_binary was given.
+ *
+ * The emulated machine is built anew, but the process it runs in is not: the
+ * file handles, the drive table and the current directory carry over, which is
+ * what a TOS child inherits and what an Fforce before a Pexec is for.
+ */
+static int replace_application(struct tos_environment *te)
+{
+    int err;
+
+    free_tos_environment(te);
+
+    /* The system RAM went with it, and so did the addresses XBIOS handed out
+     * of it */
+    xbios_reset();
+
+    err = load_tos_environment(te, pending.binary, pending.binary_size,
+                               pending.cmdlin,
+                               pending.env, pending.env_len);
+
+    gemdos_reinit(te);
+
+    unmap_tos_binary(pending.binary, pending.binary_size);
+    free(pending.env);
+    memset(&pending, 0, sizeof pending);
+
+    return err;
+}
+
 void run_tos_environment(struct tos_environment *te)
 {
-    start_cpu(te);
+    for (;;)
+    {
+        start_cpu(te);
 
-    keepongoing = 1;
-    while (keepongoing)
-        m68k_execute(1);
+        keepongoing = 1;
+        while (keepongoing)
+            m68k_execute(1);
+
+        /* Stopping means the application is done, unless it stopped in order
+         * to hand the machine over to another one */
+        if (!pending.active)
+            break;
+
+        if (replace_application(te))
+        {
+            printf("Error: failed to start the program Pexec asked for\n");
+            break;
+        }
+    }
 }
 
 void free_tos_environment(struct tos_environment *te)
@@ -482,6 +623,14 @@ void free_tos_environment(struct tos_environment *te)
     free(te->biosram);
     te->biosram = 0;
 
+    free(te->staticmem0);
+    te->staticmem0 = 0;
+
+    free(te->staticmem1);
+    te->staticmem1 = 0;
+
+    free(te->base_path);
+    te->base_path = 0;
 
     reset_memory();
 }

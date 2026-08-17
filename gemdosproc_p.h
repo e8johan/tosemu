@@ -1,7 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
- * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
- * 
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -18,21 +18,17 @@
  *
  */
 
-#ifndef GEMDOS_H
-#define GEMDOS_H
+#ifndef GEMDOSPROC_P_H
+#define GEMDOSPROC_P_H
 
-#include "tossystem.h"
+#include <stdint.h>
 
 /* GEMDOS functions */
 
-void gemdos_init(struct tos_environment *);
+uint32_t GEMDOS_Pexec();
+uint32_t GEMDOS_Pterm();
+uint32_t GEMDOS_Pterm0();
+uint32_t GEMDOS_Pgetpid();
+uint32_t GEMDOS_Pgetppid();
 
-/* Prepares GEMDOS for an application replacing the one that was running.
- * What belongs to the process rather than to the application - the file
- * handles, the drive table - is left as the new application inherits it. */
-void gemdos_reinit(struct tos_environment *);
-
-void gemdos_free();
-void gemdos_trap();
-
-#endif /* GEMDOS_H */
+#endif /* GEMDOSPROC_P_H */

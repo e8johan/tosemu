@@ -33,7 +33,14 @@
 #define XBIOS_ERROR  (-1) /* Generic error */
 #define XBIOS_EDRVNR (-2) /* Drive not ready */
 
+/* Some XBIOS calls hand back a pointer into the RAM the system reserves with
+ * bios_static_alloc, and remember the address they were given. A new
+ * application gets a new reservation, so those addresses have to go with the
+ * old one - see xbios_reset. */
+
 /* Screen functions, xbiosscreen.c */
+
+void xbios_screen_reset();
 
 uint32_t XBIOS_Getrez();
 uint32_t XBIOS_Physbase();
@@ -61,6 +68,8 @@ uint32_t XBIOS_Dbmsg();
 uint32_t XBIOS_Metainit();
 
 /* Device functions, xbiosdev.c */
+
+void xbios_dev_reset();
 
 uint32_t XBIOS_Rsconf();
 uint32_t XBIOS_Bconmap();

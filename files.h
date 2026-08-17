@@ -1,7 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
- * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
- * 
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -18,21 +18,24 @@
  *
  */
 
-#ifndef GEMDOS_H
-#define GEMDOS_H
+#ifndef FILES_H
+#define FILES_H
 
-#include "tossystem.h"
+#include <stdint.h>
 
-/* GEMDOS functions */
+/* Naming a file the way an application does.
+ *
+ * This is the public face of the GEMDOS path handling, so that Pexec can find
+ * the program it has been asked to run without reaching into GEMDOS
+ * internals. Everything else about a file is private to GEMDOS, see
+ * gemdosfile_p.h.
+ */
 
-void gemdos_init(struct tos_environment *);
+/* Turns a path as an application spells it, drive letter, backslashes and all,
+ * into one the host understands. The buffer takes PATH_MAX+1 bytes.
+ *
+ * Returns 0, or a negative GEMDOS error when there is no such drive.
+ */
+int32_t tos_path_to_host(const char *tos_path, char *host_path);
 
-/* Prepares GEMDOS for an application replacing the one that was running.
- * What belongs to the process rather than to the application - the file
- * handles, the drive table - is left as the new application inherits it. */
-void gemdos_reinit(struct tos_environment *);
-
-void gemdos_free();
-void gemdos_trap();
-
-#endif /* GEMDOS_H */
+#endif /* FILES_H */

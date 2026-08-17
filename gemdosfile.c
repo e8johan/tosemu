@@ -42,6 +42,7 @@
 
 #include "gemdos_p.h"
 #include "gemdosdrive_p.h"
+#include "files.h"
 
 /* File structures ***********************************************************/
 
@@ -501,7 +502,7 @@ static struct volume host_volume = {
  *
  * Returns 0 on success, or a negative GEMDOS error.
  */
-static int32_t path_from_tos(char *tp, char *up)
+static int32_t path_from_tos(const char *tp, char *up)
 {
     const char *rest;
     struct volume *v;
@@ -514,6 +515,13 @@ static int32_t path_from_tos(char *tp, char *up)
     v = drive_volume(drive);
 
     return v->resolve(rest, up);
+}
+
+/* What the rest of the emulator is allowed to know about naming a file, see
+ * files.h */
+int32_t tos_path_to_host(const char *tos_path, char *host_path)
+{
+    return path_from_tos(tos_path, host_path);
 }
 
 uint32_t GEMDOS_Dsetpath()
@@ -1169,12 +1177,34 @@ uint32_t GEMDOS_Fwrite()
     return n;
 }
 
-void gemdos_file_init(struct tos_environment *te)
+/* Releases every search the application left running */
+static void free_dtas(void)
 {
-    int i;
+    while (globhead)
+    {
+        struct globitem *next = globhead->next;
+
+        globfree(globhead->g);
+        free(globhead->g);
+        free(globhead);
+
+        globhead = next;
+    }
+}
+
+void gemdos_file_reinit(struct tos_environment *te)
+{
+    free_dtas();
 
     /* TOS defaults the DTA to the command line in the basepage */
     dta_addr = 0x000880;
+
+    tos_env = te;
+}
+
+void gemdos_file_init(struct tos_environment *te)
+{
+    int i;
 
     /* tosemu presents the host file system as C: */
     drive_register(DRIVE_C, &host_volume);
@@ -1188,7 +1218,7 @@ void gemdos_file_init(struct tos_environment *te)
     handles[1].of = open_stream(stdout);
     handles[2].of = open_stream(stderr);
 
-    tos_env = te;
+    gemdos_file_reinit(te);
 }
 
 void gemdos_file_free()

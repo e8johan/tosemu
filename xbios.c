@@ -323,6 +323,12 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Xbtimer", XBIOS_Xbtimer, 0x1F, FN_HALT, 0}
 };
 
+void xbios_reset()
+{
+    xbios_screen_reset();
+    xbios_dev_reset();
+}
+
 void xbios_trap()
 {
     uint16_t fnct = peek_u16(0);

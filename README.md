@@ -51,7 +51,10 @@ compiler for instance finds its header files through `INCLUDE`.
 
 A TOS command line lives in the basepage and holds no more than 126 characters.
 Arguments beyond that are dropped, which is all a TOS program can be handed.
-Applications that need more, such as linkers, read a control file instead.
+Applications that need more, such as linkers, read a control file instead, and
+compiler drivers use the ARGV convention: a length byte of 127 says the
+arguments were passed through an `ARGV` variable in the environment instead,
+which tosemu carries from one program to the next as it stands.
 
 
 
@@ -99,9 +102,15 @@ Note that Gen only recognises CR and CR/LF as line terminators, so the sources
 in `tests/devpac` are stored with CR/LF endings.
 
 The `tests/lattice` subdirectory does the same for C. It holds Lattice C 5.60
-versions of the `c-*` test cases, built by running Lattice's own `LC1.TTP`,
-`LC2.TTP` and `CLINK.TTP` inside tosemu. Unlike Gen, LC1 is happy with plain LF
-line endings.
+versions of the `c-*` test cases, built by running Lattice's own tools inside
+tosemu. Two of them are built by driving `LC1.TTP`, `LC2.TTP` and `CLINK.TTP`
+one at a time, and one by `LC.TTP`, the driver that looks those passes up along
+`PATH` and `Pexec`s each of them itself, so a failure says which of the two
+broke. Unlike Gen, LC1 is happy with plain LF line endings.
+
+A source file built through the driver has to fit the 8.3 of a TOS file system.
+The command line `LC.TTP` hands a pass is sized for one, and a longer name
+reaches the compiler cut short.
 
 These tests need a Lattice C 5.60 installation. Point `TOS_ROOT` at the
 directory containing `lattice`, which defaults to a `tos_root` next to the
@@ -110,9 +119,11 @@ tosemu source tree:
   `make lattice-check TOS_ROOT=/path/to/tos_root`
 
 LC1 finds the standard headers through the `INCLUDE` environment variable and
-its message file `lc1.lc` along `PATH`, both of which the makefile sets. CLink
-is handed its startup module and library through a control file rather than on
-the command line, which only holds 126 characters.
+its message file `lc1.lc` along `PATH`, both of which the makefile sets, as
+absolute paths - a TOS program expects a `PATH` entry to name a drive rather
+than to be relative to where it was started. CLink is handed its startup module
+and library through a control file rather than on the command line, which only
+holds 126 characters.
 
 
 
@@ -181,6 +192,38 @@ drive starts at the host root. `Dgetpath` hands out such a path, and an
 application that builds a file name from it has to arrive back at the same
 file. A `TOS_BASE_PATH` moves that root, and then the drive begins there
 instead.
+
+Processes
+---------
+
+An application owns the whole of the emulated machine, and everything the
+emulator knows about one - the memory map, the allocator, the handle table - is
+a single set of variables. Two applications cannot share that, so `Pexec` forks
+the host process, and the child throws away the machine it inherited and builds
+a new one around the program it was asked to run. Nested `Pexec` then costs
+nothing extra, and the parent is left exactly as it was.
+
+That also settles what a child inherits, and it lands close to TOS:
+
+- The file handles carry over, positions and all, which is what an `Fforce`
+  before a `Pexec` is for and how a compiler driver hands a pass its output.
+- The environment carries over, or is replaced by the one `Pexec` was given.
+- The current directory does **not** carry back. Real GEMDOS keeps one
+  directory per drive globally, so a child's `Dsetpath` outlives it; here each
+  process has its own, as under MiNT.
+- Memory, the DTA and the screen do not carry over at all. The child gets a
+  machine of its own, so an address the parent allocated means nothing to it.
+
+A program returns a word and `Pexec` reports it with the high word clear, which
+is more than the eight bits of a host exit status. The child writes the value
+to a pipe, and the parent reads it once the child is gone. Nothing arriving
+means the child never reached `Pterm`, and `Pexec` answers `EPLFMT`.
+
+Because the loop has to be able to hand the machine to a different program, it
+lives in `tossystem.c` rather than in `main`. `Pexec` cannot start a program
+from where it is called - that is inside a trap, and inside Musashi, neither of
+which survives the CPU being reset under it - so it records what to run, stops
+the loop, and lets the trap unwind first.
 
 Variable Scope
 --------------

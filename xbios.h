@@ -27,6 +27,10 @@
 
 void xbios_trap();
 
+/* Forgets the system RAM XBIOS handed out, for an application replacing the
+ * one that reserved it */
+void xbios_reset();
+
 uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address);
 void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value);
 
