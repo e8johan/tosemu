@@ -37,6 +37,7 @@
 #include "gemdos.h"
 #include "xbios.h"
 #include "bios.h"
+#include "gem.h"
 
 #include "m68k.h"
 
@@ -684,6 +685,10 @@ static int replace_application(struct tos_environment *te)
      * of it */
     xbios_reset();
 
+    /* The application that introduced itself to GEM is gone, and the one
+     * replacing it has to introduce itself again */
+    gem_reset();
+
     err = load_tos_environment(te, pending.binary, pending.binary_size,
                                pending.cmdlin,
                                pending.env, pending.env_len);
@@ -771,8 +776,7 @@ void m68k_trap(unsigned int vector)
             gemdos_trap();
             break;
         case 0x22: /* trap #$2, AES / VDI */
-            halt_execution();
-            printf("AES / VDI not yet implemented\n");
+            gem_trap();
             break;
         case 0x2d: /* trap #$d, BIOS */
             bios_trap();

@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem
 
 CC=m68k-atari-mint-gcc
 TOSEMU=../bin/tosemu
@@ -15,6 +15,10 @@ test-%: %.s
 
 test-%: %.c
 	$(CC) $< -o $@
+
+# The AES and VDI bindings live in their own library rather than in the C one
+test-c-gem: c-gem.c
+	$(CC) $< -lgem -o $@
 
 check: all
 	$(TOSEMU) test-Pterm0
@@ -48,6 +52,10 @@ check: all
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
+	$(TOSEMU) test-c-gem > out; ! grep -q '^not ok' out
+	# A GEM call that is not implemented stops the emulator, so the count at
+	# the end of the output is what says every check in the file ran
+	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42
 	$(RM) out out2
