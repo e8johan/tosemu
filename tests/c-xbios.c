@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <mint/osbind.h>
+#include <mint/ostruct.h>
 #include <mint/falcon.h>
 #include <mint/trap14.h>
 
@@ -84,6 +85,7 @@ static void survived(const char *name)
 static char buffer[1024];
 static long dspx, dspy;
 static short palette[256];
+static _IOREC *iorec;
 static long rgb[16];
 
 int main(int argc, char **argv)
@@ -190,6 +192,57 @@ int main(int argc, char **argv)
 
     Dbmsg(0x5abc, 0, 0L);
     survived("Dbmsg");
+
+    /* Devices. Settings round trip, traffic is discarded, and nothing
+     * interrupts. */
+    previous = Rsconf(-1, -1, -1, -1, -1, -1);
+    check(Rsconf(-1, -1, -1, -1, -1, -1), previous, "Rsconf -1 changes nothing");
+    Rsconf(-1, -1, 0x12, 0x34, 0x56, 0x78);
+    check(Rsconf(-1, -1, -1, -1, -1, -1), 0x12345678L,
+          "Rsconf reports the registers that were set");
+
+    previous = Bconmap(-1);
+    check(previous, 6, "Bconmap reports the one serial port");
+    check(Bconmap(7), 6, "Bconmap returns the previous mapping");
+    Bconmap(6);
+
+    previous = Setprt(-1);
+    check(Setprt(0x2b), previous, "Setprt returns the previous config");
+    check(Setprt(-1), 0x2b, "Setprt reports what was set");
+    Setprt(previous);
+
+    previous = Kbrate(-1, -1);
+    check(Kbrate(-1, -1), previous, "Kbrate -1 changes nothing");
+    Kbrate(30, 4);
+    check(Kbrate(-1, -1), (30 << 8) | 4, "Kbrate reports what was set");
+
+    /* An empty IOREC: a reader sees head equal to tail and stops */
+    iorec = (_IOREC *)Iorec(0);
+    check(iorec != 0L, 1, "Iorec hands out a record");
+    check(iorec->ibufhd, iorec->ibuftl, "the input buffer reads as empty");
+    check(iorec->ibufsiz != 0, 1, "the input buffer has a size");
+    check((long)Iorec(0), (long)iorec, "Iorec keeps handing out the same one");
+
+    /* Vectors an application can save and restore, even though none is
+     * ever called */
+    check((long)Kbdvbase() != 0L, 1, "Kbdvbase hands out the vectors");
+
+    Midiws(0, buffer);
+    survived("Midiws");
+    Ikbdws(0, buffer);
+    survived("Ikbdws");
+    Initmous(0, 0L, 0L);
+    survived("Initmous");
+    Prtblk(buffer);
+    survived("Prtblk");
+    Mfpint(0, 0L);
+    survived("Mfpint");
+    Jenabint(0);
+    survived("Jenabint");
+    Jdisint(0);
+    survived("Jdisint");
+    Xbtimer(0, 0, 0, 0L);
+    survived("Xbtimer");
 
     /* Floppy and DMA. There is no controller, so every operation on a disk
      * reports that the drive is not ready. Nothing pretends to have written. */

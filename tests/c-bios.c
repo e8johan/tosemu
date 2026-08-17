@@ -65,9 +65,31 @@ int main(int argc, char **argv)
     check((long)mpb.mp_used, 0, "Getmpb clears mp_used");
     check((long)mpb.mp_rover, 0, "Getmpb clears mp_rover");
 
-    /* 0x03 Bconout, and 0x08 Bcostat which must report ready or an
-     * application waiting to send spins forever */
+    /* 0x08 Bcostat - every device must report ready, including the ones that
+     * discard what they are given, or an application waiting for a port to
+     * drain spins for ever */
+    check(Bcostat(0), -1, "Bcostat printer is ready");
+    check(Bcostat(1), -1, "Bcostat serial is ready");
     check(Bcostat(2), -1, "Bcostat console is ready");
+    check(Bcostat(3), -1, "Bcostat MIDI is ready");
+    check(Bcostat(4), -1, "Bcostat keyboard is ready");
+
+    /* 0x01 Bconstat - nothing arrives from a device that is not there */
+    check(Bconstat(0), 0, "Bconstat printer has nothing waiting");
+    check(Bconstat(1), 0, "Bconstat serial has nothing waiting");
+    check(Bconstat(3), 0, "Bconstat MIDI has nothing waiting");
+    check(Bconstat(4), 0, "Bconstat keyboard has nothing waiting");
+
+    /* 0x02 Bconin - and reading one gives nothing rather than blocking */
+    check(Bconin(0), 0, "Bconin printer gives nothing");
+    check(Bconin(3), 0, "Bconin MIDI gives nothing");
+
+    /* 0x03 Bconout - the devices with nowhere to go still accept bytes */
+    Bconout(0, 'x');
+    Bconout(1, 'x');
+    Bconout(3, 'x');
+    Bconout(4, 'x');
+    check(1, 1, "Bconout accepts bytes for every device");
 
     /* 0x04 Rwabs - no sectors behind a host directory */
     check(Rwabs(0, sector, 1, 0, DRIVE_C), E_DRVNR, "Rwabs reports EDRVNR");

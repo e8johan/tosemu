@@ -60,79 +60,87 @@ uint32_t BIOS_Setexc()
     return old;
 }
 
+/* Character devices *********************************************************/
+
+/* The devices an ST addresses through Bconin and friends,
+ * http://toshyp.atari.org/en/003003.html
+ *
+ * Only the console goes anywhere on the host. The others are accepted and
+ * discarded rather than refused: an application writing to the printer should
+ * carry on doing whatever it does next, not stall on a port that will never
+ * become ready.
+ */
+#define DEV_PRT     (0) /* Parallel printer */
+#define DEV_AUX     (1) /* Serial port */
+#define DEV_CON     (2) /* Console, i.e. the screen and keyboard */
+#define DEV_MIDI    (3) /* MIDI port */
+#define DEV_IKBD    (4) /* Keyboard controller */
+#define DEV_RAWCON  (5) /* Console without the line-editing the VT52 does */
+
+static int is_console(uint16_t dev)
+{
+    return dev == DEV_CON || dev == DEV_RAWCON;
+}
+
 uint32_t BIOS_Bconin()
 {
     uint16_t dev = peek_u16(2);
-    
+
     FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", dev);
+        printf("    dev: 0x%x\n", dev);
     }
-    
-    switch(dev)
-    {
-    case 2: /* console */
-        if (console_input_available())
-            return getchar() & 0xff;
-        else
-            return 0;
-    default:
-        return 0; /* TODO support reading from additional devices */
-    }
+
+    if (is_console(dev) && console_input_available())
+        return getchar() & 0xff;
+
+    /* Nothing arrives from a device that is not there */
+    return 0;
 }
 
 uint32_t BIOS_Bconout()
 {
     uint16_t dev = peek_u16(2);
     uint16_t c = peek_u16(4);
-    
+
     FUNC_TRACE_ENTER_ARGS {
         printf("    dev: 0x%x, c: 0x%x '%c'\n", dev, c, c);
     }
-    
-    switch(dev)
-    {
-    case 2: /* console */
+
+    if (is_console(dev))
         putchar(c);
-    default:
-        return 0; /* TODO support writing to additional devices */
-    }
+
+    /* Bytes for the printer, the serial port, MIDI and the keyboard
+     * controller have nowhere to go */
+
+    return 0;
 }
 
 uint32_t BIOS_Bconstat()
 {
     uint16_t dev = peek_u16(2);
-    
+
     FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", dev);
-    }    
-    
-    switch(dev)
-    {
-    case 2: /* console */
-        if (console_input_available())
-            return -1;
-        else
-            return 0;
-    default:
-        return 0; /* TODO support additional devices */
+        printf("    dev: 0x%x\n", dev);
     }
-}            
+
+    if (is_console(dev) && console_input_available())
+        return -1;
+
+    return 0;
+}
 
 uint32_t BIOS_Bcostat()
 {
     uint16_t dev = peek_u16(2);
-    
+
     FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", dev);
+        printf("    dev: 0x%x\n", dev);
     }
-    
-    switch(dev)
-    {
-    case 2: /* console */
-        return -1; /* Always ready */
-    default:
-        return 0; /* TODO support additional devices */
-    }
+
+    /* Every device reports ready, including the ones that discard what they
+     * are given. An application waiting for a port to drain would otherwise
+     * spin for ever on a device that is never going to answer. */
+    return -1;
 }
 
 /* Timer functions ***********************************************************/

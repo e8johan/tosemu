@@ -122,7 +122,6 @@ uint32_t XBIOS_Bioskeys()
 
 /* Table of non-implemented XBIOS functions */
 
-#define XBIOS_Bconmap NULL
 #define XBIOS_Blitmode NULL
 #define XBIOS_Buffoper NULL
 #define XBIOS_Buffptr NULL
@@ -173,28 +172,16 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Flopwr NULL
 #define XBIOS_Giaccess NULL
 #define XBIOS_Gpio NULL
-#define XBIOS_Ikbdws NULL
-#define XBIOS_Initmous NULL
-#define XBIOS_Iorec NULL
-#define XBIOS_Jdisint NULL
-#define XBIOS_Jenabint NULL
-#define XBIOS_Kbdvbase NULL
-#define XBIOS_Kbrate NULL
 #define XBIOS_Locksnd NULL
-#define XBIOS_Mfpint NULL
-#define XBIOS_Midiws NULL
 #define XBIOS_Offgibit NULL
 #define XBIOS_Ongibit NULL
 #define XBIOS_Protobt NULL
-#define XBIOS_Prtblk NULL
 #define XBIOS_Puntaes NULL
-#define XBIOS_Rsconf NULL
 #define XBIOS_Scrdmp NULL
 #define XBIOS_Setbuffer NULL
 #define XBIOS_Setinterrupt NULL
 #define XBIOS_Setmode NULL
 #define XBIOS_Setmontracks NULL
-#define XBIOS_Setprt NULL
 #define XBIOS_Settracks NULL
 #define XBIOS_Sndstatus NULL
 #define XBIOS_Soundcmd NULL
@@ -205,7 +192,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_VsetSync NULL
 #define XBIOS_Vsync NULL
 #define XBIOS_Waveplay NULL
-#define XBIOS_Xbtimer NULL
 
 /* What a table entry does when it has no implementation, see bios.c */
 #define FN_HALT (0) /* Nothing decided yet, halt and say so */

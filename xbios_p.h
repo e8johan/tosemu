@@ -60,4 +60,21 @@ uint32_t XBIOS_NVMaccess();
 uint32_t XBIOS_Dbmsg();
 uint32_t XBIOS_Metainit();
 
+/* Device functions, xbiosdev.c */
+
+uint32_t XBIOS_Rsconf();
+uint32_t XBIOS_Bconmap();
+uint32_t XBIOS_Setprt();
+uint32_t XBIOS_Prtblk();
+uint32_t XBIOS_Midiws();
+uint32_t XBIOS_Ikbdws();
+uint32_t XBIOS_Initmous();
+uint32_t XBIOS_Iorec();
+uint32_t XBIOS_Kbdvbase();
+uint32_t XBIOS_Kbrate();
+uint32_t XBIOS_Mfpint();
+uint32_t XBIOS_Jenabint();
+uint32_t XBIOS_Jdisint();
+uint32_t XBIOS_Xbtimer();
+
 #endif /* XBIOS_P_H */
