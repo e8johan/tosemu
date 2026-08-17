@@ -625,6 +625,7 @@ uint32_t GEMDOS_Fcreate()
     char ubuf[PATH_MAX+1];
     int32_t err;
     int h, fd;
+    FILE *f;
     struct openfile *of;
 
     FUNC_TRACE_ENTER_ARGS {
@@ -644,13 +645,25 @@ uint32_t GEMDOS_Fcreate()
     }
 
     make_dirs(ubuf);
-    fd = creat(ubuf, 0777);
+    /* A file GEMDOS created can be read as well as written, which is what an
+     * application that builds a file and then reads it back relies on */
+    fd = open(ubuf, O_RDWR | O_CREAT | O_TRUNC, 0777);
     if (fd < 0)
         return GEMDOS_EACCDN;
 
-    of = open_stream(fdopen(fd, "w"));
+    f = fdopen(fd, "w+");
+    if (f == NULL)
+    {
+        close(fd);
+        return GEMDOS_EACCDN;
+    }
+
+    of = open_stream(f);
     if (of == NULL)
+    {
+        fclose(f);
         return GEMDOS_ENSMEM;
+    }
 
     h = get_handle(of);
     if (h == -1)
