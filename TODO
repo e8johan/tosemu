@@ -1,21 +1,17 @@
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
-- The Pexec modes that are not there yet, see gemdosproc.c for the ones that
-  are and README for what a child inherits:
-    3, 4 and 6, loading a program without running it and running one that was
-      loaded. Needs the loader generalised to relocate to a Malloced base
-      rather than to the fixed 0x900.
-    5 and 7, creating a basepage and nothing else. No process involved, the
-      caller Mshrinks what it is given.
-    100, 104 and 106, the MiNT modes that do not wait for the child. Needs a
-      table of the children and their code pipes, and Pwait, Pwait3 and
-      Pwaitpid to collect them. Read the status encoding off toshyp rather
-      than assuming it.
-- A child gets the whole of memory rather than a TPA carved out of what its
-  parent left free, so it is handed more than TOS would give it. An
-  application that Mallocs before it Mshrinks gets nothing, where on TOS it
-  would get what the parent released.
+- Mode 7 of Pexec takes the program flags a program header carries, and tosemu
+  acts on none of them, so it is mode 5 with an argument it ignores. Same for
+  the flags in a program header itself.
+- A child of Pexec mode 0 gets the whole of memory rather than a TPA carved
+  out of what its parent left free, so it is handed more than TOS would give
+  it. An application that Mallocs before it Mshrinks gets nothing, where on
+  TOS it would get what the parent released. The modes that load a program
+  into the caller's memory do carve it out, and do not have this.
+- Only sixteen children of the asynchronous Pexec modes can be waited for at
+  once, and Pwait3 ignores the resource usage it is handed, which tosemu has
+  nothing to fill in.
 - The BIOS device handles, -1 CON:, -2 AUX: and -3 PRN:, which GEMDOS accepts
   everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
   tosemu has a console but no serial port or printer, so -1 is the one with an

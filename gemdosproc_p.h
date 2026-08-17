@@ -30,5 +30,8 @@ uint32_t GEMDOS_Pterm();
 uint32_t GEMDOS_Pterm0();
 uint32_t GEMDOS_Pgetpid();
 uint32_t GEMDOS_Pgetppid();
+uint32_t GEMDOS_Pwait();
+uint32_t GEMDOS_Pwait3();
+uint32_t GEMDOS_Pwaitpid();
 
 #endif /* GEMDOSPROC_P_H */

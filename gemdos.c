@@ -198,9 +198,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Pumask GEMDOS_Unknown
 #define GEMDOS_Pursval NULL
 #define GEMDOS_Pvfork NULL
-#define GEMDOS_Pwait NULL
-#define GEMDOS_Pwait3 NULL
-#define GEMDOS_Pwaitpid NULL
 #define GEMDOS_Salert NULL
 #define GEMDOS_Pyield NULL
 #define GEMDOS_Sysconf NULL

@@ -219,6 +219,20 @@ is more than the eight bits of a host exit status. The child writes the value
 to a pipe, and the parent reads it once the child is gone. Nothing arriving
 means the child never reached `Pterm`, and `Pexec` answers `EPLFMT`.
 
+The modes that load a program without running it, and the ones that make room
+for one, take memory from the same allocator `Malloc` uses and build the
+basepage there. They do not copy the environment: the basepage names the block
+the caller gave, or the caller's own, and both of them are looking at the same
+memory, so it has to still be there when the program starts.
+
+The asynchronous MiNT modes leave the child running and answer with its
+process id, which `Pwait`, `Pwait3` and `Pwaitpid` collect. A TOS process id is
+a word where a host one is not, so what an application is told is the host id
+narrowed to fit, and two processes on a busy machine can end up with the same
+one. Those calls report a return value the way MiNT does, moved up a byte
+inside the low word, so only eight bits of it survive where mode 0 reports the
+whole word. A child that outlives its parent is left to the host to reap.
+
 Because the loop has to be able to hand the machine to a different program, it
 lives in `tossystem.c` rather than in `main`. `Pexec` cannot start a program
 from where it is called - that is inside a trap, and inside Musashi, neither of
