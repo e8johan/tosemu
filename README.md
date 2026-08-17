@@ -104,6 +104,28 @@ messages. This is a great tool when debugging a subsystem, e.g. bios or aes.
 There is no dependecy to `config.h`, so a clean build is needed for changes to 
 take effect.
 
+Unimplemented functions
+-----------------------
+
+No documented BIOS or XBIOS call halts the emulator. An application that asks
+about hardware tosemu does not have gets the documented answer meaning "this
+did not happen", which is not the same as pretending it succeeded: `Flopwr`
+reports that the drive is not ready rather than that it wrote something.
+
+Those answers live in the function tables in `bios.c` and `xbios.c` rather than
+in a function each. A row carrying `FN_STUB` and a value is the whole of that
+call's behaviour, and the trace says which ones an application relied on:
+
+    Stubbed Blitmode (0x40)
+    Return from Blitmode: 0 = 0x0
+
+A row carrying `FN_HALT` with no implementation still stops the emulator, as
+does any function id that is not in the table at all. Both mean an application
+went somewhere nobody has looked at yet.
+
+Where a call has to answer through a pointer rather than in D0, it needs a real
+implementation even when the answer is "nothing" - see `Getmpb` in `bios.c`.
+
 Endianess
 ---------
 
@@ -137,7 +159,11 @@ In order to provide abstraction and separation of namespaces, different
 subsystems are separated into different code modules. Header files ending with 
 `_p.h` are local to such a namespace, i.e. `gemdos_p.h` is local to GEMDOS. 
 Depending on the complexity of the subsystems, further subdivision is possible, 
-i.e. GEMDOS is split into multiple modules while BIOS is not.
+i.e. GEMDOS and XBIOS are split into multiple modules while BIOS is not.
+
+A subsystem that another one has to ask something of gets a second, public
+header holding just that much. `drives.h` is the whole of what BIOS may know
+about the GEMDOS drive table, which is otherwise private to `gemdosdrive_p.h`.
 
 
 
