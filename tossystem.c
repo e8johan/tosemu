@@ -102,6 +102,10 @@ uint32_t bios_static_alloc(uint32_t len)
     return address;
 }
 
+/* The basepage holds the command line as a length byte, the text, and a
+ * terminating zero, so this is the longest text that fits */
+#define CMDLIN_MAX (sizeof(((struct basepage *)0)->p_cmdlin) - 2)
+
 static void copy_cmdlin(char *dest, int argc, char **argv)
 {
     char *start = dest;
@@ -109,12 +113,26 @@ static void copy_cmdlin(char *dest, int argc, char **argv)
 
     for (i = 0; i < argc; i++)
     {
+        int len = strlen(argv[i]);
+
+        /* The space separating the first argument from the program name ends
+         * up where the length byte goes, so n counts that byte as well, and
+         * appending this argument leaves n+len characters of text. An argument
+         * that does not fit is dropped along with the ones after it, which is
+         * all a TOS program can be handed. */
+        if (n + len > CMDLIN_MAX)
+            break;
+
         dest[n] = ' ';
         n++;
-        strcpy(dest+n, argv[i]);
-        n += strlen(argv[i]);
+        memcpy(dest+n, argv[i], len);
+        n += len;
     }
 
+    if (n == 0)
+        n = 1; /* An empty command line is still a length byte and a zero */
+
+    dest[n] = 0;
     *start = n-1;
 }
 
@@ -225,7 +243,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
     
-    /* Relocating the loaded binary, must take place after the "userram" has 
+    /* Relocating the loaded binary, must take place after the "userram" has
     * been registered, as it takes place in the memory of the tos machine */
     if (!header->absflag) {
         /* Move ptr to the start of the relocation data */
