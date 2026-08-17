@@ -39,6 +39,20 @@ struct mem_area {
 struct mem_area *mem_list;
 static uint32_t mem_allocatable_top;
 
+/* How much room is left above the last block.
+ *
+ * The top is an address rather than a size, so a block reaching it leaves
+ * nothing rather than the whole address space that subtracting the other way
+ * round would appear to give.
+ */
+static uint32_t space_above(uint32_t prev_top)
+{
+    if (prev_top >= mem_allocatable_top)
+        return 0;
+
+    return mem_allocatable_top - prev_top;
+}
+
 static struct mem_area * find_mem_area(uint32_t base, struct mem_area **prevptr)
 {
     struct mem_area *ptr = mem_list;
@@ -108,7 +122,11 @@ uint32_t GEMDOS_Malloc()
     uint32_t prev_top, max_free;
     
     int32_t newsiz = peek_s32(2);
-    
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    newsiz: %d (0x%x)\n", newsiz, newsiz);
+    }
+
     if (newsiz == -1)
     {
         /* Simply locate largest gap */
@@ -137,8 +155,8 @@ uint32_t GEMDOS_Malloc()
         else
             prev_top = 0x900;
         
-        if (max_free < mem_allocatable_top - prev_top)
-            max_free = mem_allocatable_top - prev_top;
+        if (max_free < space_above(prev_top))
+            max_free = space_above(prev_top);
         
         return max_free;
     }
@@ -182,7 +200,7 @@ uint32_t GEMDOS_Malloc()
         else
             prev_top = 0x900;
         
-        if (newsiz < mem_allocatable_top - prev_top)
+        if (newsiz < space_above(prev_top))
         {
             /* Large enough gap found at the end (which can be the start) */
             
@@ -243,7 +261,8 @@ void gemdos_mem_init(struct tos_environment *te)
      * base page setup from tossystem */
     ma->base = 0x800; 
     ma->len = te->size + 0x100; /* Size + basepage */
-    mem_allocatable_top = ma->len;
+    /* The address the TPA ends at, which is where the initial block ends */
+    mem_allocatable_top = ma->base + ma->len;
     
     mem_list = ma;
 }
