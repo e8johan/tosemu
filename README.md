@@ -45,6 +45,14 @@ It is also possible to use TOSEMU with the binfmt support in the Linux kernel. I
 
 This will allow you to execute TOS binaries as if they where native.
 
+The application is handed the environment tosemu was started with, so a
+variable an application looks for can be set from the host shell. Lattice C's
+compiler for instance finds its header files through `INCLUDE`.
+
+A TOS command line lives in the basepage and holds no more than 126 characters.
+Arguments beyond that are dropped, which is all a TOS program can be handed.
+Applications that need more, such as linkers, read a control file instead.
+
 
 
 Road Map

@@ -102,6 +102,50 @@ uint32_t bios_static_alloc(uint32_t len)
     return address;
 }
 
+/*
+ * Builds the environment the application finds through its basepage, and
+ * returns the address of it.
+ *
+ * TOS stores it as a run of zero terminated NAME=value strings ended by an
+ * empty one. tosemu passes on the environment it was started with, so that a
+ * variable an application looks for can be set from the host shell - Lattice C
+ * finds its header files through INCLUDE.
+ */
+static uint32_t copy_environment(void)
+{
+    extern char **environ;
+    uint32_t base, addr;
+    uint32_t len = 1; /* The empty string ending the block */
+    int i, j;
+
+    for (i = 0; environ[i]; i++)
+        len += strlen(environ[i]) + 1;
+
+    base = bios_static_alloc(len);
+    if (base == 0)
+    {
+        /* More than the system has room for. An application still needs an
+         * environment to look in, so hand it an empty one. */
+        base = bios_static_alloc(1);
+        if (base == 0)
+            return 0;
+
+        m68k_write_memory_8(base, 0);
+        return base;
+    }
+
+    addr = base;
+    for (i = 0; environ[i]; i++)
+    {
+        for (j = 0; environ[i][j]; j++)
+            m68k_write_memory_8(addr++, environ[i][j]);
+        m68k_write_memory_8(addr++, 0);
+    }
+    m68k_write_memory_8(addr, 0);
+
+    return base;
+}
+
 /* The basepage holds the command line as a length byte, the text, and a
  * terminating zero, so this is the longest text that fits */
 #define CMDLIN_MAX (sizeof(((struct basepage *)0)->p_cmdlin) - 2)
@@ -227,8 +271,6 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     te->bp->p_bbase = endianize_32(endianize_32(te->bp->p_dbase) + endianize_32(te->bp->p_dlen));
     te->bp->p_blen = endianize_32(te->bsize);
     te->bp->p_parent = 0;
-    te->bp->p_env = endianize_32(0x000830); /* TODO, this is cheating, pointing at the undefined, zeroed, memory,
-                                             * which happens to be a valid, empty, environment */
     /* TOS defaults the Disk Transfer Address to the command line in the
      * basepage, http://www.yardley.cc/atari/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem */
     te->bp->p_dta = endianize_32(0x800 + offsetof(struct basepage, p_cmdlin));
@@ -242,7 +284,12 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
-    
+
+    /* The environment belongs to the parent process rather than to the
+     * application, so it goes in system RAM. This has to wait until the memory
+     * areas are registered, as it is written through the emulated memory. */
+    te->bp->p_env = endianize_32(copy_environment());
+
     /* Relocating the loaded binary, must take place after the "userram" has
     * been registered, as it takes place in the memory of the tos machine */
     if (!header->absflag) {
