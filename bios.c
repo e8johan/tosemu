@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -133,6 +134,16 @@ uint32_t BIOS_Bcostat()
 #define BIOS_Rwabs NULL
 #define BIOS_Tickcal NULL
 
+/* What a table entry does when it has no implementation.
+ *
+ * A machine tosemu does not emulate still has to answer, or the application
+ * dies on a call it only made to ask a question. A stubbed function returns
+ * the documented value that tells the application the operation did not
+ * happen, which is not the same as pretending it succeeded.
+ */
+#define FN_HALT (0) /* Nothing decided yet, halt and say so */
+#define FN_STUB (1) /* No host equivalent, answer with ret */
+
 /* BIOS function table according to
  * http://www.yardley.cc/atari/compendium/atari-compendium-BIOS-Function-Reference.htm
  */
@@ -140,46 +151,58 @@ struct BIOS_function {
     char *name;
     uint32_t (*fnct)();
     uint16_t id;
+    uint8_t kind;
+    int32_t ret;
 };
 
 struct BIOS_function BIOS_functions[] = {
-    {"Bconin", BIOS_Bconin, 0x02},
-    {"Bconout", BIOS_Bconout, 0x03},
-    {"Bconstat", BIOS_Bconstat, 0x01},
-    {"Bcostat", BIOS_Bcostat, 0x08},
-    {"Drvmap", BIOS_Drvmap, 0x0A},
-    {"Getbpb", BIOS_Getbpb, 0x07},
-    {"Getmpb", BIOS_Getmpb, 0x00},
-    {"Kbshift", BIOS_Kbshift, 0x0B},
-    {"Mediach", BIOS_Mediach, 0x09},
-    {"Rwabs", BIOS_Rwabs, 0x04},
-    {"Setexc", BIOS_Setexc, 0x05},
-    {"Tickcal", BIOS_Tickcal, 0x06}
+    {"Bconin", BIOS_Bconin, 0x02, FN_HALT, 0},
+    {"Bconout", BIOS_Bconout, 0x03, FN_HALT, 0},
+    {"Bconstat", BIOS_Bconstat, 0x01, FN_HALT, 0},
+    {"Bcostat", BIOS_Bcostat, 0x08, FN_HALT, 0},
+    {"Drvmap", BIOS_Drvmap, 0x0A, FN_HALT, 0},
+    {"Getbpb", BIOS_Getbpb, 0x07, FN_HALT, 0},
+    {"Getmpb", BIOS_Getmpb, 0x00, FN_HALT, 0},
+    {"Kbshift", BIOS_Kbshift, 0x0B, FN_HALT, 0},
+    {"Mediach", BIOS_Mediach, 0x09, FN_HALT, 0},
+    {"Rwabs", BIOS_Rwabs, 0x04, FN_HALT, 0},
+    {"Setexc", BIOS_Setexc, 0x05, FN_HALT, 0},
+    {"Tickcal", BIOS_Tickcal, 0x06, FN_HALT, 0}
 };
 
 void bios_trap()
 {
     uint16_t fnct = peek_u16(0);
     int i;
-    
+
     for(i=0; i<sizeof(BIOS_functions)/sizeof(struct BIOS_function); ++i) {
-        if (BIOS_functions[i].id == fnct) {
-            if (BIOS_functions[i].fnct) {
-                uint32_t r = BIOS_functions[i].fnct();
+        struct BIOS_function *f = &BIOS_functions[i];
+        uint32_t r;
+
+        if (f->id != fnct)
+            continue;
+
+        if (f->fnct) {
+            r = f->fnct();
+        } else if (f->kind == FN_STUB) {
+            r = f->ret;
 #ifdef ENABLE_BIOS_TRACE
-                printf("Return from %s: %d = 0x%x\n",
-                       BIOS_functions[i].name, r, r);
+            printf("Stubbed %s (0x%x)\n", f->name, fnct);
 #endif
-                m68k_set_reg(M68K_REG_D0, r);
-            } else {
-                halt_execution();
-                printf("BIOS %s (0x%x) not implemented\n", BIOS_functions[i].name, fnct);
-            }
-            
+        } else {
+            halt_execution();
+            printf("BIOS %s (0x%x) not implemented\n", f->name, fnct);
             return;
         }
+
+#ifdef ENABLE_BIOS_TRACE
+        printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+#endif
+        m68k_set_reg(M68K_REG_D0, r);
+
+        return;
     }
-            
+
     halt_execution();
     printf("BIOS Unknown function called 0x%x\n", fnct);
 }

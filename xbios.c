@@ -270,6 +270,10 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Waveplay NULL
 #define XBIOS_Xbtimer NULL
 
+/* What a table entry does when it has no implementation, see bios.c */
+#define FN_HALT (0) /* Nothing decided yet, halt and say so */
+#define FN_STUB (1) /* No host equivalent, answer with ret */
+
 /* XBIOS function table according to
  * http://www.yardley.cc/atari/compendium/atari-compendium-XBIOS-Function-Reference.htm
  */
@@ -277,141 +281,158 @@ struct XBIOS_function {
     char *name;
     uint32_t (*fnct)();
     uint16_t id;
+    uint8_t kind;
+    int32_t ret;
 };
 
 struct XBIOS_function XBIOS_functions[] = {
-    {"Bconmap", XBIOS_Bconmap, 0x2C},
-    {"Bioskeys", XBIOS_Bioskeys, 0x18},
-    {"Blitmode", XBIOS_Blitmode, 0x40},
-    {"Buffoper", XBIOS_Buffoper, 0x88},
-    {"Buffptr", XBIOS_Buffptr, 0x8D},
-    {"Cursconf", XBIOS_Cursconf, 0x15},
-    {"Dbmsg", XBIOS_Dbmsg, 0x0B},
-    {"Devconnect", XBIOS_Devconnect, 0x8B},
-    {"DMAread", XBIOS_DMAread, 0x2A},
-    {"DMAwrite", XBIOS_DMAwrite, 0x2B},
-    {"Dosound", XBIOS_Dosound, 0x20},
-    {"Dsp_Available", XBIOS_Dsp_Available, 0x6A},
-    {"Dsp_BlkBytes", XBIOS_Dsp_BlkBytes, 0x7C},
-    {"Dsp_BlkHandShake", XBIOS_Dsp_BlkHandShake, 0x61},
-    {"Dsp_BlkUnpacked", XBIOS_Dsp_BlkUnpacked, 0x62},
-    {"Dsp_BlkWords", XBIOS_Dsp_BlkWords, 0x7B},
-    {"Dsp_DoBlock", XBIOS_Dsp_DoBlock, 0x60},
-    {"Dsp_ExecBoot", XBIOS_Dsp_ExecBoot, 0x6E},
-    {"Dsp_ExecProg", XBIOS_Dsp_ExecProg, 0x6D},
-    {"Dsp_FlushSubroutines", XBIOS_Dsp_FlushSubroutines, 0x73},
-    {"Dsp_GetProgAbility", XBIOS_Dsp_GetProgAbility, 0x72},
-    {"Dsp_GetWordSize", XBIOS_Dsp_GetWordSize, 0x67},
-    {"Dsp_Hf0", XBIOS_Dsp_Hf0, 0x77},
-    {"Dsp_Hf1", XBIOS_Dsp_Hf1, 0x78},
-    {"Dsp_Hf2", XBIOS_Dsp_Hf2, 0x79},
-    {"Dsp_Hf3", XBIOS_Dsp_Hf3, 0x7A},
-    {"Dsp_HStat", XBIOS_Dsp_HStat, 0x7D},
-    {"Dsp_InqSubrAbility", XBIOS_Dsp_InqSubrAbility, 0x75},
-    {"Dsp_InStream", XBIOS_Dsp_InStream, 0x63},
-    {"Dsp_IOStream", XBIOS_Dsp_IOStream, 0x65},
-    {"Dsp_LoadProg", XBIOS_Dsp_LoadProg, 0x6C},
-    {"Dsp_LoadSubroutine", XBIOS_Dsp_LoadSubroutine, 0x74},
-    {"Dsp_Lock", XBIOS_Dsp_Lock, 0x68},
-    {"Dsp_LodToBinary", XBIOS_Dsp_LodToBinary, 0x6F},
-    {"Dsp_MultBlocks", XBIOS_Dsp_MultBlocks, 0x7F},
-    {"Dsp_OutStream", XBIOS_Dsp_OutStream, 0x64},
-    {"Dsp_RemoveInterrupts", XBIOS_Dsp_RemoveInterrupts, 0x66},
-    {"Dsp_RequestUniqueAbility", XBIOS_Dsp_RequestUniqueAbility, 0x71},
-    {"Dsp_Reserve", XBIOS_Dsp_Reserve, 0x6B},
-    {"Dsp_RunSubroutine", XBIOS_Dsp_RunSubroutine, 0x76},
-    {"Dsp_SetVectors", XBIOS_Dsp_SetVectors, 0x7E},
-    {"Dsp_TriggerHC", XBIOS_Dsp_TriggerHC, 0x70},
-    {"Dsp_Unlock", XBIOS_Dsp_Unlock, 0x69},
-    {"Dsptristate", XBIOS_Dsptristate, 0x89},
-    {"EgetPalette", XBIOS_EgetPalette, 0x55},
-    {"EgetShift", XBIOS_EgetShift, 0x51},
-    {"EsetBank", XBIOS_EsetBank, 0x52},
-    {"EsetColor", XBIOS_EsetColor, 0x53},
-    {"EsetGray", XBIOS_EsetGray, 0x56},
-    {"EsetPalette", XBIOS_EsetPalette, 0x54},
-    {"EsetShift", XBIOS_EsetShift, 0x50},
-    {"EsetSmear", XBIOS_EsetSmear, 0x57},
-    {"Flopfmt", XBIOS_Flopfmt, 0x0A},
-    {"Floprate", XBIOS_Floprate, 0x29},
-    {"Floprd", XBIOS_Floprd, 0x08},
-    {"Flopver", XBIOS_Flopver, 0x13},
-    {"Flopwr", XBIOS_Flopwr, 0x09},
-    {"Getrez",      XBIOS_Getrez, 0x04},
-    {"Gettime", XBIOS_Gettime, 0x17},
-    {"Giaccess", XBIOS_Giaccess, 0x1C},
-    {"Gpio", XBIOS_Gpio, 0x8A},
-    {"Ikbdws", XBIOS_Ikbdws, 0x19},
-    {"Initmous", XBIOS_Initmous, 0x00},
-    {"Iorec", XBIOS_Iorec, 0x0E},
-    {"Jdisint", XBIOS_Jdisint, 0x1A},
-    {"Jenabint", XBIOS_Jenabint, 0x1B},
-    {"Kbdvbase", XBIOS_Kbdvbase, 0x22},
-    {"Kbrate", XBIOS_Kbrate, 0x23},
-    {"Keytbl", XBIOS_Keytbl, 0x10},
-    {"Locksnd", XBIOS_Locksnd, 0x80},
-    {"Logbase", XBIOS_Logbase, 0x03},
-    {"Metainit", XBIOS_Metainit, 0x30},
-    {"Mfpint", XBIOS_Mfpint, 0x0D},
-    {"Midiws", XBIOS_Midiws, 0x0C},
-    {"NVMaccess", XBIOS_NVMaccess, 0x2E},
-    {"Offgibit", XBIOS_Offgibit, 0x1D},
-    {"Ongibit", XBIOS_Ongibit, 0x1E},
-    {"Physbase", XBIOS_Physbase, 0x02},
-    {"Protobt", XBIOS_Protobt, 0x12},
-    {"Prtblk", XBIOS_Prtblk, 0x24},
-    {"Puntaes", XBIOS_Puntaes, 0x27},
-    {"Random", XBIOS_Random, 0x11},
-    {"Rsconf", XBIOS_Rsconf, 0x0F},
-    {"Scrdmp", XBIOS_Scrdmp, 0x14},
-    {"Setbuffer", XBIOS_Setbuffer, 0x83},
-    {"Setcolor", XBIOS_Setcolor, 0x07},
-    {"Setinterrupt", XBIOS_Setinterrupt, 0x87},
-    {"Setmode", XBIOS_Setmode, 0x84},
-    {"Setmontracks", XBIOS_Setmontracks, 0x86},
-    {"Setpalette", XBIOS_Setpalette, 0x06},
-    {"Setprt", XBIOS_Setprt, 0x21},
+    {"Bconmap", XBIOS_Bconmap, 0x2C, FN_HALT, 0},
+    {"Bioskeys", XBIOS_Bioskeys, 0x18, FN_HALT, 0},
+    {"Blitmode", XBIOS_Blitmode, 0x40, FN_HALT, 0},
+    {"Buffoper", XBIOS_Buffoper, 0x88, FN_HALT, 0},
+    {"Buffptr", XBIOS_Buffptr, 0x8D, FN_HALT, 0},
+    {"Cursconf", XBIOS_Cursconf, 0x15, FN_HALT, 0},
+    {"Dbmsg", XBIOS_Dbmsg, 0x0B, FN_HALT, 0},
+    {"Devconnect", XBIOS_Devconnect, 0x8B, FN_HALT, 0},
+    {"DMAread", XBIOS_DMAread, 0x2A, FN_HALT, 0},
+    {"DMAwrite", XBIOS_DMAwrite, 0x2B, FN_HALT, 0},
+    {"Dosound", XBIOS_Dosound, 0x20, FN_HALT, 0},
+    {"Dsp_Available", XBIOS_Dsp_Available, 0x6A, FN_HALT, 0},
+    {"Dsp_BlkBytes", XBIOS_Dsp_BlkBytes, 0x7C, FN_HALT, 0},
+    {"Dsp_BlkHandShake", XBIOS_Dsp_BlkHandShake, 0x61, FN_HALT, 0},
+    {"Dsp_BlkUnpacked", XBIOS_Dsp_BlkUnpacked, 0x62, FN_HALT, 0},
+    {"Dsp_BlkWords", XBIOS_Dsp_BlkWords, 0x7B, FN_HALT, 0},
+    {"Dsp_DoBlock", XBIOS_Dsp_DoBlock, 0x60, FN_HALT, 0},
+    {"Dsp_ExecBoot", XBIOS_Dsp_ExecBoot, 0x6E, FN_HALT, 0},
+    {"Dsp_ExecProg", XBIOS_Dsp_ExecProg, 0x6D, FN_HALT, 0},
+    {"Dsp_FlushSubroutines", XBIOS_Dsp_FlushSubroutines, 0x73, FN_HALT, 0},
+    {"Dsp_GetProgAbility", XBIOS_Dsp_GetProgAbility, 0x72, FN_HALT, 0},
+    {"Dsp_GetWordSize", XBIOS_Dsp_GetWordSize, 0x67, FN_HALT, 0},
+    {"Dsp_Hf0", XBIOS_Dsp_Hf0, 0x77, FN_HALT, 0},
+    {"Dsp_Hf1", XBIOS_Dsp_Hf1, 0x78, FN_HALT, 0},
+    {"Dsp_Hf2", XBIOS_Dsp_Hf2, 0x79, FN_HALT, 0},
+    {"Dsp_Hf3", XBIOS_Dsp_Hf3, 0x7A, FN_HALT, 0},
+    {"Dsp_HStat", XBIOS_Dsp_HStat, 0x7D, FN_HALT, 0},
+    {"Dsp_InqSubrAbility", XBIOS_Dsp_InqSubrAbility, 0x75, FN_HALT, 0},
+    {"Dsp_InStream", XBIOS_Dsp_InStream, 0x63, FN_HALT, 0},
+    {"Dsp_IOStream", XBIOS_Dsp_IOStream, 0x65, FN_HALT, 0},
+    {"Dsp_LoadProg", XBIOS_Dsp_LoadProg, 0x6C, FN_HALT, 0},
+    {"Dsp_LoadSubroutine", XBIOS_Dsp_LoadSubroutine, 0x74, FN_HALT, 0},
+    {"Dsp_Lock", XBIOS_Dsp_Lock, 0x68, FN_HALT, 0},
+    {"Dsp_LodToBinary", XBIOS_Dsp_LodToBinary, 0x6F, FN_HALT, 0},
+    {"Dsp_MultBlocks", XBIOS_Dsp_MultBlocks, 0x7F, FN_HALT, 0},
+    {"Dsp_OutStream", XBIOS_Dsp_OutStream, 0x64, FN_HALT, 0},
+    {"Dsp_RemoveInterrupts", XBIOS_Dsp_RemoveInterrupts, 0x66, FN_HALT, 0},
+    {"Dsp_RequestUniqueAbility", XBIOS_Dsp_RequestUniqueAbility, 0x71, FN_HALT, 0},
+    {"Dsp_Reserve", XBIOS_Dsp_Reserve, 0x6B, FN_HALT, 0},
+    {"Dsp_RunSubroutine", XBIOS_Dsp_RunSubroutine, 0x76, FN_HALT, 0},
+    {"Dsp_SetVectors", XBIOS_Dsp_SetVectors, 0x7E, FN_HALT, 0},
+    {"Dsp_TriggerHC", XBIOS_Dsp_TriggerHC, 0x70, FN_HALT, 0},
+    {"Dsp_Unlock", XBIOS_Dsp_Unlock, 0x69, FN_HALT, 0},
+    {"Dsptristate", XBIOS_Dsptristate, 0x89, FN_HALT, 0},
+    {"EgetPalette", XBIOS_EgetPalette, 0x55, FN_HALT, 0},
+    {"EgetShift", XBIOS_EgetShift, 0x51, FN_HALT, 0},
+    {"EsetBank", XBIOS_EsetBank, 0x52, FN_HALT, 0},
+    {"EsetColor", XBIOS_EsetColor, 0x53, FN_HALT, 0},
+    {"EsetGray", XBIOS_EsetGray, 0x56, FN_HALT, 0},
+    {"EsetPalette", XBIOS_EsetPalette, 0x54, FN_HALT, 0},
+    {"EsetShift", XBIOS_EsetShift, 0x50, FN_HALT, 0},
+    {"EsetSmear", XBIOS_EsetSmear, 0x57, FN_HALT, 0},
+    {"Flopfmt", XBIOS_Flopfmt, 0x0A, FN_HALT, 0},
+    {"Floprate", XBIOS_Floprate, 0x29, FN_HALT, 0},
+    {"Floprd", XBIOS_Floprd, 0x08, FN_HALT, 0},
+    {"Flopver", XBIOS_Flopver, 0x13, FN_HALT, 0},
+    {"Flopwr", XBIOS_Flopwr, 0x09, FN_HALT, 0},
+    {"Getrez",      XBIOS_Getrez, 0x04, FN_HALT, 0},
+    {"Gettime", XBIOS_Gettime, 0x17, FN_HALT, 0},
+    {"Giaccess", XBIOS_Giaccess, 0x1C, FN_HALT, 0},
+    {"Gpio", XBIOS_Gpio, 0x8A, FN_HALT, 0},
+    {"Ikbdws", XBIOS_Ikbdws, 0x19, FN_HALT, 0},
+    {"Initmous", XBIOS_Initmous, 0x00, FN_HALT, 0},
+    {"Iorec", XBIOS_Iorec, 0x0E, FN_HALT, 0},
+    {"Jdisint", XBIOS_Jdisint, 0x1A, FN_HALT, 0},
+    {"Jenabint", XBIOS_Jenabint, 0x1B, FN_HALT, 0},
+    {"Kbdvbase", XBIOS_Kbdvbase, 0x22, FN_HALT, 0},
+    {"Kbrate", XBIOS_Kbrate, 0x23, FN_HALT, 0},
+    {"Keytbl", XBIOS_Keytbl, 0x10, FN_HALT, 0},
+    {"Locksnd", XBIOS_Locksnd, 0x80, FN_HALT, 0},
+    {"Logbase", XBIOS_Logbase, 0x03, FN_HALT, 0},
+    {"Metainit", XBIOS_Metainit, 0x30, FN_HALT, 0},
+    {"Mfpint", XBIOS_Mfpint, 0x0D, FN_HALT, 0},
+    {"Midiws", XBIOS_Midiws, 0x0C, FN_HALT, 0},
+    {"NVMaccess", XBIOS_NVMaccess, 0x2E, FN_HALT, 0},
+    {"Offgibit", XBIOS_Offgibit, 0x1D, FN_HALT, 0},
+    {"Ongibit", XBIOS_Ongibit, 0x1E, FN_HALT, 0},
+    {"Physbase", XBIOS_Physbase, 0x02, FN_HALT, 0},
+    {"Protobt", XBIOS_Protobt, 0x12, FN_HALT, 0},
+    {"Prtblk", XBIOS_Prtblk, 0x24, FN_HALT, 0},
+    {"Puntaes", XBIOS_Puntaes, 0x27, FN_HALT, 0},
+    {"Random", XBIOS_Random, 0x11, FN_HALT, 0},
+    {"Rsconf", XBIOS_Rsconf, 0x0F, FN_HALT, 0},
+    {"Scrdmp", XBIOS_Scrdmp, 0x14, FN_HALT, 0},
+    {"Setbuffer", XBIOS_Setbuffer, 0x83, FN_HALT, 0},
+    {"Setcolor", XBIOS_Setcolor, 0x07, FN_HALT, 0},
+    {"Setinterrupt", XBIOS_Setinterrupt, 0x87, FN_HALT, 0},
+    {"Setmode", XBIOS_Setmode, 0x84, FN_HALT, 0},
+    {"Setmontracks", XBIOS_Setmontracks, 0x86, FN_HALT, 0},
+    {"Setpalette", XBIOS_Setpalette, 0x06, FN_HALT, 0},
+    {"Setprt", XBIOS_Setprt, 0x21, FN_HALT, 0},
     /* VsetScreen shares this id. It is the Falcon superset of the same
      * call and the two cannot be told apart from the stack, so Setscreen
      * answers for both. */
-    {"Setscreen", XBIOS_Setscreen, 0x05},
-    {"Settime", XBIOS_Settime, 0x16},
-    {"Settracks", XBIOS_Settracks, 0x85},
-    {"Sndstatus", XBIOS_Sndstatus, 0x8C},
-    {"Soundcmd", XBIOS_Soundcmd, 0x82},
-    {"Ssbrk", XBIOS_Ssbrk, 0x01},
-    {"Supexec", XBIOS_Supexec, 0x26},
-    {"Unlocksnd", XBIOS_Unlocksnd, 0x81},
-    {"VgetMonitor", XBIOS_VgetMonitor, 0x59},
-    {"VgetRGB", XBIOS_VgetRGB, 0x5E},
-    {"VgetSize", XBIOS_VgetSize, 0x5B},
-    {"VsetMask", XBIOS_VsetMask, 0x92},
-    {"VsetMode", XBIOS_VsetMode, 0x58},
-    {"VsetRGB", XBIOS_VsetRGB, 0x5D},
-    {"VsetSync", XBIOS_VsetSync, 0x5A},
-    {"Vsync", XBIOS_Vsync, 0x25},
-    {"Waveplay", XBIOS_Waveplay, 0xA5},
-    {"Xbtimer", XBIOS_Xbtimer, 0x1F}
+    {"Setscreen", XBIOS_Setscreen, 0x05, FN_HALT, 0},
+    {"Settime", XBIOS_Settime, 0x16, FN_HALT, 0},
+    {"Settracks", XBIOS_Settracks, 0x85, FN_HALT, 0},
+    {"Sndstatus", XBIOS_Sndstatus, 0x8C, FN_HALT, 0},
+    {"Soundcmd", XBIOS_Soundcmd, 0x82, FN_HALT, 0},
+    {"Ssbrk", XBIOS_Ssbrk, 0x01, FN_HALT, 0},
+    {"Supexec", XBIOS_Supexec, 0x26, FN_HALT, 0},
+    {"Unlocksnd", XBIOS_Unlocksnd, 0x81, FN_HALT, 0},
+    {"VgetMonitor", XBIOS_VgetMonitor, 0x59, FN_HALT, 0},
+    {"VgetRGB", XBIOS_VgetRGB, 0x5E, FN_HALT, 0},
+    {"VgetSize", XBIOS_VgetSize, 0x5B, FN_HALT, 0},
+    {"VsetMask", XBIOS_VsetMask, 0x92, FN_HALT, 0},
+    {"VsetMode", XBIOS_VsetMode, 0x58, FN_HALT, 0},
+    {"VsetRGB", XBIOS_VsetRGB, 0x5D, FN_HALT, 0},
+    {"VsetSync", XBIOS_VsetSync, 0x5A, FN_HALT, 0},
+    {"Vsync", XBIOS_Vsync, 0x25, FN_HALT, 0},
+    {"Waveplay", XBIOS_Waveplay, 0xA5, FN_HALT, 0},
+    {"Xbtimer", XBIOS_Xbtimer, 0x1F, FN_HALT, 0}
 };
 
 void xbios_trap()
 {
     uint16_t fnct = peek_u16(0);
     int i;
-    
+
     for(i=0; i<sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
-        if (XBIOS_functions[i].id == fnct) {
-            if (XBIOS_functions[i].fnct) {
-                m68k_set_reg(M68K_REG_D0, XBIOS_functions[i].fnct());
-            } else {
-                halt_execution();
-                printf("XBIOS %s (0x%x) not implemented\n", XBIOS_functions[i].name, fnct);
-            }
-            
+        struct XBIOS_function *f = &XBIOS_functions[i];
+        uint32_t r;
+
+        if (f->id != fnct)
+            continue;
+
+        if (f->fnct) {
+            r = f->fnct();
+        } else if (f->kind == FN_STUB) {
+            r = f->ret;
+#ifdef ENABLE_XBIOS_TRACE
+            printf("Stubbed %s (0x%x)\n", f->name, fnct);
+#endif
+        } else {
+            halt_execution();
+            printf("XBIOS %s (0x%x) not implemented\n", f->name, fnct);
             return;
         }
+
+#ifdef ENABLE_XBIOS_TRACE
+        printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+#endif
+        m68k_set_reg(M68K_REG_D0, r);
+
+        return;
     }
-            
+
     halt_execution();
     printf("XBIOS Unknown function called 0x%x\n", fnct);
 }
