@@ -22,6 +22,7 @@
  * file system. These are the assertions a second drive has to keep working. */
 
 #include <stdio.h>
+#include <string.h>
 #include <mint/osbind.h>
 
 #define DRIVE_C     (2)
@@ -45,6 +46,7 @@ static void check(long got, long want, const char *name)
 
 int main(int argc, char **argv)
 {
+    char path[256];
     long h;
 
     check(Dgetdrv(), DRIVE_C, "Dgetdrv reports C:");
@@ -61,18 +63,25 @@ int main(int argc, char **argv)
     check(Fopen("A:\\DRVTEST", 0), E_DRIVE, "Fopen on A: fails with EDRIVE");
     check(Dcreate("A:\\DRVTEST"), E_DRIVE, "Dcreate on A: fails with EDRIVE");
 
-    /* The same path on C:, and without a prefix at all, still works */
-    h = Fcreate("C:\\DRVTEST", 0);
+    /* Naming the drive a file is on refers to the same file as leaving the
+     * prefix out, both are relative to the current directory */
+    h = Fcreate("C:DRVTEST", 0);
     check(h >= 0, 1, "Fcreate on C: succeeds");
     if (h >= 0)
         Fclose(h);
     check(Fdelete("DRVTEST"), 0, "Fdelete without a drive prefix succeeds");
 
+    /* A path starting at the root of the drive names the same file as the
+     * relative one. This is what lets an application build a path out of the
+     * current directory Dgetpath handed it. */
+    check(Dgetpath(path, 0), 0, "Dgetpath reports the current directory");
+    strcat(path, "\\DRVTEST");
+
     h = Fcreate("DRVTEST", 0);
     check(h >= 0, 1, "Fcreate without a drive prefix succeeds");
     if (h >= 0)
         Fclose(h);
-    check(Fdelete("C:\\DRVTEST"), 0, "Fdelete on C: succeeds");
+    check(Fdelete(path), 0, "Fdelete from the root of the drive succeeds");
 
     return fails;
 }

@@ -160,6 +160,12 @@ component against the host, accepting a component that only differs in case.
 Components without a match are left alone, so `Fcreate` and `Dcreate` still
 create names exactly as the application spelled them.
 
+C: is the whole host file system, so a path that starts at the root of the
+drive starts at the host root. `Dgetpath` hands out such a path, and an
+application that builds a file name from it has to arrive back at the same
+file. A `TOS_BASE_PATH` moves that root, and then the drive begins there
+instead.
+
 Variable Scope
 --------------
 

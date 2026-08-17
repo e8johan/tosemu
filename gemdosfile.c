@@ -427,7 +427,7 @@ static int32_t host_resolve(const char *tp, char *up)
     int len;
     const char *src;
     char *dest;
-    int prev_slash = 1;
+    int prev_slash;
 
     memset(tbuf, 0, PATH_MAX+1);
 
@@ -436,6 +436,11 @@ static int32_t host_resolve(const char *tp, char *up)
     len = strlen(up);
     src = tp;
     dest = up + len;
+
+    /* A path starting at the root of the drive keeps its leading separator, as
+     * the host root is where the drive begins. A prefix already ends in one,
+     * and then the leading separator is the one to drop. */
+    prev_slash = (len != 0);
 
     /* Convert \ -> / */
     while(*src && len < PATH_MAX)
