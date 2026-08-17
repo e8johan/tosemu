@@ -92,7 +92,40 @@ uint32_t GEMDOS_Mshrink()
     return 0;
 }
 
-uint32_t GEMDOS_Malloc()
+uint32_t mem_largest_free(void)
+{
+    struct mem_area *prev, *ptr;
+    uint32_t prev_top, max_free = 0;
+
+    prev = mem_list;
+    if (prev)
+        ptr = mem_list->next;
+    else
+        ptr = 0;
+
+    while (ptr)
+    {
+        prev_top = prev->base + prev->len;
+        if (max_free < ptr->base - prev_top)
+            max_free = ptr->base - prev_top;
+
+        prev = ptr;
+        ptr = ptr->next;
+    }
+
+    /* Look at the gap at the end */
+    if (prev)
+        prev_top = prev->base + prev->len;
+    else
+        prev_top = 0x900;
+
+    if (max_free < space_above(prev_top))
+        max_free = space_above(prev_top);
+
+    return max_free;
+}
+
+uint32_t mem_alloc(uint32_t newsiz)
 {
     /* This is the tricky mem function, stay safe if changing it.
      * 
@@ -119,20 +152,9 @@ uint32_t GEMDOS_Malloc()
      */
     
     struct mem_area *prev, *ptr, *n;
-    uint32_t prev_top, max_free;
-    
-    int32_t newsiz = peek_s32(2);
+    uint32_t prev_top;
 
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    newsiz: %d (0x%x)\n", newsiz, newsiz);
-    }
-
-    if (newsiz == -1)
     {
-        /* Simply locate largest gap */
-        
-        max_free = 0;
-
         prev = mem_list;
         if (prev)
             ptr = mem_list->next;
@@ -142,36 +164,7 @@ uint32_t GEMDOS_Malloc()
         while (ptr)
         {
             prev_top = prev->base + prev->len;
-            if (max_free < ptr->base - prev_top)
-                max_free = ptr->base - prev_top;
-
-            prev = ptr;
-            ptr = ptr->next;
-        }
-        
-        /* Look at the gap at the end */
-        if (prev)
-            prev_top = prev->base + prev->len;
-        else
-            prev_top = 0x900;
-        
-        if (max_free < space_above(prev_top))
-            max_free = space_above(prev_top);
-        
-        return max_free;
-    }
-    else
-    {    
-        prev = mem_list;
-        if (prev)
-            ptr = mem_list->next;
-        else
-            ptr = 0;
-        
-        while (ptr)
-        {
-            prev_top = prev->base + prev->len;
-            if (ptr->base - prev_top > newsiz)
+            if (ptr->base - prev_top >= newsiz)
             {
                 /* Large enough gap found */
                 
@@ -200,7 +193,7 @@ uint32_t GEMDOS_Malloc()
         else
             prev_top = 0x900;
         
-        if (newsiz < space_above(prev_top))
+        if (newsiz <= space_above(prev_top))
         {
             /* Large enough gap found at the end (which can be the start) */
             
@@ -226,29 +219,49 @@ uint32_t GEMDOS_Malloc()
     }
 }
 
-uint32_t GEMDOS_Mfree()
+uint32_t GEMDOS_Malloc()
+{
+    int32_t newsiz = peek_s32(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    newsiz: %d (0x%x)\n", newsiz, newsiz);
+    }
+
+    /* An application asks how much it could have by asking for -1 */
+    if (newsiz == -1)
+        return mem_largest_free();
+
+    return mem_alloc(newsiz);
+}
+
+int32_t mem_free(uint32_t block)
 {
     struct mem_area *ma, *prev;
-    
-    uint32_t block = peek_u32(2);
-    
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", block);
-    }
-    
+
     ma = find_mem_area(block, &prev);
-    
+
     if (!ma)
         return GEMDOS_EIMBA;
-    
+
     if (prev)
         prev->next = ma->next;
     else
         mem_list = ma->next;
-    
+
     free(ma);
-    
+
     return 0;
+}
+
+uint32_t GEMDOS_Mfree()
+{
+    uint32_t block = peek_u32(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    0x%x\n", block);
+    }
+
+    return mem_free(block);
 }
 
 
