@@ -22,13 +22,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 
-#include "cpu.h"
 #include "m68k.h"
 
 #include "tossystem.h"
@@ -71,26 +65,26 @@ void cpu_instr_callback()
     }
 }
 
-extern int keepongoing;
-    
 int main(int argc, char **argv)
 {
-    int binary_file;
     void *binary_data;
-    struct stat sb;
+    uint64_t binary_size;
     struct tos_environment te;
+    char cmdlin[TOS_CMDLIN_MAX];
+    int cmdlin_len;
+    char *env;
+    uint32_t env_len;
     int argb = 1;
-    uint32_t sp;
-    
+
     verbose = 0;
-    
+
     /* Program usage */
     if (argc < 2)
     {
         printf("Usage: tosemu [-v] <binary> [<args>]\n\n\t<binary> name of binary to execute\n");
         return -1;
     }
-    
+
     /* Check if we want to be verbose */
     if (argc >= 3 && strcmp("-v", argv[1]) == 0)
     {
@@ -98,73 +92,41 @@ int main(int argc, char **argv)
         argb++;
     }
 
-    /* Open the provided file */
-    binary_file = open(argv[argb], O_RDONLY);
-    if (binary_file == -1)
-    {
-        printf("Error: failed to open '%s'\n", argv[argb]);
+    binary_data = map_tos_binary(argv[argb], &binary_size);
+    if (binary_data == NULL)
         return -1;
-    }
-    
-    /* Determine the file size */
-    fstat(binary_file, &sb);
-    
-    /* Mmap the file into memory */
-    binary_data = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, binary_file, 0);
-    if (!binary_data)
-    {
-        printf("Error: failed to mmap '%s'\n", argv[argb]);
-        close(binary_file);
-        return -1;
-    }
-    
-    /* Check that the binary starts with the magix 0x601a sequence */
-    if( ((char*)binary_data)[0] != 0x60 || ((char*)binary_data)[1] != 0x1a)
-    {
-        printf("Error: invalid magic in '%s'\n", argv[argb]);
-        close(binary_file);
-        return -1;
-    }
-    
+
     argb++;
     argv += argb;
     argc -= argb;
 
-    /* Setup a TOS environment for the binary */
-    if (init_tos_environment(&te, binary_data, sb.st_size, argc, argv))
+    /* The command line and the environment the application is started with */
+    cmdlin_len = host_cmdlin(cmdlin, argc, argv);
+    env = host_environment(&env_len);
+    if (env == NULL)
     {
-        printf("Error: failed to initialize TOS environment\n");
-        close(binary_file);
+        printf("Error: failed to build the environment\n");
+        unmap_tos_binary(binary_data, binary_size);
         return -1;
     }
-    
-    /* Close the binary file */
-    close(binary_file);
 
-    /* Start execution */
-
-    /* TODO init cpu */
-    m68k_init();
-    m68k_set_cpu_type(M68K_CPU_TYPE_68000);
-    m68k_pulse_reset();
-
-    /* TODO is this really correct, or should it be the MSP? If so, why does that not work? */
-    m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
-    /* The 68000 takes an address error on an odd stack pointer, so keep the
-     * initial user stack even. The application finds its basepage at 4(sp). */
-    sp = (te.size - 4) & ~1u;
-    m68k_set_reg(M68K_REG_USP, sp); /* user stack pointer */
-    m68k_write_memory_32(sp + 4, 0x800); /* big endian 0x800 */
-    m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
-    disable_supervisor_mode();
-    
-    /* TODO exec */
-    while (keepongoing) {
-        m68k_execute(1);
+    /* Setup a TOS environment for the binary */
+    if (init_tos_environment(&te, binary_data, binary_size,
+                             cmdlin, cmdlin_len, env, env_len))
+    {
+        printf("Error: failed to initialize TOS environment\n");
+        free(env);
+        unmap_tos_binary(binary_data, binary_size);
+        return -1;
     }
-  
+
+    free(env);
+    unmap_tos_binary(binary_data, binary_size);
+
+    run_tos_environment(&te);
+
     /* Clean up */
     free_tos_environment(&te);
-    
-    return 0; 
+
+    return 0;
 }

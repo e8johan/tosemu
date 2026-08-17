@@ -25,9 +25,15 @@
 #include <stddef.h>
 #include <string.h>
 #include <inttypes.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "memory.h"
 #include "utils.h"
+#include "cpu.h"
 #include "gemdos.h"
 #include "xbios.h"
 #include "bios.h"
@@ -86,6 +92,54 @@ static uint32_t biosram_free;
 
 int keepongoing;
 
+void *map_tos_binary(const char *path, uint64_t *size)
+{
+    struct stat sb;
+    void *data;
+    int fd;
+
+    fd = open(path, O_RDONLY);
+    if (fd == -1)
+    {
+        printf("Error: failed to open '%s'\n", path);
+        return NULL;
+    }
+
+    if (fstat(fd, &sb) != 0)
+    {
+        printf("Error: failed to stat '%s'\n", path);
+        close(fd);
+        return NULL;
+    }
+
+    data = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+
+    if (data == MAP_FAILED)
+    {
+        printf("Error: failed to mmap '%s'\n", path);
+        return NULL;
+    }
+
+    /* Every TOS executable starts with the magic 0x601a */
+    if (sb.st_size < 2 ||
+        ((uint8_t *)data)[0] != 0x60 || ((uint8_t *)data)[1] != 0x1a)
+    {
+        printf("Error: invalid magic in '%s'\n", path);
+        munmap(data, sb.st_size);
+        return NULL;
+    }
+
+    *size = sb.st_size;
+
+    return data;
+}
+
+void unmap_tos_binary(void *binary, uint64_t size)
+{
+    munmap(binary, size);
+}
+
 uint32_t bios_static_alloc(uint32_t len)
 {
     uint32_t address = biosram_free;
@@ -103,23 +157,16 @@ uint32_t bios_static_alloc(uint32_t len)
 }
 
 /*
- * Builds the environment the application finds through its basepage, and
- * returns the address of it.
+ * Writes an environment block into system RAM and returns its address.
  *
- * TOS stores it as a run of zero terminated NAME=value strings ended by an
- * empty one. tosemu passes on the environment it was started with, so that a
- * variable an application looks for can be set from the host shell - Lattice C
- * finds its header files through INCLUDE.
+ * TOS stores the environment as a run of zero terminated NAME=value strings
+ * ended by an empty one. It belongs to the parent process rather than to the
+ * application, which is why it goes in system RAM rather than in the TPA.
  */
-static uint32_t copy_environment(void)
+static uint32_t place_environment(const char *block, uint32_t len)
 {
-    extern char **environ;
-    uint32_t base, addr;
-    uint32_t len = 1; /* The empty string ending the block */
-    int i, j;
-
-    for (i = 0; environ[i]; i++)
-        len += strlen(environ[i]) + 1;
+    uint32_t base;
+    uint32_t i;
 
     base = bios_static_alloc(len);
     if (base == 0)
@@ -134,54 +181,88 @@ static uint32_t copy_environment(void)
         return base;
     }
 
-    addr = base;
-    for (i = 0; environ[i]; i++)
-    {
-        for (j = 0; environ[i][j]; j++)
-            m68k_write_memory_8(addr++, environ[i][j]);
-        m68k_write_memory_8(addr++, 0);
-    }
-    m68k_write_memory_8(addr, 0);
+    for (i = 0; i < len; i++)
+        m68k_write_memory_8(base + i, block[i]);
 
     return base;
 }
 
-/* The basepage holds the command line as a length byte, the text, and a
- * terminating zero, so this is the longest text that fits */
-#define CMDLIN_MAX (sizeof(((struct basepage *)0)->p_cmdlin) - 2)
-
-static void copy_cmdlin(char *dest, int argc, char **argv)
+/*
+ * Builds an environment block out of the one tosemu was started with, so that
+ * a variable an application looks for can be set from the host shell - Lattice
+ * C finds its header files through INCLUDE.
+ */
+char *host_environment(uint32_t *len)
 {
-    char *start = dest;
+    extern char **environ;
+    char *block, *dest;
+    uint32_t n = 1; /* The empty string ending the block */
+    int i;
+
+    for (i = 0; environ[i]; i++)
+        n += strlen(environ[i]) + 1;
+
+    block = malloc(n);
+    if (block == NULL)
+        return NULL;
+
+    dest = block;
+    for (i = 0; environ[i]; i++)
+    {
+        strcpy(dest, environ[i]);
+        dest += strlen(environ[i]) + 1;
+    }
+    *dest = 0;
+
+    *len = n;
+
+    return block;
+}
+
+/*
+ * Writes a command line into a basepage, as a length byte, the text, and a
+ * terminating zero. Text beyond what the field holds is dropped, which is all
+ * a TOS program can be handed.
+ */
+static void set_cmdlin(char *dest, const char *text, int len)
+{
+    if (len > TOS_CMDLIN_MAX)
+        len = TOS_CMDLIN_MAX;
+
+    dest[0] = len;
+    memcpy(dest + 1, text, len);
+    dest[len + 1] = 0;
+}
+
+/* The command line of the application tosemu was asked to start, which is the
+ * arguments after the binary with a space between them */
+int host_cmdlin(char *buf, int argc, char **argv)
+{
     int i, n = 0;
 
     for (i = 0; i < argc; i++)
     {
         int len = strlen(argv[i]);
+        int sep = (n != 0); /* Every argument but the first needs a space */
 
-        /* The space separating the first argument from the program name ends
-         * up where the length byte goes, so n counts that byte as well, and
-         * appending this argument leaves n+len characters of text. An argument
-         * that does not fit is dropped along with the ones after it, which is
-         * all a TOS program can be handed. */
-        if (n + len > CMDLIN_MAX)
+        /* An argument that does not fit is dropped, and so are the ones after
+         * it, rather than leaving a half of one on the command line */
+        if (n + sep + len > TOS_CMDLIN_MAX)
             break;
 
-        dest[n] = ' ';
-        n++;
-        memcpy(dest+n, argv[i], len);
+        if (sep)
+            buf[n++] = ' ';
+
+        memcpy(buf + n, argv[i], len);
         n += len;
     }
 
-    if (n == 0)
-        n = 1; /* An empty command line is still a length byte and a zero */
-
-    dest[n] = 0;
-    *start = n-1;
+    return n;
 }
 
 int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size,
-                         int argc, char **argv)
+                         const char *cmdlin, int cmdlin_len,
+                         const char *env, uint32_t env_len)
 {
     struct exec_header *header;
     uint8_t *ptr = 0;
@@ -274,7 +355,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     /* TOS defaults the Disk Transfer Address to the command line in the
      * basepage, http://www.yardley.cc/atari/compendium/atari-compendium-chapter-2-GEMDOS.htm#filesystem */
     te->bp->p_dta = endianize_32(0x800 + offsetof(struct basepage, p_cmdlin));
-    copy_cmdlin((void *)te->bp->p_cmdlin, argc, argv);
+    set_cmdlin((void *)te->bp->p_cmdlin, cmdlin, cmdlin_len);
         
     reset_memory();
     add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x1ff, te->staticmem0);
@@ -285,10 +366,9 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
 
-    /* The environment belongs to the parent process rather than to the
-     * application, so it goes in system RAM. This has to wait until the memory
-     * areas are registered, as it is written through the emulated memory. */
-    te->bp->p_env = endianize_32(copy_environment());
+    /* Placing the environment has to wait until the memory areas are
+     * registered, as it is written through the emulated memory */
+    te->bp->p_env = endianize_32(place_environment(env, env_len));
 
     /* Relocating the loaded binary, must take place after the "userram" has
     * been registered, as it takes place in the memory of the tos machine */
@@ -343,14 +423,45 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
         te->base_path[n+1] = 0;
     }
     
-    /* TODO Move into CPU initialization */
-    keepongoing = 1;
-
     /* Initialize sub-systems */
     gemdos_init(te);
     /* TODO initialization other sub-systems here as well */
-    
+
     return 0;
+}
+
+/*
+ * Points the CPU at a freshly loaded application.
+ *
+ * The application finds its basepage at 4(sp), and a 68000 takes an address
+ * error on an odd stack pointer, so the initial user stack is kept even.
+ */
+static void start_cpu(struct tos_environment *te)
+{
+    uint32_t sp;
+
+    m68k_init();
+    m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+    m68k_pulse_reset();
+
+    /* TODO is this really correct, or should it be the MSP? If so, why does
+     * that not work? */
+    m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
+
+    sp = (te->size - 4) & ~1u;
+    m68k_set_reg(M68K_REG_USP, sp); /* user stack pointer */
+    m68k_write_memory_32(sp + 4, 0x800); /* big endian 0x800 */
+    m68k_set_reg(M68K_REG_PC, 0x900); /* Set PC to the binary entry point */
+    disable_supervisor_mode();
+}
+
+void run_tos_environment(struct tos_environment *te)
+{
+    start_cpu(te);
+
+    keepongoing = 1;
+    while (keepongoing)
+        m68k_execute(1);
 }
 
 void free_tos_environment(struct tos_environment *te)
