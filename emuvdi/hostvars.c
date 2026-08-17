@@ -34,6 +34,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 
 /* Describing the surface being drawn into */
 UWORD v_planes;
@@ -146,17 +147,50 @@ ETV_TIMER_T tim_chain;
 ETV_TIMER_T tim_addr;
 
 /*
- * The memory a virtual workstation is described by. It belongs to the VDI, not
- * to the application, so it comes from the host heap - see emuvdi/bdosbind.h.
+ * Memory for the things GEM keeps the address of in a thirty two bit field.
+ *
+ * A virtual workstation, a resource file, an object tree: their addresses end
+ * up in a LONG somewhere, because that is the shape GEM has. Linking without
+ * position independence puts the program and its static data below the four
+ * gigabyte line, and this does the same for what is allocated as it runs.
+ *
+ * malloc is not enough on its own. Small blocks come off the heap, which for
+ * a non relocatable program sits just above its data and so is low, but a
+ * large one is served by mmap, which lands wherever the kernel likes - and a
+ * resource file is exactly the sort of thing that would be large. Asking for
+ * the low mapping explicitly is what makes it not depend on the size.
+ *
+ * The length is kept in front of the block so that freeing it knows how much
+ * to give back.
  */
 void *host_vdi_alloc(long size)
 {
-    return malloc((size_t)size);
+    size_t total = (size_t)size + sizeof(size_t);
+    void *block;
+
+    if (size <= 0)
+        return 0;
+
+    block = mmap(0, total, PROT_READ|PROT_WRITE,
+                 MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT, -1, 0);
+    if (block == MAP_FAILED)
+        return 0;
+
+    *(size_t *)block = total;
+
+    return (char *)block + sizeof(size_t);
 }
 
 void host_vdi_free(void *block)
 {
-    free(block);
+    char *base;
+
+    if (!block)
+        return;
+
+    base = (char *)block - sizeof(size_t);
+
+    munmap(base, *(size_t *)base);
 }
 
 /*

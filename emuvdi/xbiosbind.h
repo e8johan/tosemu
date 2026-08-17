@@ -33,6 +33,12 @@
 WORD Getrez(void);
 void Setscreen(LONG lscrn, LONG pscrn, WORD rez, WORD mode);
 
+/*
+ * The Falcon video mode. Asked for with -1, which means report rather than
+ * set; a surface has no Videl behind it, so it reports none.
+ */
+#define VsetMode(mode)  ((WORD)-1)
+
 /* A screen dump, to a printer that is not attached */
 #define Scrdmp()  ((void)0)
 

@@ -52,6 +52,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 /* The surface. Small enough to print, wide enough to cross a word boundary
  * several times, which is where plane addressing goes wrong if it is going to.
@@ -65,6 +66,10 @@
 static UWORD surface[HEIGHT * WORDS_PER_LINE];
 
 void host_surface_select(void *base, UWORD width, UWORD height, UWORD planes);
+
+/* The AES's own VDI interface, aes/gemgsxif.c */
+void gsx_init(void);
+void ob_draw(OBJECT *tree, WORD obj, WORD depth);
 
 /* Reads a pixel back the long way round, from the plane words, so that the
  * printout is evidence about the memory rather than about the drawing code */
@@ -220,6 +225,41 @@ int main(void)
     line[3].x = 2;  line[3].y = 2;
     polyline(&vwk, line, 4, 1);
     show("polyline, a triangle");
+
+    /*
+     * An object tree, drawn by EmuTOS's AES object library through EmuTOS's
+     * VDI, both built for the host. Nothing in this goes near the emulated
+     * machine: it is the proof that the reused AES draws on the ported VDI.
+     */
+    memset(surface, 0, sizeof surface);
+    gsx_init();
+    {
+        static OBJECT tree[3];
+
+        tree[0].ob_next = -1; tree[0].ob_head = 1; tree[0].ob_tail = 2;
+        tree[0].ob_type = G_BOX;
+        tree[0].ob_flags = NONE; tree[0].ob_state = OUTLINED;
+        tree[0].ob_spec = 0x00021100L;      /* thick border, white */
+        tree[0].ob_x = 1; tree[0].ob_y = 1;
+        tree[0].ob_width = 60; tree[0].ob_height = 20;
+
+        tree[1].ob_next = 2; tree[1].ob_head = -1; tree[1].ob_tail = -1;
+        tree[1].ob_type = G_STRING;
+        tree[1].ob_flags = NONE; tree[1].ob_state = NORMAL;
+        tree[1].ob_spec = (LONG)(uintptr_t)"GEM";
+        tree[1].ob_x = 3; tree[1].ob_y = 3;
+        tree[1].ob_width = 24; tree[1].ob_height = 8;
+
+        tree[2].ob_next = 0; tree[2].ob_head = -1; tree[2].ob_tail = -1;
+        tree[2].ob_type = G_BUTTON;
+        tree[2].ob_flags = LASTOB|SELECTABLE; tree[2].ob_state = NORMAL;
+        tree[2].ob_spec = (LONG)(uintptr_t)"OK";
+        tree[2].ob_x = 34; tree[2].ob_y = 10;
+        tree[2].ob_width = 20; tree[2].ob_height = 9;
+
+        ob_draw(tree, 0, 8);
+    }
+    show("objc_draw, an object tree from EmuTOS's AES object library");
 
     /* Text, through v_gtext, which is the entry point an application reaches */
     memset(surface, 0, sizeof surface);

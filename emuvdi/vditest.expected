@@ -111,6 +111,34 @@ polyline, a triangle
 23 |                                                                |
    +----------------------------------------------------------------+
 
+objc_draw, an object tree from EmuTOS's AES object library
+   +----------------------------------------------------------------+
+ 0 |                                                                |
+ 1 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
+ 2 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
+ 3 | MMMMMMMMMMMMMMMMM                          MMMMMMMMMMMMMMMMM   |
+ 4 | MMMMMMMMMMMMMMMMMM MM   MM                 MMMMMMMMMMMMMMMMM   |
+ 5 | MMMMMMMMMMMMMMMMM  MMM MMM                 MMMMMMMMMMMMMMMMM   |
+ 6 | MMMMMMMMMMMMMMMMM  MMMMMMM                 MMMMMMMMMMMMMMMMM   |
+ 7 | MMMMMMMMMMMMMMMMM  MM M MM                 MMMMMMMMMMMMMMMMM   |
+ 8 | MMMMMMMMMMMMMMMMM  MM   MM                 MMMMMMMMMMMMMMMMM   |
+ 9 | MMMMMMMMMMMMMMMMM  MM   MM                 MMMMMMMMMMMMMMMMM   |
+10 | MMMMMMMMMMMMMMMMMM MM   MM       MMMMMMMMMMMMMMMMMMMMMMMMMMM   |
+11 | MMMMMMMMMMMMMMMMM                M    MMMM   MM  MM   MMMMMM   |
+12 | MMMMMMMMMMMMMMMMM                M   MM  MM  MM MM    MMMMMM   |
+13 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMMM     MMMMMM   |
+14 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMM      MMMMMM   |
+15 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMMM     MMMMMM   |
+16 | MMMMMMMMMMMMMMMMM                M   MM  MM  MM MM    MMMMMM   |
+17 | MMMMMMMMMMMMMMMMM                M    MMMM   MM  MM   MMMMMM   |
+18 | MMMMMMMMMMMMMMMMM                M                    MMMMMM   |
+19 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM                    MMMMMM   |
+20 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
+21 |                                                                |
+22 |                                                               M|
+23 |MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM|
+   +----------------------------------------------------------------+
+
 v_gtext, the system font
    +----------------------------------------------------------------+
  0 |                                                                |
@@ -121,17 +149,17 @@ v_gtext, the system font
  5 |                                                                |
  6 |                                                                |
  7 |                                                                |
- 8 |   ..  ..           ...     ...                    ......   ....|
- 9 |   ..  ..            ..      ..                      ..    ..  .|
-10 |   ..  ..   ....     ..      ..     ....             ..    ..  .|
-11 |   ......  ..  ..    ..      ..    ..  ..            ..    ..  .|
-12 |   ..  ..  ......    ..      ..    ..  ..            ..    ..  .|
-13 |   ..  ..  ..        ..      ..    ..  ..            ..    ..  .|
-14 |   ..  ..   ....    ....    ....    ....             ..     ....|
-15 |                                                                |
-16 |                                                                |
-17 |                                                                |
-18 |                                                                |
+ 8 |                                                                |
+ 9 |                                                                |
+10 |                                                                |
+11 |                                        ..                      |
+12 |                                       ....                     |
+13 |                                      ..  ..                    |
+14 |                                     ..    ..                   |
+15 |                                     ...  ...                   |
+16 |                                       .  .                     |
+17 |                                       .  .                     |
+18 |                                       ....                     |
 19 |                                                                |
 20 |                                                                |
 21 |                                                                |
@@ -143,25 +171,25 @@ v_gtext, thickened above and skewed below
    +----------------------------------------------------------------+
  0 |                                                                |
  1 |                                                                |
- 2 |   ......           ....       ...                              |
- 3 |   ... ...           ...       ...                              |
- 4 |   ... ...  .....    ...    ......                              |
- 5 |   ......  ... ...   ...   ... ...                              |
- 6 |   ... ... ... ...   ...   ... ...                              |
- 7 |   ... ... ... ...   ...   ... ...                              |
- 8 |   ......   .....   .....   ......                              |
+ 2 |                                                                |
+ 3 |                                                                |
+ 4 |                                                                |
+ 5 |                                                                |
+ 6 |                                                                |
+ 7 |                                                                |
+ 8 |                                                                |
  9 |                                                                |
 10 |                                                                |
-11 |                                                                |
-12 |                                                                |
-13 |                                                                |
-14 |       ..      ..                                               |
-15 |     ..        ..                      ..                       |
-16 |     ..        ..     ...    ....    ....                       |
-17 |     ....     ..        .   ..  .     ..                        |
-18 |        .     ..     ....   ..  .     ..                        |
-19 |   ..  ..    ..    ..  ..  ..  ..    ..                         |
-20 |    ....    ....    .....  ..  ..     ...                       |
+11 |                                           .                    |
+12 |                                         ...                    |
+13 |                                        ..  .                   |
+14 |                                      ..    .                   |
+15 |                                      ...  ..                   |
+16 |                                       .  .                     |
+17 |                                       .  .                     |
+18 |                                      ....                      |
+19 |                                                                |
+20 |                                                                |
 21 |                                                                |
 22 |                                                                |
 23 |                                                                |
@@ -177,17 +205,17 @@ v_gtext, lightened, which screens the glyph with a mask
  5 |                                                                |
  6 |                                                                |
  7 |                                                                |
- 8 |    .         .             .                                   |
- 9 |   .                       .         .                          |
-10 |    .       . .     . . .   . .     . . .   . .     . .     . . |
-11 |   .         .     .   .   .   .     .     .   .   .   .   .   .|
-12 |    .         .     .   .   .   .     .     . . .   .   .   . . |
-13 |   .         .       . .   .   .     .     .       .   .   .    |
-14 |    . . .   . .         .   .   .     . .   . .     .   .   . . |
-15 |                   . . .                                        |
-16 |                                                                |
-17 |                                                                |
-18 |                                                                |
+ 8 |                                                                |
+ 9 |                                                                |
+10 |                                                                |
+11 |                                         .                      |
+12 |                                        . .                     |
+13 |                                       .   .                    |
+14 |                                      .     .                   |
+15 |                                     . .   .                    |
+16 |                                          .                     |
+17 |                                       .                        |
+18 |                                        . .                     |
 19 |                                                                |
 20 |                                                                |
 21 |                                                                |

@@ -141,6 +141,55 @@ left of the glyph. Without the clamp the lean is drawn out of whichever
 character happens to precede it, which is what the fringe masks were for.
 
 
+Pointers in thirty two bit fields
+---------------------------------
+
+GEM keeps addresses in LONGs. An OBJECT's ob_spec is a LONG holding the address
+of a string; a USERBLK holds the address of a routine; an MFDB holds the
+address of a bitmap. That is not something the code can be talked out of - it
+is the layout applications and resource files are built to, and it is the same
+on both sides of the trap.
+
+So every address this side of tosemu puts in one has to fit in thirty two bits.
+The whole program is therefore linked without position independence: it lands
+at 0x400000 and its static data with it, well under the four gigabyte line.
+Memory allocated as it runs is asked for below the line explicitly, in
+host_vdi_alloc, because a large malloc is served by mmap and would otherwise
+land wherever the kernel liked - and a resource file is exactly the sort of
+thing that is large.
+
+This is worth knowing because getting it wrong does not crash. A position
+independent build puts static data above 0x550000000000; truncating one of
+those to a LONG leaves an address that is usually still mapped, so it draws
+rubbish rather than stopping. The object tree in vditest rendered correctly
+under a PIE build by luck, and would not have on the next run.
+
+
+The AES
+-------
+
+The library files of EmuTOS's AES - the object, form, resource, graphics and
+rectangle ones, and gemgsxif.c, which is its VDI interface - are built here
+too. All they do is call the VDI, which is why they come across.
+
+The kernel does not. EmuTOS's is cooperative multitasking with every
+application in one address space, and tosemu runs an application to a process,
+so appl_, evnt_, wind_, menu_ and shel_ are written rather than taken.
+aeskernel.c is the seam: everything the library files reach down for, arrived
+at by compiling them and seeing what was left over. Nothing in it is
+implemented yet, and what is reached says so.
+
+gsx2.c is replaced. The original is thirty three lines that point a parameter
+block at the control array and execute a trap, and that one instruction is the
+whole path between the two halves of GEM. Here both are host code, so it is a
+call, and nothing is copied because there is nothing to copy between.
+
+gemoblib.c is the one file copied and edited, which makes the override list one
+long. call_usercode in it is fifteen lines of assembly that jsr to a routine
+the application supplied, and here that routine is 68000 code in the emulated
+machine.
+
+
 Things that bite
 ----------------
 

@@ -23,14 +23,26 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/bios/fnt_st_6x6.c $(EMUTOS)/bios/fnt_st_8x8.c \
               $(EMUTOS)/bios/fnt_st_8x16.c \
               $(EMUTOS)/bios/fnt_off_6x6.c $(EMUTOS)/bios/fnt_off_8x8.c \
-              $(EMUTOS)/util/intmath.c
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c
+              $(EMUTOS)/util/intmath.c \
+              $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
+              $(EMUTOS)/aes/gemgsxif.c $(EMUTOS)/aes/gemobjop.c \
+              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemrslib.c \
+              $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
+              $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
+              $(EMUTOS)/aes/mforms.c
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
+              emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/aeskernel.c \
+              emuvdi/strings.c
 
 # Compilation flags
 CC = gcc
 LD = gcc
-CFLAGS = -Igen -IMusashi -I. -Wall -pedantic
-LDFLAGS = -lc
+# -fno-pie, and -no-pie below, are not about tosemu's own code: they are what
+# keeps every address in the program below the four gigabyte line, because GEM
+# keeps pointers in thirty two bit fields and the VDI and AES are linked in
+# here. See EMUTOSLDFLAGS.
+CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie
+LDFLAGS = -lc -no-pie
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -52,13 +64,30 @@ LDFLAGS = -lc
 # are the other way round and the glyph lands in the wrong one. Turning it off
 # sends all text through normal_blit, which works in words and does not care.
 EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
-              -I$(EMUTOS)/aes -D__mcoldfire__ \
+              -I$(EMUTOS)/aes -I$(EMUTOS)/desk -D__mcoldfire__ \
               -DCONF_WITH_BLITTER=0 -DCONF_WITH_VIDEL=0 -DCONF_WITH_TT_SHIFTER=0 \
               -DCONF_WITH_VDI_16BIT=0 -DCONF_WITH_VDI_TEXT_SPEEDUP=0 \
               -DCONF_WITH_ADVANCED_CPU=0 -DCONF_WITH_APOLLO_68080=0 \
               -DCONF_WITH_68030_PMMU=0 -DCONF_WITH_CACHE_CONTROL=0 \
               -DDETECT_NATIVE_FEATURES=0 -DCONF_WITH_COLDFIRE_RS232=0 \
-              -DCONF_COLDFIRE_TIMER_C=0
+              -DCONF_COLDFIRE_TIMER_C=0 -DCONF_WITH_EXTENDED_MOUSE=0 \
+              -fno-pie
+
+# GEM keeps pointers in 32 bit fields. An OBJECT's ob_spec is a LONG that
+# holds the address of a string, a USERBLK holds the address of a routine, and
+# an MFDB holds the address of a bitmap. That is not a shape anything can be
+# talked out of: it is the layout applications and resource files are built to.
+#
+# So every address the AES and the VDI put in one has to fit in thirty two
+# bits. Linking without position independence is what does it: the program
+# lands at 0x400000 and its static data with it, well below the four gigabyte
+# line. Anything allocated at run time has to come from below it as well - see
+# host_vdi_alloc.
+#
+# A position independent build puts static data above 0x550000000000, where
+# truncating an address to a LONG leaves a wild pointer that usually still
+# points at something mapped, so it draws rubbish rather than crashing.
+EMUTOSLDFLAGS = -no-pie
 
 all: bin/tosemu
 
@@ -122,7 +151,7 @@ bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 # is being checked, not anything an application can reach yet.
 bin/vditest: emuvdi/vditest.c $(EMUTOSOBJECTS)
 	@mkdir -p bin/
-	$(CC) $(EMUTOSFLAGS) $^ -o $@
+	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
 
 emuvdi-check: bin/vditest
 	./bin/vditest | diff -u emuvdi/vditest.expected -
@@ -141,10 +170,12 @@ gen/.stamp: bin/m64kmake Musashi/m68k_in.c
 	bin/m64kmake gen/ Musashi/m68k_in.c > /dev/null
 	touch $@
 
-# The m64kmake generator
+# The m64kmake generator. It is a build tool rather than part of tosemu, but
+# it is compiled with the same flags, so it needs the same link option to go
+# with the -fno-pie in them.
 bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: bin/tosemu
 	$(MAKE) -C tests check
