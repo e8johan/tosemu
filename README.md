@@ -98,6 +98,22 @@ tree:
 Note that Gen only recognises CR and CR/LF as line terminators, so the sources
 in `tests/devpac` are stored with CR/LF endings.
 
+The `tests/lattice` subdirectory does the same for C. It holds Lattice C 5.60
+versions of the `c-*` test cases, built by running Lattice's own `LC1.TTP`,
+`LC2.TTP` and `CLINK.TTP` inside tosemu. Unlike Gen, LC1 is happy with plain LF
+line endings.
+
+These tests need a Lattice C 5.60 installation. Point `TOS_ROOT` at the
+directory containing `lattice`, which defaults to a `tos_root` next to the
+tosemu source tree:
+
+  `make lattice-check TOS_ROOT=/path/to/tos_root`
+
+LC1 finds the standard headers through the `INCLUDE` environment variable and
+its message file `lc1.lc` along `PATH`, both of which the makefile sets. CLink
+is handed its startup module and library through a control file rather than on
+the command line, which only holds 126 characters.
+
 
 
 Hacking

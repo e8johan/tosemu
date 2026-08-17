@@ -2,3 +2,18 @@
 - Looks as if many parts of this will have to be implemented:
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
     http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
+- Pexec, which is what a compiler driver needs. Lattice C's LC.TTP and LCC.TTP
+  look up lc1, lc2 and clink along PATH and Pexec each of them in turn, so the
+  passes have to be driven one at a time until it is there, see
+  tests/lattice/Makefile. Mode 0, load and go, is the one a driver uses, and
+  needs a second program in memory next to the running one: a TPA of its own,
+  a basepage whose p_parent points at the caller, and the child's exit code
+  handed back as the return value. Most of what the emulator keeps is global
+  today - the memory area list, the handle table, the DTA address - so either
+  those become per process, or a child saves and restores them around its run.
+  Handles are inherited rather than saved, that is what Fforce before a Pexec
+  is for.
+- The BIOS device handles, -1 CON:, -2 AUX: and -3 PRN:, which GEMDOS accepts
+  everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
+  tosemu has a console but no serial port or printer, so -1 is the one with an
+  answer to give, and the other two keep reporting EIHNDL.

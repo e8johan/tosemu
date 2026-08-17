@@ -4,6 +4,11 @@ tests/out
 tests/devpac/*.PRG
 tests/devpac/out
 tests/devpac/out2
+tests/lattice/*.PRG
+tests/lattice/*.lnk
+tests/lattice/*.q
+tests/lattice/out
+tests/lattice/out2
 *.o
 bin/
 gen/

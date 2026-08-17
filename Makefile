@@ -16,7 +16,7 @@ LDFLAGS = -lc
 
 all: bin/tosemu
 
-.PHONY: tests check devpac-tests devpac-check
+.PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check
 
 tests:
 	$(MAKE) -C tests/
@@ -25,6 +25,11 @@ tests:
 # Devpac 3.10 installation, see tests/devpac/Makefile.
 devpac-tests: bin/tosemu
 	$(MAKE) -C tests/devpac
+
+# Test cases compiled by tosemu itself, using Lattice C's LC1, LC2 and CLink.
+# These need a Lattice C 5.60 installation, see tests/lattice/Makefile.
+lattice-tests: bin/tosemu
+	$(MAKE) -C tests/lattice
 
 OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
 
@@ -57,6 +62,9 @@ check: bin/tosemu
 devpac-check: bin/tosemu
 	$(MAKE) -C tests/devpac check
 
+lattice-check: bin/tosemu
+	$(MAKE) -C tests/lattice check
+
 # Clean up the source tree
 clean:
 	$(RM) *.o Musashi/*.o
@@ -65,3 +73,4 @@ clean:
 	$(RM) -d gen/ bin/
 	$(MAKE) -C tests/ clean
 	$(MAKE) -C tests/devpac clean
+	$(MAKE) -C tests/lattice clean
