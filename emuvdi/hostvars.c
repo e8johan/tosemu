@@ -32,6 +32,8 @@
 #include "vdi_defs.h"
 #include "lineavars.h"
 
+#include <string.h>
+
 /* Describing the surface being drawn into */
 UWORD v_planes;
 UWORD v_lin_wr;
@@ -188,15 +190,13 @@ void VgetRGB(WORD index, WORD count, LONG rgb)
 }
 
 /*
- * v_justified, which is a generalised drawing primitive that lays out text.
- * vdi_gdp.c reaches it, and it lives in vdi_text.c, which is not built until
- * the text blit is written. Wanted here only so that the drawing primitives
- * that have nothing to do with text can be built and used meanwhile, and it
- * goes when vdi_text.c arrives.
+ * EmuTOS names its own bzero so that the compiler does not turn a call to the
+ * standard one into a builtin that calls it back again. Here it can simply be
+ * the standard one.
  */
-void gdp_justified(Vwk *vwk)
+void bzero_nobuiltin(void *addr, ULONG size)
 {
-    (void)vwk;
+    memset(addr, 0, size);
 }
 
 /* A vector that is never taken, on a machine where nothing interrupts */

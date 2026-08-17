@@ -34,6 +34,9 @@
  *   a rectangle x 5..60         crosses four word boundaries at an odd offset,
  *                               where the end masks have to be right
  *   a polyline                  the Bresenham code rather than the fill
+ *   text                        the system font through v_gtext, and then
+ *                               each of the effects, which is the only check
+ *                               there is on the normal_blit written here
  *
  * Pixels are read back out of the plane words rather than through the VDI, so
  * that what is printed is evidence about the memory.
@@ -102,6 +105,12 @@ static void show(const char *what)
     printf("+\n");
 }
 
+/* The parameter arrays a VDI call arrives in. Drawing text goes through the
+ * real entry point rather than through a helper, so it needs them. */
+static WORD contrl[16], intin[128], ptsin[16], intout[128], ptsout[16];
+
+void host_font_init(void);
+
 static Vwk vwk;
 
 static void workstation_init(void)
@@ -109,7 +118,10 @@ static void workstation_init(void)
     memset(&vwk, 0, sizeof vwk);
 
     vwk.handle = 1;
-    vwk.wrt_mode = MD_REPLACE;
+
+    /* The workstation holds the writing mode a step below the number an
+     * application passes, so replace mode is 0 here and 1 to a caller */
+    vwk.wrt_mode = WM_REPLACE;
 
     vwk.clip = 1;
     vwk.xmn_clip = 0;
@@ -129,8 +141,19 @@ static void workstation_init(void)
     vwk.line_beg = SQUARED;
     vwk.line_end = SQUARED;
 
+    vwk.text_color = 1;
+
     /* Turns fill_style and fill_index into the pattern the fill code reads */
     st_fl_ptr(&vwk);
+
+    CONTRL = contrl;
+    INTIN = intin;
+    PTSIN = ptsin;
+    INTOUT = intout;
+    PTSOUT = ptsout;
+
+    /* Gives the workstation the system font and the text defaults */
+    text_init2(&vwk);
 
     /*
      * The line mask is set by the VDI entry point rather than by polyline, so
@@ -140,12 +163,29 @@ static void workstation_init(void)
     LN_MASK = LINE_STYLE[vwk.line_index];
 }
 
+/* v_gtext as an application makes it: the string in intin, the position in
+ * ptsin, and how many characters there are in the control array */
+static void gtext(WORD x, WORD y, const char *text)
+{
+    int i;
+
+    for (i = 0; text[i]; i++)
+        intin[i] = (unsigned char)text[i];
+
+    contrl[3] = i;
+    ptsin[0] = x;
+    ptsin[1] = y;
+
+    vdi_v_gtext(&vwk);
+}
+
 int main(void)
 {
     Rect rect;
     Point line[5];
 
     host_surface_select(surface, WIDTH, HEIGHT, PLANES);
+    host_font_init();
 
     workstation_init();
 
@@ -180,6 +220,30 @@ int main(void)
     line[3].x = 2;  line[3].y = 2;
     polyline(&vwk, line, 4, 1);
     show("polyline, a triangle");
+
+    /* Text, through v_gtext, which is the entry point an application reaches */
+    memset(surface, 0, sizeof surface);
+    gtext(2, 14, "Hello TO");
+    show("v_gtext, the system font");
+
+    /*
+     * The same string in each of the effects. These go through normal_blit,
+     * which is the one part of the VDI written here rather than taken from
+     * EmuTOS, so this is the only check there is on it.
+     */
+    memset(surface, 0, sizeof surface);
+    vwk.style = F_THICKEN;
+    gtext(2, 8, "Bold");
+    vwk.style = F_SKEW;
+    gtext(2, 20, "Slant");
+    vwk.style = 0;
+    show("v_gtext, thickened above and skewed below");
+
+    memset(surface, 0, sizeof surface);
+    vwk.style = F_LIGHT;
+    gtext(2, 14, "Lightened");
+    vwk.style = 0;
+    show("v_gtext, lightened, which screens the glyph with a mask");
 
     return 0;
 }

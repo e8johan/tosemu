@@ -13,18 +13,16 @@ MUSASHIGENERATEDFILES = gen/m68kops.c gen/m68kopac.c gen/m68kopdm.c gen/m68kopnz
 # The VDI, which comes from EmuTOS. These are built as they stand, out of the
 # submodule, and everything that adapts them is in emuvdi/ - see emuvdi/README.
 EMUTOS = 3rdparty/emutos
-#
-# vdi_text.c and vdi_textblit.c are not here yet. They call normal_blit, which
-# is the inner loop that puts a character on the screen, and EmuTOS has it only
-# in assembly: vdi_tblit.S and a ColdFire variant, with no C behind either. It
-# has to be written before text can be drawn, and it needs the fonts alongside
-# it, so both arrive together.
 EMUTOSFILES = $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
               $(EMUTOS)/vdi/vdi_raster.c $(EMUTOS)/vdi/vdi_col.c \
               $(EMUTOS)/vdi/vdi_bezier.c $(EMUTOS)/vdi/vdi_gdp.c \
               $(EMUTOS)/vdi/vdi_marker.c $(EMUTOS)/vdi/vdi_misc.c \
+              $(EMUTOS)/vdi/vdi_text.c $(EMUTOS)/vdi/vdi_textblit.c \
+              $(EMUTOS)/bios/fnt_st_6x6.c $(EMUTOS)/bios/fnt_st_8x8.c \
+              $(EMUTOS)/bios/fnt_st_8x16.c \
+              $(EMUTOS)/bios/fnt_off_6x6.c $(EMUTOS)/bios/fnt_off_8x8.c \
               $(EMUTOS)/util/intmath.c
-EMUVDIFILES = emuvdi/hostvars.c
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c
 
 # Compilation flags
 CC = gcc
@@ -43,6 +41,14 @@ LDFLAGS = -lc
 # wanted. It is not true of the host in any other sense, so everything else it
 # would decide is pinned here rather than left to follow from it. All of it is
 # hardware that is not there.
+#
+# CONF_WITH_VDI_TEXT_SPEEDUP is off for a different reason, and it is not
+# hardware. It turns on direct_screen_blit, which draws a byte at a time and
+# picks which byte of a word by testing bit 3 of the x coordinate. That is only
+# the right byte on a big endian machine. Surfaces here are host endian, which
+# is what lets the rest of the VDI go unedited, so the two halves of every word
+# are the other way round and the glyph lands in the wrong one. Turning it off
+# sends all text through normal_blit, which works in words and does not care.
 EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
               -I$(EMUTOS)/aes -D__mcoldfire__ \
               -DCONF_WITH_BLITTER=0 -DCONF_WITH_VIDEL=0 -DCONF_WITH_TT_SHIFTER=0 \
@@ -87,12 +93,17 @@ EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,emuvdi/obj/%.o,$(EMUTOSFILES)) \
                 $(addsuffix .o,$(basename $(EMUVDIFILES)))
 
 # The EmuTOS sources and the code adapting them are the only ones built with
-# EMUTOSFLAGS, so they need rules of their own rather than the built-in one
-emuvdi/obj/%.o: $(EMUTOS)/%.c
+# EMUTOSFLAGS, so they need rules of their own rather than the built-in one.
+#
+# They depend on this file as well as on their source. Half of what EMUTOSFLAGS
+# does is choose between paths inside EmuTOS rather than merely how to compile
+# them, so changing a flag changes the program, and make has no other way to
+# know that the objects are stale.
+emuvdi/obj/%.o: $(EMUTOS)/%.c Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(EMUTOSFLAGS) -c -o $@ $<
 
-emuvdi/%.o: emuvdi/%.c
+emuvdi/%.o: emuvdi/%.c Makefile
 	$(CC) $(EMUTOSFLAGS) -c -o $@ $<
 
 # Main emulator target

@@ -21,6 +21,8 @@ The drawing files, compiled as they stand, about ten thousand lines:
     vdi_col.c vdi_bezier.c vdi_gdp.c vdi_marker.c vdi_misc.c
     util/intmath.c
 
+and the Atari ST system fonts, bios/fnt_st_*.c with their offset tables.
+
 Not used, because they are the parts a hosted VDI has to answer for itself:
 
     vdi_main.c vdi_control.c   the freestanding boot and the trap entry
@@ -59,6 +61,14 @@ Three levers, no edits.
    left to follow from it. All of them concern hardware that is not there:
    the MFP timer, ColdFire RS232, cache control, the PMMU, CPU detection.
 
+CONF_WITH_VDI_TEXT_SPEEDUP is off, and for a different reason from the rest.
+It turns on direct_screen_blit, which draws a byte at a time and chooses which
+byte of a word by testing bit 3 of the x coordinate. That is the right byte
+only on a big endian machine. Surfaces here are host endian, which is what lets
+the rest of the VDI go unedited, so the two halves of every word are the other
+way round and a glyph lands in the wrong one. With it off, all text goes
+through normal_blit, which works in words and does not care.
+
 Should a file ever genuinely need editing, it is copied into this directory and
 compiled in place of the submodule's, with a header saying which revision it
 came from and what changed. That list is currently empty. If it reaches three
@@ -75,8 +85,40 @@ What is here
     xbiosbind.h  the palette calls the VDI makes
     hostvars.c   the globals the VDI draws through, which EmuTOS keeps in
                  assembly because line-A needs them at fixed offsets
+    fonts.c      the three ST system fonts, taken directly rather than through
+                 EmuTOS's bios/font.c, which asks country.c which fonts a
+                 machine sold in a given country should have
+    textblit.c   normal_blit, the one part of the VDI written here rather than
+                 adapted - see below
     vditest.c    draws into a surface and prints it, so that the port is
                  checked by looking at pixels rather than at whether it built
+
+
+normal_blit
+-----------
+
+This is the only file here that replaces EmuTOS code rather than adapting it.
+vdi_textblit.c calls normal_blit to put a character on the screen, and EmuTOS
+has it in vdi_tblit.S and a ColdFire variant of that, with no C behind either.
+The other three routines the same comment calls assembler - outline, rotate and
+scale - do have C definitions in vdi_textblit.c, despite what it says.
+
+The original works a word at a time, with fringe masks at each end and four
+variants of the loop. This works a pixel at a time, which is slower by a large
+factor and does not matter: a glyph is eight by sixteen. What is bought with
+the cycles is that the loop variants and the rotate direction stop existing.
+
+Two things that are not optional, both found by drawing and looking:
+
+The effect masks come from the globals LITEMASK and SKEWMASK, not from the
+lite_msk and skew_msk fields. vdi_textblit.c never writes those fields: the
+assembly reloads them itself at the top of each character, so they hold
+whatever the character before left behind.
+
+Reads have to be clamped to the glyph. A font is a strip, so the bits either
+side of a character are its neighbours rather than blank, and skew reads to the
+left of the glyph. Without the clamp the lean is drawn out of whichever
+character happens to precede it, which is what the fringe masks were for.
 
 
 Things that bite
@@ -94,3 +136,12 @@ The drawing helpers assume the VDI entry point ran first. polyline draws
 nothing at all unless LN_MASK holds a line style, which draw_pline is what
 normally sets. A handler that calls a helper directly has to set up what the
 entry point would have, and getting it wrong is silent.
+
+textblit.c copies the LOCALVARS structure, which is private to vdi_textblit.c.
+It is the interface between the two, so it has to follow any change made there
+- the same warning the original carries about the assembly.
+
+Half of what EMUTOSFLAGS does is choose between paths inside EmuTOS rather than
+how to compile them, so a changed flag changes the program. The objects depend
+on the Makefile for that reason. Without it, changing a flag leaves stale
+objects that look like a bug in the code.
