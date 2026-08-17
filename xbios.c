@@ -29,24 +29,9 @@
 #include "cpu.h"
 #include "m68k.h"
 
-#define XBIOS_TRACE_CONTEXT
-#include "config.h"
-
-/* XBIOS return values, http://toshyp.atari.org/en/004003.html */
-
-#define XBIOS_E_OK   (0)
-#define XBIOS_ERROR  (-1) /* Generic error */
-#define XBIOS_EDRVNR (-2) /* Drive not ready */
+#include "xbios_p.h"
 
 /* XBIOS functions */
-
-uint32_t XBIOS_Getrez()
-{
-    FUNC_TRACE_ENTER
-    
-    /* Custom value, to ensure that HW-dependent code fails */
-    return 8;
-}
 
 static uint32_t dreg[5], areg[4];
 
@@ -220,7 +205,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Blitmode NULL
 #define XBIOS_Buffoper NULL
 #define XBIOS_Buffptr NULL
-#define XBIOS_Cursconf NULL
 #define XBIOS_Dbmsg NULL
 #define XBIOS_Devconnect NULL
 #define XBIOS_DMAread NULL
@@ -258,12 +242,9 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Dsp_TriggerHC NULL
 #define XBIOS_Dsp_Unlock NULL
 #define XBIOS_Dsptristate NULL
-#define XBIOS_EgetPalette NULL
 #define XBIOS_EgetShift NULL
 #define XBIOS_EsetBank NULL
-#define XBIOS_EsetColor NULL
 #define XBIOS_EsetGray NULL
-#define XBIOS_EsetPalette NULL
 #define XBIOS_EsetShift NULL
 #define XBIOS_EsetSmear NULL
 #define XBIOS_Flopfmt NULL
@@ -281,14 +262,12 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Kbdvbase NULL
 #define XBIOS_Kbrate NULL
 #define XBIOS_Locksnd NULL
-#define XBIOS_Logbase NULL
 #define XBIOS_Metainit NULL
 #define XBIOS_Mfpint NULL
 #define XBIOS_Midiws NULL
 #define XBIOS_NVMaccess NULL
 #define XBIOS_Offgibit NULL
 #define XBIOS_Ongibit NULL
-#define XBIOS_Physbase NULL
 #define XBIOS_Protobt NULL
 #define XBIOS_Prtblk NULL
 #define XBIOS_Puntaes NULL
@@ -296,13 +275,10 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Rsconf NULL
 #define XBIOS_Scrdmp NULL
 #define XBIOS_Setbuffer NULL
-#define XBIOS_Setcolor NULL
 #define XBIOS_Setinterrupt NULL
 #define XBIOS_Setmode NULL
 #define XBIOS_Setmontracks NULL
-#define XBIOS_Setpalette NULL
 #define XBIOS_Setprt NULL
-#define XBIOS_Setscreen NULL
 #define XBIOS_Settime NULL
 #define XBIOS_Settracks NULL
 #define XBIOS_Sndstatus NULL
@@ -310,11 +286,7 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Ssbrk NULL
 #define XBIOS_Unlocksnd NULL
 #define XBIOS_VgetMonitor NULL
-#define XBIOS_VgetRGB NULL
-#define XBIOS_VgetSize NULL
 #define XBIOS_VsetMask NULL
-#define XBIOS_VsetMode NULL
-#define XBIOS_VsetRGB NULL
 #define XBIOS_VsetSync NULL
 #define XBIOS_Vsync NULL
 #define XBIOS_Waveplay NULL
@@ -338,7 +310,7 @@ struct XBIOS_function {
 struct XBIOS_function XBIOS_functions[] = {
     {"Bconmap", XBIOS_Bconmap, 0x2C, FN_HALT, 0},
     {"Bioskeys", XBIOS_Bioskeys, 0x18, FN_HALT, 0},
-    {"Blitmode", XBIOS_Blitmode, 0x40, FN_HALT, 0},
+    {"Blitmode", XBIOS_Blitmode, 0x40, FN_STUB, 0},
     {"Buffoper", XBIOS_Buffoper, 0x88, FN_STUB, 0},
     {"Buffptr", XBIOS_Buffptr, 0x8D, FN_STUB, 0},
     {"Cursconf", XBIOS_Cursconf, 0x15, FN_HALT, 0},
@@ -381,13 +353,13 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Dsp_Unlock", XBIOS_Dsp_Unlock, 0x69, FN_STUB, 0},
     {"Dsptristate", XBIOS_Dsptristate, 0x89, FN_STUB, 0},
     {"EgetPalette", XBIOS_EgetPalette, 0x55, FN_HALT, 0},
-    {"EgetShift", XBIOS_EgetShift, 0x51, FN_HALT, 0},
-    {"EsetBank", XBIOS_EsetBank, 0x52, FN_HALT, 0},
+    {"EgetShift", XBIOS_EgetShift, 0x51, FN_STUB, 0},
+    {"EsetBank", XBIOS_EsetBank, 0x52, FN_STUB, 0},
     {"EsetColor", XBIOS_EsetColor, 0x53, FN_HALT, 0},
-    {"EsetGray", XBIOS_EsetGray, 0x56, FN_HALT, 0},
+    {"EsetGray", XBIOS_EsetGray, 0x56, FN_STUB, 0},
     {"EsetPalette", XBIOS_EsetPalette, 0x54, FN_HALT, 0},
-    {"EsetShift", XBIOS_EsetShift, 0x50, FN_HALT, 0},
-    {"EsetSmear", XBIOS_EsetSmear, 0x57, FN_HALT, 0},
+    {"EsetShift", XBIOS_EsetShift, 0x50, FN_STUB, 0},
+    {"EsetSmear", XBIOS_EsetSmear, 0x57, FN_STUB, 0},
     {"Flopfmt", XBIOS_Flopfmt, 0x0A, FN_STUB, XBIOS_EDRVNR},
     {"Floprate", XBIOS_Floprate, 0x29, FN_HALT, 0},
     {"Floprd", XBIOS_Floprd, 0x08, FN_STUB, XBIOS_EDRVNR},
@@ -419,7 +391,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Puntaes", XBIOS_Puntaes, 0x27, FN_HALT, 0},
     {"Random", XBIOS_Random, 0x11, FN_HALT, 0},
     {"Rsconf", XBIOS_Rsconf, 0x0F, FN_HALT, 0},
-    {"Scrdmp", XBIOS_Scrdmp, 0x14, FN_HALT, 0},
+    {"Scrdmp", XBIOS_Scrdmp, 0x14, FN_STUB, 0},
     {"Setbuffer", XBIOS_Setbuffer, 0x83, FN_STUB, 0},
     {"Setcolor", XBIOS_Setcolor, 0x07, FN_HALT, 0},
     {"Setinterrupt", XBIOS_Setinterrupt, 0x87, FN_STUB, 0},
@@ -438,14 +410,14 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Ssbrk", XBIOS_Ssbrk, 0x01, FN_HALT, 0},
     {"Supexec", XBIOS_Supexec, 0x26, FN_HALT, 0},
     {"Unlocksnd", XBIOS_Unlocksnd, 0x81, FN_STUB, 0},
-    {"VgetMonitor", XBIOS_VgetMonitor, 0x59, FN_HALT, 0},
+    {"VgetMonitor", XBIOS_VgetMonitor, 0x59, FN_STUB, 0},
     {"VgetRGB", XBIOS_VgetRGB, 0x5E, FN_HALT, 0},
     {"VgetSize", XBIOS_VgetSize, 0x5B, FN_HALT, 0},
-    {"VsetMask", XBIOS_VsetMask, 0x92, FN_HALT, 0},
+    {"VsetMask", XBIOS_VsetMask, 0x96, FN_STUB, 0},
     {"VsetMode", XBIOS_VsetMode, 0x58, FN_HALT, 0},
     {"VsetRGB", XBIOS_VsetRGB, 0x5D, FN_HALT, 0},
-    {"VsetSync", XBIOS_VsetSync, 0x5A, FN_HALT, 0},
-    {"Vsync", XBIOS_Vsync, 0x25, FN_HALT, 0},
+    {"VsetSync", XBIOS_VsetSync, 0x5A, FN_STUB, 0},
+    {"Vsync", XBIOS_Vsync, 0x25, FN_STUB, 0},
     {"Waveplay", XBIOS_Waveplay, 0xA5, FN_STUB, XBIOS_ERROR},
     {"Xbtimer", XBIOS_Xbtimer, 0x1F, FN_HALT, 0}
 };

@@ -74,7 +74,32 @@ struct exec_header {
 
 #define SUPERMEMSIZE (512)
 
+/* RAM for structures the system owns rather than the application, see
+ * bios_static_alloc. It sits in the cartridge ROM range of the memory map
+ * below, which no ST ever has RAM in and which is clear of the TPA, so that
+ * reserving a screen buffer does not shrink the memory the application gets. */
+#define BIOSRAMBASE (0xFA0000)
+#define BIOSRAMSIZE (0x10000)
+
+static uint32_t biosram_free;
+
 int keepongoing;
+
+uint32_t bios_static_alloc(uint32_t len)
+{
+    uint32_t address = biosram_free;
+
+    /* Keep every block even, a structure handed to a 68000 may be read as a
+     * word or a long */
+    len = (len + 1) & ~1u;
+
+    if (len > BIOSRAMSIZE || address - BIOSRAMBASE > BIOSRAMSIZE - len)
+        return 0;
+
+    biosram_free += len;
+
+    return address;
+}
 
 static void copy_cmdlin(char *dest, int argc, char **argv)
 {
@@ -114,6 +139,10 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     
     /* Create supervisor memory for a stack */
     te->supermem = malloc(SUPERMEMSIZE);
+
+    /* RAM for the structures the system hands out pointers to */
+    te->biosram = calloc(1, BIOSRAMSIZE);
+    biosram_free = BIOSRAMBASE;
     
     /* Setup a maximum size user RAM */
     te->size = 0xF9FFFF -0x000900;
@@ -193,6 +222,7 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
+    add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
     
     /* Relocating the loaded binary, must take place after the "userram" has 
     * been registered, as it takes place in the memory of the tos machine */
@@ -271,7 +301,11 @@ void free_tos_environment(struct tos_environment *te)
     
     free(te->supermem);
     te->supermem = 0;
-    
+
+    free(te->biosram);
+    te->biosram = 0;
+
+
     reset_memory();
 }
 

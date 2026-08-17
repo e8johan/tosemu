@@ -42,6 +42,12 @@
     (long)trap_14_wwlll(0xa5,(short)(a),(long)(b),(long)(c),(long)(d))
 #endif
 
+/* mint/falcon.h binds VsetMask through trap_14_www, which takes two arguments
+ * where VsetMask passes three, so it does not compile. Bind it correctly. */
+#undef VsetMask
+#define VsetMask(ormask,andmask,overlay) \
+    (short)trap_14_wllw(150,(long)(ormask),(long)(andmask),(short)(overlay))
+
 #define E_DRVNR     (-2)
 
 static int n;
@@ -67,14 +73,81 @@ static void survived(const char *name)
 
 static char buffer[1024];
 static long dspx, dspy;
+static short palette[256];
+static long rgb[16];
 
 int main(int argc, char **argv)
 {
     long previous;
+    int i;
 
     /* 0x04 Getrez - deliberately not a real ST resolution, so that code
      * depending on the screen hardware fails loudly rather than misdrawing */
     check(Getrez(), 8, "Getrez reports a resolution no ST has");
+
+    /* Screen and video. Nothing reaches a display, but an application that
+     * draws needs somewhere to draw and an application that configures the
+     * video hardware needs its settings to hold. */
+    check(Physbase() != 0L, 1, "Physbase hands out a buffer");
+    check((long)Logbase(), (long)Physbase(), "Logbase starts on the same buffer");
+    check(VgetSize(0), 32000, "VgetSize matches the buffer handed out");
+
+    /* The buffer must really be writable, an application will paint into it */
+    *(char *)Physbase() = 0x5a;
+    check(*(char *)Physbase(), 0x5a, "the screen buffer holds what is written");
+
+    Setscreen(-1L, -1L, -1);
+    check((long)Physbase(), (long)Logbase(), "Setscreen -1 changes nothing");
+
+    /* Palettes round trip, so code that sets a colour and reads it back sees
+     * its own value */
+    previous = Setcolor(1, 0x777);
+    check(Setcolor(1, -1), 0x777, "Setcolor reports what was set");
+    check(Setcolor(1, previous), 0x777, "Setcolor returns the previous colour");
+
+    for (i = 0; i < 16; i++)
+        palette[i] = 0x111 * (i & 7);
+    Setpalette(palette);
+    survived("Setpalette");
+    check(Setcolor(3, -1), 0x333, "Setpalette set the whole palette");
+
+    palette[0] = 0x123;
+    EsetPalette(32, 1, palette);
+    palette[0] = 0;
+    EgetPalette(32, 1, palette);
+    check(palette[0], 0x123, "EsetPalette and EgetPalette round trip");
+    check(EsetColor(32, -1), 0x123, "EsetColor sees the same palette");
+
+    rgb[0] = 0x00112233L;
+    VsetRGB(0, 1, rgb);
+    rgb[0] = 0;
+    VgetRGB(0, 1, rgb);
+    check(rgb[0], 0x00112233L, "VsetRGB and VgetRGB round trip");
+
+    previous = VsetMode(VERTFLAG);
+    check(VsetMode(-1), VERTFLAG, "VsetMode reports the mode that was set");
+    VsetMode(previous);
+
+    check(Cursconf(5, 0), 10, "Cursconf reports the default blink rate");
+    Cursconf(4, 25);
+    check(Cursconf(5, 0), 25, "Cursconf remembers a new blink rate");
+    Cursconf(4, 10);
+
+    check(Blitmode(-1), 0, "Blitmode reports no blitter");
+    check(EgetShift(), 0, "EgetShift reports 0");
+    check(EsetBank(-1), 0, "EsetBank reports 0");
+    check(EsetGray(-1), 0, "EsetGray reports 0");
+    check(EsetSmear(-1), 0, "EsetSmear reports 0");
+    check(VgetMonitor(), 0, "VgetMonitor reports 0");
+    check(VsetMask(0L, 0L, 0), 0, "VsetMask reports 0");
+    EsetShift(0);
+    survived("EsetShift");
+    VsetSync(0);
+    survived("VsetSync");
+    Vsync();
+    survived("Vsync");
+    Scrdmp();
+    survived("Scrdmp");
 
     /* Floppy and DMA. There is no controller, so every operation on a disk
      * reports that the drive is not ready. Nothing pretends to have written. */

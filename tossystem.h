@@ -31,7 +31,8 @@ struct tos_environment {
     void *supermem;
     void *staticmem0;
     void *staticmem1;
-    
+    void *biosram;
+
     uint32_t tsize, 
              dsize, 
              bsize, 
@@ -45,6 +46,16 @@ struct tos_environment {
 int init_tos_environment(struct tos_environment *te, void *binary,
                          uint64_t binary_size, int argc, char **argv);
 void free_tos_environment(struct tos_environment *te);
+
+/* Reserve a block of ST RAM that lives for as long as the application does.
+ *
+ * Several BIOS and XBIOS calls hand back a pointer to a structure the system
+ * owns, a screen buffer or a vector table for instance. They come from an area
+ * outside the TPA, so that reserving one does not take memory away from the
+ * application. Returns an address in the emulated machine, or 0 when the area
+ * is exhausted. There is no matching free, the whole area goes at once.
+ */
+uint32_t bios_static_alloc(uint32_t len);
 
 void halt_execution();
 
