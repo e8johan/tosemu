@@ -33,6 +33,7 @@
 #include "lineavars.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 /* Describing the surface being drawn into */
 UWORD v_planes;
@@ -124,25 +125,112 @@ Vwk *CUR_WORK;
 WORD (*SEEDABORT)(void);
 
 /*
- * From vdi_control.c, which is replaced wholesale because it is the trap
- * entry. This one function is wanted on its own, so it is here rather than
- * dragging the file in.
- */
-WORD validate_color_index(WORD colnum)
-{
-    if ((colnum < 0) || (colnum >= numcolors))
-        return 1;
-
-    return colnum;
-}
-
-/*
  * The timer vector the VDI chains onto, and the one it saved. EmuTOS defines
  * these in assembly because they are interrupt entry points. Nothing here
  * interrupts, so vex_timv keeps a vector that is never taken.
  */
 ETV_TIMER_T tim_chain;
 ETV_TIMER_T tim_addr;
+
+/*
+ * The memory a virtual workstation is described by. It belongs to the VDI, not
+ * to the application, so it comes from the host heap - see emuvdi/bdosbind.h.
+ */
+void *host_vdi_alloc(long size)
+{
+    return malloc((size_t)size);
+}
+
+void host_vdi_free(void *block)
+{
+    free(block);
+}
+
+/*
+ * The escapes and the mouse, which are the parts of the VDI a hosted one
+ * answers for itself. Nothing draws a pointer here, the compositor has one,
+ * and the terminal escapes have nowhere to go yet. Opening and closing a
+ * workstation still calls these, so they exist and do nothing.
+ */
+void vdimouse_init(void)
+{
+}
+
+void vdimouse_exit(void)
+{
+}
+
+void esc_init(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void esc_exit(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+/*
+ * The physical workstation, which every virtual one is opened against. EmuTOS
+ * keeps it in vdi_main.c, which is the trap entry and so is ours instead.
+ */
+Vwk phys_work;
+
+/* Where the mouse cursor saves what it covered. Nothing draws a cursor here,
+ * the compositor has one, but the VDI expects the area to exist. */
+MCS mouse_cursor_save;
+MCS ext_mouse_cursor_save;
+
+/*
+ * What the display is like, which EmuTOS answers from the video hardware in
+ * bios/screen.c. A surface is not video hardware, so these describe the kind
+ * of screen a GEM application should believe it has.
+ */
+WORD get_monitor_type(void)
+{
+    return 1;   /* MON_COLOR: an ST colour monitor */
+}
+
+WORD get_palette(void)
+{
+    /* How many colours the hardware palette can choose from. An STE has four
+     * bits a gun, which is the shifter has_ste_shifter above claims. */
+    return 4096;
+}
+
+void get_pixel_size(WORD *width, WORD *height)
+{
+    /*
+     * In thousandths of a millimetre. These are the numbers an ST reports for
+     * a low resolution screen, and applications divide by them to work out how
+     * large a thing is on the glass.
+     */
+    *width = 372;
+    *height = 372;
+}
+
+/*
+ * The resolution, as an ST rez number, worked out from how many planes the
+ * surface has. An application that asks for a different one is not refused
+ * outright: v_opnwk compares what it asked for against this and only calls
+ * Setscreen when they differ, so reporting the truth is what declines it.
+ */
+static WORD host_rez = 0;
+
+WORD Getrez(void)
+{
+    return host_rez;
+}
+
+void Setscreen(LONG lscrn, LONG pscrn, WORD rez, WORD mode)
+{
+    /* A surface does not change shape because an application asked the video
+     * hardware to. The workstation it opens describes what is really there. */
+    (void)lscrn;
+    (void)pscrn;
+    (void)rez;
+    (void)mode;
+}
 
 /*
  * The palette. On a real machine these are XBIOS calls that write shifter
@@ -232,4 +320,7 @@ void host_surface_select(void *base, UWORD width, UWORD height, UWORD planes)
     xres = width - 1;
     yres = height - 1;
     numcolors = 1 << planes;
+
+    /* ST_LOW is four planes, ST_MEDIUM two, ST_HIGH one */
+    host_rez = (planes >= 4) ? 0 : ((planes == 2) ? 1 : 2);
 }

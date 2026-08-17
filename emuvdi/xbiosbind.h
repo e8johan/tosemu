@@ -25,6 +25,14 @@
  */
 #ifndef XBIOSBIND_H
 #define XBIOSBIND_H
+/*
+ * A physical workstation open can ask for a resolution. There is no video
+ * hardware behind a surface, so the answer is what the surface already is and
+ * the request to change it is declined by reporting no change.
+ */
+WORD Getrez(void);
+void Setscreen(LONG lscrn, LONG pscrn, WORD rez, WORD mode);
+
 WORD Setcolor(WORD colornum, WORD color);
 WORD EsetColor(WORD colornum, WORD color);
 void VsetRGB(WORD index, WORD count, LONG rgb);

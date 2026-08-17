@@ -13,7 +13,8 @@ MUSASHIGENERATEDFILES = gen/m68kops.c gen/m68kopac.c gen/m68kopdm.c gen/m68kopnz
 # The VDI, which comes from EmuTOS. These are built as they stand, out of the
 # submodule, and everything that adapts them is in emuvdi/ - see emuvdi/README.
 EMUTOS = 3rdparty/emutos
-EMUTOSFILES = $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
+EMUTOSFILES = $(EMUTOS)/vdi/vdi_control.c \
+              $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
               $(EMUTOS)/vdi/vdi_raster.c $(EMUTOS)/vdi/vdi_col.c \
               $(EMUTOS)/vdi/vdi_bezier.c $(EMUTOS)/vdi/vdi_gdp.c \
               $(EMUTOS)/vdi/vdi_marker.c $(EMUTOS)/vdi/vdi_misc.c \
@@ -101,10 +102,15 @@ EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,emuvdi/obj/%.o,$(EMUTOSFILES)) \
 # know that the objects are stale.
 emuvdi/obj/%.o: $(EMUTOS)/%.c Makefile
 	@mkdir -p $(dir $@)
-	$(CC) $(EMUTOSFLAGS) -c -o $@ $<
+	$(CC) $(EMUTOSFLAGS) -MMD -MP -c -o $@ $<
 
 emuvdi/%.o: emuvdi/%.c Makefile
-	$(CC) $(EMUTOSFLAGS) -c -o $@ $<
+	$(CC) $(EMUTOSFLAGS) -MMD -MP -c -o $@ $<
+
+# Which headers each object was built from, written by -MMD above. The shim
+# headers in emuvdi/ shadow EmuTOS's, so editing one changes what the sources
+# in the submodule compile to, and there is no other way for make to see that.
+-include $(EMUTOSOBJECTS:.o=.d)
 
 # Main emulator target
 bin/tosemu: $(OBJECTS)
@@ -150,7 +156,7 @@ lattice-check: bin/tosemu
 
 # Clean up the source tree
 clean:
-	$(RM) *.o Musashi/*.o emuvdi/*.o
+	$(RM) *.o Musashi/*.o emuvdi/*.o emuvdi/*.d
 	$(RM) -r emuvdi/obj/
 	$(RM) gen/*
 	$(RM) bin/*

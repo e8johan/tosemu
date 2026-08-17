@@ -17,19 +17,23 @@ What is used
 
 The drawing files, compiled as they stand, about ten thousand lines:
 
-    vdi_line.c vdi_raster.c vdi_textblit.c vdi_text.c vdi_fill.c
-    vdi_col.c vdi_bezier.c vdi_gdp.c vdi_marker.c vdi_misc.c
+    vdi_control.c vdi_line.c vdi_raster.c vdi_textblit.c vdi_text.c
+    vdi_fill.c vdi_col.c vdi_bezier.c vdi_gdp.c vdi_marker.c vdi_misc.c
     util/intmath.c
 
 and the Atari ST system fonts, bios/fnt_st_*.c with their offset tables.
 
 Not used, because they are the parts a hosted VDI has to answer for itself:
 
-    vdi_main.c vdi_control.c   the freestanding boot and the trap entry
+    vdi_main.c                 the freestanding boot and the trap entry
     vdi_mouse.c vdi_input.c    the pointer and the input, which belong to the
                                compositor
     vdi_esc.c                  terminal escapes
     every .S                   see below
+
+vdi_control.c is the workstation management - opening, closing and clearing
+them, and vq_extnd - rather than the trap entry, which is vdi_main.c. It is
+built, so opening a workstation is EmuTOS's code and not ours.
 
 
 How it is adapted
@@ -82,7 +86,11 @@ What is here
     asm.h        the m68k inline assembly of EmuTOS's asm.h, in C
     intmath.h    the same for intmath.h, plus min, max and Isqrt
     biosbind.h   the one BIOS call the VDI makes
-    xbiosbind.h  the palette calls the VDI makes
+    xbiosbind.h  the palette and resolution calls the VDI makes
+    bdosbind.h   where a virtual workstation's memory comes from. Not the
+                 shape EmuTOS declares: its Mxalloc answers with a LONG, which
+                 cannot hold a pointer on a 64 bit host, and the caller casts
+                 that answer straight to a Vwk *
     hostvars.c   the globals the VDI draws through, which EmuTOS keeps in
                  assembly because line-A needs them at fixed offsets
     fonts.c      the three ST system fonts, taken directly rather than through
