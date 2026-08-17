@@ -15,7 +15,7 @@ MUSASHIGENERATEDFILES = gen/m68kops.c gen/m68kopac.c gen/m68kopdm.c gen/m68kopnz
 EMUTOS = 3rdparty/emutos
 EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
-              $(EMUTOS)/vdi/vdi_raster.c $(EMUTOS)/vdi/vdi_col.c \
+              $(EMUTOS)/vdi/vdi_col.c \
               $(EMUTOS)/vdi/vdi_bezier.c $(EMUTOS)/vdi/vdi_gdp.c \
               $(EMUTOS)/vdi/vdi_marker.c $(EMUTOS)/vdi/vdi_misc.c \
               $(EMUTOS)/vdi/vdi_text.c $(EMUTOS)/vdi/vdi_textblit.c \
@@ -31,7 +31,7 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
               $(EMUTOS)/aes/mforms.c
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
-              emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/aeskernel.c \
+              emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 
 # Compilation flags

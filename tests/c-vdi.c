@@ -140,6 +140,67 @@ int main(int argc, char **argv)
             break;
     check(i < 16, 1, "v_gtext put something in the cell it was given");
 
+    /*
+     * A raster copy, which is the one place a bitmap crosses between the
+     * machine and the emulator. The application's is 68000 memory, so its
+     * words are the other way round from the screen's, and getting that wrong
+     * shows up as a picture that is right in shape and wrong in every word.
+     */
+    {
+        static short bits[16 * 4];      /* 16 rows, one word, four planes */
+        MFDB screen_fdb, off;
+        short pxy2[8];
+
+        screen_fdb.fd_addr = 0L;        /* the screen */
+        screen_fdb.fd_w = 320;
+        screen_fdb.fd_h = 200;
+        screen_fdb.fd_wdwidth = 320 / 16;
+        screen_fdb.fd_stand = 0;
+        screen_fdb.fd_nplanes = 4;
+
+        off.fd_addr = bits;
+        off.fd_w = 16;
+        off.fd_h = 16;
+        off.fd_wdwidth = 1;
+        off.fd_stand = 0;
+        off.fd_nplanes = 4;
+
+        check(pixel(64, 24), 5, "the patch about to be copied is colour 5");
+        check(pixel(79, 39), 5, "and so is its far corner");
+
+        /* A patch of the colour 5 bar, off the screen and into our own bitmap */
+        pxy2[0] = 64; pxy2[1] = 24;
+        pxy2[2] = 79; pxy2[3] = 39;
+        pxy2[4] = 0;  pxy2[5] = 0;
+        pxy2[6] = 15; pxy2[7] = 15;
+        vro_cpyfm(handle, S_ONLY, pxy2, &screen_fdb, &off);
+
+        /*
+         * The first word of each plane of the first row, which is the whole
+         * of a sixteen pixel run of one colour.
+         *
+         * The planes do not hold the colour an application asked for. The VDI
+         * maps a colour index onto a hardware pen, and its table starts
+         * 0, 15, 1, 2, 4, 6, so index 5 is pen 6, which is planes 1 and 2.
+         * Checking the raw words rather than asking v_get_pixel is the point:
+         * v_get_pixel maps back again, so it would agree whatever order the
+         * words arrived in.
+         */
+        check((unsigned short)bits[0], 0x0000, "vro_cpyfm brought plane 0 back");
+        check((unsigned short)bits[1], 0xffff, "vro_cpyfm brought plane 1 back");
+        check((unsigned short)bits[2], 0xffff, "vro_cpyfm brought plane 2 back");
+        check((unsigned short)bits[3], 0x0000, "vro_cpyfm brought plane 3 back");
+
+        /* And back the other way, into a corner that was empty */
+        pxy2[0] = 0;   pxy2[1] = 0;
+        pxy2[2] = 15;  pxy2[3] = 15;
+        pxy2[4] = 200; pxy2[5] = 100;
+        pxy2[6] = 215; pxy2[7] = 115;
+        vro_cpyfm(handle, S_ONLY, pxy2, &off, &screen_fdb);
+        check(pixel(208, 108), 5, "and copied it back to the screen");
+        check(pixel(216, 108), 0, "stopping where it was told to");
+    }
+
     v_clrwk(handle);
     check(pixel(25, 35), 0, "v_clrwk emptied the screen");
 

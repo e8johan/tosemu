@@ -184,10 +184,19 @@ block at the control array and execute a trap, and that one instruction is the
 whole path between the two halves of GEM. Here both are host code, so it is a
 call, and nothing is copied because there is nothing to copy between.
 
-gemoblib.c is the one file copied and edited, which makes the override list one
-long. call_usercode in it is fifteen lines of assembly that jsr to a routine
-the application supplied, and here that routine is 68000 code in the emulated
-machine.
+Two files are copied and edited, which is the whole override list.
+
+gemoblib.c: call_usercode in it is fifteen lines of assembly that jsr to a
+routine the application supplied, and here that routine is 68000 code in the
+emulated machine.
+
+vdi_raster.c: a bitmap's address arrives in two words of the control array and
+is read back as *(MFDB **)&CONTRL[7]. On a 68000 that reads four bytes, the
+whole address. On a sixty four bit host it reads eight, and since the two
+bitmaps a call names are only two words apart, the source read swallows the
+destination address as its high half. Four reads now take thirty two bits,
+which is what the caller wrote - the AES stores them through ULONG_AT, which
+is thirty two bits wide, and so was already doing it that way.
 
 
 Things that bite

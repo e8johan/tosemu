@@ -71,6 +71,31 @@ void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
                         int16_t *wbox, int16_t *hbox);
 
 /*
+ * Bitmaps a call names, for the raster operations.
+ *
+ * vro_cpyfm and its relatives are handed the address of a form definition
+ * block - an MFDB - in two words of the control array, and the VDI reads it as
+ * a pointer. An application's MFDB is in the emulated machine's memory and
+ * describes a bitmap there, so it has to be brought across; these keep the
+ * layout of the structure on this side, where the type is known.
+ *
+ * There are two slots because no VDI call names more than two bitmaps, a
+ * source and a destination.
+ */
+#define EMUVDI_MFDB_SOURCE      (0)
+#define EMUVDI_MFDB_DESTINATION (1)
+
+void *emuvdi_mfdb(int slot);
+
+/* A bitmap of null means the screen, which is the convention an application
+ * uses to say "where I can see it" rather than a bitmap of its own */
+void emuvdi_mfdb_set(void *mfdb, void *data, int16_t width, int16_t height,
+                     int16_t wdwidth, int16_t standard, int16_t planes);
+
+/* Where in the control array a call expects each bitmap's address */
+void emuvdi_control_set_pointer(int16_t *control, int index, void *p);
+
+/*
  * Whether the VDI has a function for this opcode. Everything it does not is
  * either a call no driver ever implemented or one of the GDOS extensions,
  * which arrive on their own range well above the VDI proper.

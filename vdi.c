@@ -48,6 +48,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "gem_p.h"
 #include "vdi_p.h"
@@ -187,6 +188,126 @@ static char *vdi_name(int16_t opcode)
     return "an unknown function";
 }
 
+/* Bitmaps ******************************************************************/
+
+/*
+ * The raster operations are handed the address of a form definition block, an
+ * MFDB, in two words of the control array, and the VDI reads it as a pointer.
+ * An application's is in the emulated machine and describes a bitmap there, so
+ * both have to be brought across.
+ *
+ * This is where the choice to keep surfaces in host byte order is paid for.
+ * An application's bitmap is 68000 memory, so its words are the other way
+ * round, and every one of them has to be turned over on the way in and on the
+ * way back. Reading through the emulator's own accessors is what does it:
+ * they already answer in host order, so a word at a time is a copy and a swap
+ * at once.
+ *
+ * An address of zero is not a bitmap but the screen, which is how an
+ * application says "where I can see it".
+ */
+#define MFDB_ADDR     (0)
+#define MFDB_W        (4)
+#define MFDB_H        (6)
+#define MFDB_WDWIDTH  (8)
+#define MFDB_STAND   (10)
+#define MFDB_NPLANES (12)
+
+struct bitmap {
+    uint32_t data;      /* Where the bitmap is in the machine, 0 for screen */
+    int words;          /* How much of it there is */
+    uint16_t *copy;     /* Ours, or null when it is the screen */
+};
+
+static struct bitmap bitmaps[2];
+
+/* Reads the MFDB the control array names and brings its bitmap across */
+static int bitmap_in(int16_t *control, int index, int slot)
+{
+    struct bitmap *b = &bitmaps[slot];
+    void *host = emuvdi_mfdb(slot);
+    uint32_t mfdb = (uint32_t)((uint16_t)control[index] << 16)
+                  | (uint16_t)control[index + 1];
+    int16_t w, h, wdwidth, stand, planes;
+    int i;
+
+    b->data = 0;
+    b->words = 0;
+    b->copy = 0;
+
+    if (mfdb == 0)
+        return 1;   /* The call names no bitmap at all */
+
+    b->data  = m68k_read_memory_32(mfdb + MFDB_ADDR);
+    w        = (int16_t)m68k_read_memory_16(mfdb + MFDB_W);
+    h        = (int16_t)m68k_read_memory_16(mfdb + MFDB_H);
+    wdwidth  = (int16_t)m68k_read_memory_16(mfdb + MFDB_WDWIDTH);
+    stand    = (int16_t)m68k_read_memory_16(mfdb + MFDB_STAND);
+    planes   = (int16_t)m68k_read_memory_16(mfdb + MFDB_NPLANES);
+
+    if (b->data == 0)
+    {
+        /* The screen. The VDI knows where that is. */
+        emuvdi_mfdb_set(host, 0, w, h, wdwidth, stand, planes);
+        emuvdi_control_set_pointer(control, index, host);
+        return 1;
+    }
+
+    if (w <= 0 || h <= 0 || wdwidth <= 0 || planes <= 0)
+    {
+        halt_execution();
+        printf("VDI: a bitmap of %dx%d in %d planes is not one\n", w, h, planes);
+        return 0;
+    }
+
+    b->words = h * wdwidth * planes;
+
+    b->copy = calloc((size_t)b->words, sizeof *b->copy);
+    if (!b->copy)
+    {
+        halt_execution();
+        printf("VDI: no room to copy a %dx%d bitmap across\n", w, h);
+        return 0;
+    }
+
+    for (i = 0; i < b->words; i++)
+        b->copy[i] = (uint16_t)m68k_read_memory_16(b->data + 2*i);
+
+    emuvdi_mfdb_set(host, b->copy, w, h, wdwidth, stand, planes);
+    emuvdi_control_set_pointer(control, index, host);
+
+    return 1;
+}
+
+/* Puts a bitmap the call drew into back where the application keeps it */
+static void bitmap_out(int slot)
+{
+    struct bitmap *b = &bitmaps[slot];
+    int i;
+
+    if (!b->copy)
+        return;
+
+    for (i = 0; i < b->words; i++)
+        m68k_write_memory_16(b->data + 2*i, b->copy[i]);
+}
+
+static void bitmap_done(int slot)
+{
+    free(bitmaps[slot].copy);
+    bitmaps[slot].copy = 0;
+}
+
+/*
+ * The calls that name bitmaps, and where. vro_cpyfm and vrt_cpyfm copy from
+ * the first to the second; vr_trnfm turns one between the layout a resource
+ * file uses and the one the screen does, in place.
+ */
+static int names_bitmaps(int16_t opcode)
+{
+    return opcode == 109 || opcode == 121 || opcode == 110;
+}
+
 /* Handing a call to the VDI ***********************************************/
 
 /*
@@ -268,7 +389,26 @@ void vdi_trap()
     memset(h_intout, 0, sizeof h_intout);
     memset(h_ptsout, 0, sizeof h_ptsout);
 
+    if (names_bitmaps(pb.opcode))
+    {
+        if (!bitmap_in(h_control, 7, 0) || !bitmap_in(h_control, 9, 1))
+        {
+            bitmap_done(0);
+            bitmap_done(1);
+            return;
+        }
+    }
+
     emuvdi_call(h_control, h_intin, h_ptsin, h_intout, h_ptsout);
+
+    if (names_bitmaps(pb.opcode))
+    {
+        /* Only the destination was drawn into. vr_trnfm may have been given
+         * the same bitmap twice, and writing the source back would undo it. */
+        bitmap_out(1);
+        bitmap_done(0);
+        bitmap_done(1);
+    }
 
     /* Out. The VDI says how much it answered with in the control array, and
      * the caller reads that to know how much of the arrays to look at. */

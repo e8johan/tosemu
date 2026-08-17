@@ -84,6 +84,44 @@ void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
     *hbox = gl_hbox;
 }
 
+/* The two bitmaps a call can name. They are static, so they are part of the
+ * program's own data and therefore below the four gigabyte line, which is
+ * where an address has to be to fit in the control array. */
+static FDB mfdb[2];
+
+void *emuvdi_mfdb(int slot)
+{
+    return &mfdb[slot & 1];
+}
+
+void emuvdi_mfdb_set(void *m, void *data, int16_t width, int16_t height,
+                     int16_t wdwidth, int16_t standard, int16_t planes)
+{
+    /* FDB in gsxdefs.h is the same structure vdi_raster.c calls an MFDB. It
+     * is declared in a header, which this one is not, so it is the one to
+     * use. */
+    FDB *f = m;
+
+    f->fd_addr = data;
+    f->fd_w = width;
+    f->fd_h = height;
+    f->fd_wdwidth = wdwidth;
+    f->fd_stand = standard;
+    f->fd_nplanes = planes;
+    f->fd_r1 = f->fd_r2 = f->fd_r3 = 0;
+}
+
+void emuvdi_control_set_pointer(int16_t *control, int index, void *p)
+{
+    /*
+     * Two words holding an address, thirty two bits of it, which is what the
+     * VDI reads back and what the AES writes through ULONG_AT. Eight bytes
+     * would not fit: the two bitmaps a call names are only two words apart, so
+     * a wider store would run into the next one.
+     */
+    *(uint32_t *)&control[index] = (uint32_t)(uintptr_t)p;
+}
+
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
