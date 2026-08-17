@@ -33,4 +33,19 @@ LONG host_setexc(WORD vecnum, LONG vec);
 /* Milliseconds between system timer ticks, which the VDI divides by to turn
  * a vex_timv interval into ticks. 20 is the 50Hz an ST runs at. */
 #define Tickcal() (20L)
+
+/*
+ * The escapes reach the console for the alpha text cursor, and the input
+ * functions read the keyboard through the BDOS in raw mode. Neither has
+ * anywhere to go: a hosted VDI draws into a surface, and the keyboard arrives
+ * from the compositor rather than from a device. They answer as a device that
+ * is there but has nothing to say.
+ */
+#define Bconout(dev, c)  ((void)(dev), (void)(c))
+#define Bconin(dev)      ((LONG)0)
+#define Bconstat(dev)    ((LONG)0)
+
+/* Which shift, control and alt keys are down, which vq_key_s reports. Nothing
+ * holds a key down until the compositor says so. */
+#define Kbshift(mode)    ((LONG)0)
 #endif

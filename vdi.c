@@ -47,10 +47,13 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "gem_p.h"
 #include "vdi_p.h"
 #include "tossystem.h"
+#include "surface.h"
+#include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
 static struct {
@@ -76,271 +79,76 @@ static struct {
  * array is the only one whose length is fixed rather than declared, and the
  * later calls reach further into it than the original eleven words. */
 #define VDI_CONTROL_WORDS (15)
+#define VDI_INTIN_MAX   (1024)
+#define VDI_PTSIN_MAX   (1024)
 #define VDI_INTOUT_MAX   (512)
 #define VDI_PTSOUT_MAX   (256)
 
-int16_t vdi_control(int index)
-{
-    return gem_word(pb.control, VDI_CONTROL_WORDS, index);
-}
-
-int16_t vdi_intin(int index)
-{
-    return gem_word(pb.intin, pb.n_intin, index);
-}
-
-int16_t vdi_ptsin(int index)
-{
-    return gem_word(pb.ptsin, pb.n_ptsin, index);
-}
-
-void vdi_set_intout(int index, int16_t value)
-{
-    gem_set_word(pb.intout, pb.n_intout, index, value);
-}
-
-void vdi_set_ptsout(int index, int16_t value)
-{
-    gem_set_word(pb.ptsout, pb.n_ptsout, index, value);
-}
-
-void vdi_set_intout_count(int words)
-{
-    gem_set_word(pb.control, VDI_CONTROL_WORDS, 4, (int16_t)words);
-}
-
-void vdi_set_ptsout_count(int words)
-{
-    /* Both counts are given in the same units the set functions index in,
-     * which is words. control[2] is the one place that differs: it counts the
-     * points themselves, and a point is an x and a y. */
-    gem_set_word(pb.control, VDI_CONTROL_WORDS, 2, (int16_t)(words/2));
-}
-
 int16_t vdi_handle()
 {
-    return vdi_control(6);
+    return gem_word(pb.control, VDI_CONTROL_WORDS, 6);
 }
 
 int16_t vdi_subfunction()
 {
-    return vdi_control(5);
+    return gem_word(pb.control, VDI_CONTROL_WORDS, 5);
 }
 
-/* The call table *********************************************************/
-
-#define VDI_v_opnwk           NULL
-#define VDI_v_clswk           NULL
-#define VDI_v_clrwk           NULL
-#define VDI_v_updwk           NULL
-#define VDI_escape            NULL
-#define VDI_v_pline           NULL
-#define VDI_v_pmarker         NULL
-#define VDI_v_gtext           NULL
-#define VDI_v_fillarea        NULL
-#define VDI_v_cellarray       NULL
-#define VDI_gdp               NULL
-#define VDI_vst_height        NULL
-#define VDI_vst_rotation      NULL
-#define VDI_vs_color          NULL
-#define VDI_vsl_type          NULL
-#define VDI_vsl_width         NULL
-#define VDI_vsl_color         NULL
-#define VDI_vsm_type          NULL
-#define VDI_vsm_height        NULL
-#define VDI_vsm_color         NULL
-#define VDI_vst_font          NULL
-#define VDI_vst_color         NULL
-#define VDI_vsf_interior      NULL
-#define VDI_vsf_style         NULL
-#define VDI_vsf_color         NULL
-#define VDI_vq_color          NULL
-#define VDI_vq_cellarray      NULL
-#define VDI_v_locator         NULL
-#define VDI_v_valuator        NULL
-#define VDI_v_choice          NULL
-#define VDI_v_string          NULL
-#define VDI_vswr_mode         NULL
-#define VDI_vsin_mode         NULL
-#define VDI_vql_attributes    NULL
-#define VDI_vqm_attributes    NULL
-#define VDI_vqf_attributes    NULL
-#define VDI_vqt_attributes    NULL
-#define VDI_vst_alignment     NULL
-#define VDI_v_opnvwk          NULL
-#define VDI_v_clsvwk          NULL
-#define VDI_vq_extnd          NULL
-#define VDI_v_contourfill     NULL
-#define VDI_vsf_perimeter     NULL
-#define VDI_v_get_pixel       NULL
-#define VDI_vst_effects       NULL
-#define VDI_vst_point         NULL
-#define VDI_vsl_ends          NULL
-#define VDI_vro_cpyfm         NULL
-#define VDI_vr_trnfm          NULL
-#define VDI_vsc_form          NULL
-#define VDI_vsf_updat         NULL
-#define VDI_vsl_udsty         NULL
-#define VDI_vr_recfl          NULL
-#define VDI_vqin_mode         NULL
-#define VDI_vqt_extent        NULL
-#define VDI_vqt_width         NULL
-#define VDI_vex_timv          NULL
-#define VDI_vst_load_fonts    NULL
-#define VDI_vst_unload_fonts  NULL
-#define VDI_vrt_cpyfm         NULL
-#define VDI_v_show_c          NULL
-#define VDI_v_hide_c          NULL
-#define VDI_vq_mouse          NULL
-#define VDI_vex_butv          NULL
-#define VDI_vex_motv          NULL
-#define VDI_vex_curv          NULL
-#define VDI_vq_key_s          NULL
-#define VDI_vs_clip           NULL
-#define VDI_vqt_name          NULL
-#define VDI_vqt_fontinfo      NULL
-
-/* The Speedo and FontGDOS additions, which arrive on their own range of
- * function numbers well above the VDI proper */
-#define VDI_vqt_fontheader    NULL
-#define VDI_vqt_trackkern     NULL
-#define VDI_vqt_pairkern      NULL
-#define VDI_vst_charmap       NULL
-#define VDI_vst_kern          NULL
-#define VDI_v_getbitmap_info  NULL
-#define VDI_vqt_f_extent      NULL
-#define VDI_v_ftext           NULL
-#define VDI_v_ftext_offset    NULL
-#define VDI_v_getoutline      NULL
-#define VDI_vst_scratch       NULL
-#define VDI_vst_error         NULL
-#define VDI_vst_arbpt         NULL
-#define VDI_vqt_advance       NULL
-#define VDI_vqt_devinfo       NULL
-#define VDI_v_savecache       NULL
-#define VDI_v_loadcache       NULL
-#define VDI_v_flushcache      NULL
-#define VDI_vst_setsize       NULL
-#define VDI_vst_skew          NULL
-#define VDI_vqt_get_table     NULL
-#define VDI_vqt_cachesize     NULL
-
-struct VDI_function {
-    char *name;
-    uint32_t (*fnct)();
-    uint16_t id;
-    uint8_t kind;
-};
+/* What the calls are called ***********************************************/
 
 /*
- * The VDI functions, http://toshyp.atari.org/en/vdi.html
- *
- * The input functions come in a requesting and a sampling form which share a
- * function number and are told apart by the input mode, so one row covers
- * both: vrq_locator and vsm_locator are the same call asked twice.
+ * Only for saying which call it was. The VDI itself is dispatched by EmuTOS,
+ * which knows the numbers; this is so that an application meeting a gap is
+ * told that vqt_f_extent is not implemented rather than that function 240 is
+ * unknown. http://toshyp.atari.org/en/vdi.html
  */
-static struct VDI_function VDI_functions[] = {
-    {"v_opnwk",          VDI_v_opnwk,           1, FN_HALT},
-    {"v_clswk",          VDI_v_clswk,           2, FN_HALT},
-    {"v_clrwk",          VDI_v_clrwk,           3, FN_HALT},
-    /* Nothing here holds drawing back waiting to be flushed */
-    {"v_updwk",          VDI_v_updwk,           4, FN_STUB},
-    {"escape",           VDI_escape,            5, FN_HALT},
-    {"v_pline",          VDI_v_pline,           6, FN_HALT},
-    {"v_pmarker",        VDI_v_pmarker,         7, FN_HALT},
-    {"v_gtext",          VDI_v_gtext,           8, FN_HALT},
-    {"v_fillarea",       VDI_v_fillarea,        9, FN_HALT},
-    {"v_cellarray",      VDI_v_cellarray,      10, FN_HALT},
-    {"gdp",              VDI_gdp,              11, FN_HALT},
-    {"vst_height",       VDI_vst_height,       12, FN_HALT},
-    {"vst_rotation",     VDI_vst_rotation,     13, FN_HALT},
-    {"vs_color",         VDI_vs_color,         14, FN_HALT},
-    {"vsl_type",         VDI_vsl_type,         15, FN_HALT},
-    {"vsl_width",        VDI_vsl_width,        16, FN_HALT},
-    {"vsl_color",        VDI_vsl_color,        17, FN_HALT},
-    {"vsm_type",         VDI_vsm_type,         18, FN_HALT},
-    {"vsm_height",       VDI_vsm_height,       19, FN_HALT},
-    {"vsm_color",        VDI_vsm_color,        20, FN_HALT},
-    {"vst_font",         VDI_vst_font,         21, FN_HALT},
-    {"vst_color",        VDI_vst_color,        22, FN_HALT},
-    {"vsf_interior",     VDI_vsf_interior,     23, FN_HALT},
-    {"vsf_style",        VDI_vsf_style,        24, FN_HALT},
-    {"vsf_color",        VDI_vsf_color,        25, FN_HALT},
-    {"vq_color",         VDI_vq_color,         26, FN_HALT},
-    {"vq_cellarray",     VDI_vq_cellarray,     27, FN_HALT},
-    {"v_locator",        VDI_v_locator,        28, FN_HALT},
-    {"v_valuator",       VDI_v_valuator,       29, FN_HALT},
-    {"v_choice",         VDI_v_choice,         30, FN_HALT},
-    {"v_string",         VDI_v_string,         31, FN_HALT},
-    {"vswr_mode",        VDI_vswr_mode,        32, FN_HALT},
-    {"vsin_mode",        VDI_vsin_mode,        33, FN_HALT},
-    {"vql_attributes",   VDI_vql_attributes,   35, FN_HALT},
-    {"vqm_attributes",   VDI_vqm_attributes,   36, FN_HALT},
-    {"vqf_attributes",   VDI_vqf_attributes,   37, FN_HALT},
-    {"vqt_attributes",   VDI_vqt_attributes,   38, FN_HALT},
-    {"vst_alignment",    VDI_vst_alignment,    39, FN_HALT},
+struct VDI_name {
+    char *name;
+    uint16_t id;
+};
 
-    {"v_opnvwk",         VDI_v_opnvwk,        100, FN_HALT},
-    {"v_clsvwk",         VDI_v_clsvwk,        101, FN_HALT},
-    {"vq_extnd",         VDI_vq_extnd,        102, FN_HALT},
-    {"v_contourfill",    VDI_v_contourfill,   103, FN_HALT},
-    {"vsf_perimeter",    VDI_vsf_perimeter,   104, FN_HALT},
-    {"v_get_pixel",      VDI_v_get_pixel,     105, FN_HALT},
-    {"vst_effects",      VDI_vst_effects,     106, FN_HALT},
-    {"vst_point",        VDI_vst_point,       107, FN_HALT},
-    {"vsl_ends",         VDI_vsl_ends,        108, FN_HALT},
-    {"vro_cpyfm",        VDI_vro_cpyfm,       109, FN_HALT},
-    {"vr_trnfm",         VDI_vr_trnfm,        110, FN_HALT},
-    {"vsc_form",         VDI_vsc_form,        111, FN_HALT},
-    {"vsf_updat",        VDI_vsf_updat,       112, FN_HALT},
-    {"vsl_udsty",        VDI_vsl_udsty,       113, FN_HALT},
-    {"vr_recfl",         VDI_vr_recfl,        114, FN_HALT},
-    {"vqin_mode",        VDI_vqin_mode,       115, FN_HALT},
-    {"vqt_extent",       VDI_vqt_extent,      116, FN_HALT},
-    {"vqt_width",        VDI_vqt_width,       117, FN_HALT},
-    {"vex_timv",         VDI_vex_timv,        118, FN_HALT},
-    {"vst_load_fonts",   VDI_vst_load_fonts,  119, FN_HALT},
-    {"vst_unload_fonts", VDI_vst_unload_fonts,120, FN_HALT},
-    {"vrt_cpyfm",        VDI_vrt_cpyfm,       121, FN_HALT},
-    {"v_show_c",         VDI_v_show_c,        122, FN_HALT},
-    {"v_hide_c",         VDI_v_hide_c,        123, FN_HALT},
-    {"vq_mouse",         VDI_vq_mouse,        124, FN_HALT},
-    {"vex_butv",         VDI_vex_butv,        125, FN_HALT},
-    {"vex_motv",         VDI_vex_motv,        126, FN_HALT},
-    {"vex_curv",         VDI_vex_curv,        127, FN_HALT},
-    {"vq_key_s",         VDI_vq_key_s,        128, FN_HALT},
-    {"vs_clip",          VDI_vs_clip,         129, FN_HALT},
-    {"vqt_name",         VDI_vqt_name,        130, FN_HALT},
-    {"vqt_fontinfo",     VDI_vqt_fontinfo,    131, FN_HALT},
+static struct VDI_name VDI_names[] = {
+    {"v_opnwk", 1}, {"v_clswk", 2}, {"v_clrwk", 3}, {"v_updwk", 4},
+    {"escape", 5}, {"v_pline", 6}, {"v_pmarker", 7}, {"v_gtext", 8},
+    {"v_fillarea", 9}, {"v_cellarray", 10}, {"gdp", 11}, {"vst_height", 12},
+    {"vst_rotation", 13}, {"vs_color", 14}, {"vsl_type", 15},
+    {"vsl_width", 16}, {"vsl_color", 17}, {"vsm_type", 18},
+    {"vsm_height", 19}, {"vsm_color", 20}, {"vst_font", 21},
+    {"vst_color", 22}, {"vsf_interior", 23}, {"vsf_style", 24},
+    {"vsf_color", 25}, {"vq_color", 26}, {"vq_cellarray", 27},
+    {"v_locator", 28}, {"v_valuator", 29}, {"v_choice", 30},
+    {"v_string", 31}, {"vswr_mode", 32}, {"vsin_mode", 33},
+    {"vql_attributes", 35}, {"vqm_attributes", 36}, {"vqf_attributes", 37},
+    {"vqt_attributes", 38}, {"vst_alignment", 39},
 
-    {"vqt_fontheader",   VDI_vqt_fontheader,  232, FN_HALT},
-    {"vqt_trackkern",    VDI_vqt_trackkern,   234, FN_HALT},
-    {"vqt_pairkern",     VDI_vqt_pairkern,    235, FN_HALT},
-    {"vst_charmap",      VDI_vst_charmap,     236, FN_HALT},
-    {"vst_kern",         VDI_vst_kern,        237, FN_HALT},
-    {"v_getbitmap_info", VDI_v_getbitmap_info,239, FN_HALT},
-    {"vqt_f_extent",     VDI_vqt_f_extent,    240, FN_HALT},
-    {"v_ftext",          VDI_v_ftext,         241, FN_HALT},
-    {"v_ftext_offset",   VDI_v_ftext_offset,  242, FN_HALT},
-    {"v_getoutline",     VDI_v_getoutline,    243, FN_HALT},
-    {"vst_scratch",      VDI_vst_scratch,     244, FN_HALT},
-    {"vst_error",        VDI_vst_error,       245, FN_HALT},
-    {"vst_arbpt",        VDI_vst_arbpt,       246, FN_HALT},
-    {"vqt_advance",      VDI_vqt_advance,     247, FN_HALT},
-    {"vqt_devinfo",      VDI_vqt_devinfo,     248, FN_HALT},
-    {"v_savecache",      VDI_v_savecache,     249, FN_HALT},
-    {"v_loadcache",      VDI_v_loadcache,     250, FN_HALT},
-    {"v_flushcache",     VDI_v_flushcache,    251, FN_HALT},
-    {"vst_setsize",      VDI_vst_setsize,     252, FN_HALT},
-    {"vst_skew",         VDI_vst_skew,        253, FN_HALT},
-    {"vqt_get_table",    VDI_vqt_get_table,   254, FN_HALT},
-    {"vqt_cachesize",    VDI_vqt_cachesize,   255, FN_HALT}
+    {"v_opnvwk", 100}, {"v_clsvwk", 101}, {"vq_extnd", 102},
+    {"v_contourfill", 103}, {"vsf_perimeter", 104}, {"v_get_pixel", 105},
+    {"vst_effects", 106}, {"vst_point", 107}, {"vsl_ends", 108},
+    {"vro_cpyfm", 109}, {"vr_trnfm", 110}, {"vsc_form", 111},
+    {"vsf_updat", 112}, {"vsl_udsty", 113}, {"vr_recfl", 114},
+    {"vqin_mode", 115}, {"vqt_extent", 116}, {"vqt_width", 117},
+    {"vex_timv", 118}, {"vst_load_fonts", 119}, {"vst_unload_fonts", 120},
+    {"vrt_cpyfm", 121}, {"v_show_c", 122}, {"v_hide_c", 123},
+    {"vq_mouse", 124}, {"vex_butv", 125}, {"vex_motv", 126},
+    {"vex_curv", 127}, {"vq_key_s", 128}, {"vs_clip", 129},
+    {"vqt_name", 130}, {"vqt_fontinfo", 131},
+
+    /* The Speedo and FontGDOS additions, which arrive on their own range well
+     * above the VDI proper and none of which EmuTOS has */
+    {"vqt_fontheader", 232}, {"vqt_trackkern", 234}, {"vqt_pairkern", 235},
+    {"vst_charmap", 236}, {"vst_kern", 237}, {"v_getbitmap_info", 239},
+    {"vqt_f_extent", 240}, {"v_ftext", 241}, {"v_ftext_offset", 242},
+    {"v_getoutline", 243}, {"vst_scratch", 244}, {"vst_error", 245},
+    {"vst_arbpt", 246}, {"vqt_advance", 247}, {"vqt_devinfo", 248},
+    {"v_savecache", 249}, {"v_loadcache", 250}, {"v_flushcache", 251},
+    {"vst_setsize", 252}, {"vst_skew", 253}, {"vqt_get_table", 254},
+    {"vqt_cachesize", 255}
 };
 
 /*
- * The generalised drawing primitives, which all arrive as opcode 11 and are
- * told apart by control[5]. Naming them makes the diagnostic say v_rbox rather
- * than gdp 8.
+ * The generalised drawing primitives all arrive as opcode 11 and are told
+ * apart by the sub function, so naming them makes the diagnostic say v_rbox
+ * rather than gdp 8.
  */
 static char *gdp_name(int16_t sub)
 {
@@ -361,17 +169,90 @@ static char *gdp_name(int16_t sub)
     }
 }
 
+static char *vdi_name(int16_t opcode)
+{
+    int i;
+
+    if (opcode == 11)
+    {
+        char *sub = gdp_name(vdi_subfunction());
+
+        if (sub)
+            return sub;
+    }
+
+    for (i = 0; i < (int)(sizeof(VDI_names)/sizeof(struct VDI_name)); ++i)
+        if (VDI_names[i].id == opcode)
+            return VDI_names[i].name;
+
+    return "an unknown function";
+}
+
+/* Handing a call to the VDI ***********************************************/
+
+/*
+ * The screen every workstation is opened against.
+ *
+ * An ST low resolution screen, until there is somewhere for the choice to
+ * come from. The VDI works out which resolution to report from how many
+ * planes this has, so the two cannot disagree.
+ */
+#define SCREEN_WIDTH  (320)
+#define SCREEN_HEIGHT (200)
+#define SCREEN_PLANES (4)
+
+static struct surface *screen;
+static int vdi_ready;
+
+/*
+ * The arrays the VDI is handed, in host memory.
+ *
+ * A VDI call names its arrays by address in the emulated memory, and the VDI
+ * reads and writes them a word at a time through pointers of its own. Copying
+ * them across rather than pointing at emulated memory is what keeps the VDI
+ * from having to know that the memory it is looking at belongs to a 68000.
+ *
+ * The sizes are the ceilings NVDI 4 documents. A call asking for more than
+ * fits is refused rather than allowed to write past the end.
+ */
+static int16_t h_control[VDI_CONTROL_WORDS];
+static int16_t h_intin[VDI_INTIN_MAX];
+static int16_t h_ptsin[VDI_PTSIN_MAX];
+static int16_t h_intout[VDI_INTOUT_MAX];
+static int16_t h_ptsout[VDI_PTSOUT_MAX];
+
+static int vdi_start()
+{
+    if (vdi_ready)
+        return 1;
+
+    screen = surface_create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_PLANES);
+    if (!screen)
+    {
+        halt_execution();
+        printf("VDI: no room for a %dx%d screen\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+        return 0;
+    }
+
+    surface_select(screen);
+    emuvdi_init();
+
+    vdi_ready = 1;
+
+    return 1;
+}
+
 void vdi_reset()
 {
-    /* Nothing is held across applications yet. Workstations, their attributes
-     * and the surfaces they draw into all arrive with the VDI proper, and this
-     * is where they are let go of again. */
+    surface_free(screen);
+    screen = 0;
+    vdi_ready = 0;
 }
 
 void vdi_trap()
 {
     uint32_t block = m68k_get_reg(0, M68K_REG_D1);
-    int i;
+    int i, n_ptsin, n_intin, n_ptsout, n_intout;
 
     pb.control = m68k_read_memory_32(block +  0);
     pb.intin   = m68k_read_memory_32(block +  4);
@@ -380,66 +261,77 @@ void vdi_trap()
     pb.ptsout  = m68k_read_memory_32(block + 16);
 
     pb.opcode  = gem_word(pb.control, VDI_CONTROL_WORDS, 0);
-    pb.n_ptsin = gem_word(pb.control, VDI_CONTROL_WORDS, 1) * 2;
-    pb.n_intin = gem_word(pb.control, VDI_CONTROL_WORDS, 3);
-    pb.n_intout = VDI_INTOUT_MAX;
-    pb.n_ptsout = VDI_PTSOUT_MAX * 2;
+    n_ptsin = gem_word(pb.control, VDI_CONTROL_WORDS, 1) * 2;
+    n_intin = gem_word(pb.control, VDI_CONTROL_WORDS, 3);
 
-    /* A call that produces nothing has to say so, or the caller reads however
-     * many entries the call before it left behind */
-    vdi_set_intout_count(0);
-    vdi_set_ptsout_count(0);
+    pb.n_ptsin = n_ptsin;
+    pb.n_intin = n_intin;
+    pb.n_intout = VDI_INTOUT_MAX;
+    pb.n_ptsout = VDI_PTSOUT_MAX;
 
 #ifdef ENABLE_VDI_TRACE
     printf("VDI call %d: handle %d, sub %d, ptsin %d, intin %d\n",
-           pb.opcode, vdi_handle(), vdi_subfunction(),
-           pb.n_ptsin/2, pb.n_intin);
+           pb.opcode, vdi_handle(), vdi_subfunction(), n_ptsin/2, n_intin);
 #endif
 
-    for (i = 0; i < (int)(sizeof(VDI_functions)/sizeof(struct VDI_function)); ++i)
+    if (!emuvdi_implements(pb.opcode))
     {
-        struct VDI_function *f = &VDI_functions[i];
-        uint32_t r;
-
-        if (f->id != pb.opcode)
-            continue;
-
-        if (f->fnct)
-        {
-            r = f->fnct();
-        }
-        else if (f->kind == FN_STUB)
-        {
-#ifdef ENABLE_VDI_TRACE
-            printf("Stubbed %s (%d)\n", f->name, pb.opcode);
-#endif
-            return;
-        }
-        else
-        {
-            char *sub = (pb.opcode == 11) ? gdp_name(vdi_subfunction()) : 0;
-
-            halt_execution();
-            if (sub)
-                printf("VDI %s (%d, gdp %d) not implemented\n",
-                       sub, pb.opcode, vdi_subfunction());
-            else if (pb.opcode == 5 || pb.opcode == 11)
-                printf("VDI %s %d (%d) not implemented\n",
-                       f->name, vdi_subfunction(), pb.opcode);
-            else
-                printf("VDI %s (%d) not implemented\n", f->name, pb.opcode);
-            return;
-        }
-
-#ifdef ENABLE_VDI_TRACE
-        printf("Return from %s: %d = 0x%x\n", f->name, r, r);
-#else
-        (void)r;
-#endif
-
+        halt_execution();
+        printf("VDI %s (%d) not implemented\n", vdi_name(pb.opcode), pb.opcode);
         return;
     }
 
-    halt_execution();
-    printf("VDI Unknown function called %d\n", pb.opcode);
+    if (n_ptsin < 0 || n_ptsin > VDI_PTSIN_MAX ||
+        n_intin < 0 || n_intin > VDI_INTIN_MAX)
+    {
+        halt_execution();
+        printf("VDI %s (%d) asked to read %d points and %d values, which is "
+               "more than any VDI call takes\n",
+               vdi_name(pb.opcode), pb.opcode, n_ptsin/2, n_intin);
+        return;
+    }
+
+    if (!vdi_start())
+        return;
+
+    /* In */
+    for (i = 0; i < VDI_CONTROL_WORDS; i++)
+        h_control[i] = gem_word(pb.control, VDI_CONTROL_WORDS, i);
+    for (i = 0; i < n_intin; i++)
+        h_intin[i] = gem_word(pb.intin, n_intin, i);
+    for (i = 0; i < n_ptsin; i++)
+        h_ptsin[i] = gem_word(pb.ptsin, n_ptsin, i);
+
+    memset(h_intout, 0, sizeof h_intout);
+    memset(h_ptsout, 0, sizeof h_ptsout);
+
+    emuvdi_call(h_control, h_intin, h_ptsin, h_intout, h_ptsout);
+
+    /* Out. The VDI says how much it answered with in the control array, and
+     * the caller reads that to know how much of the arrays to look at. */
+    n_ptsout = h_control[2] * 2;
+    n_intout = h_control[4];
+
+    if (n_ptsout > VDI_PTSOUT_MAX)
+        n_ptsout = VDI_PTSOUT_MAX;
+    if (n_intout > VDI_INTOUT_MAX)
+        n_intout = VDI_INTOUT_MAX;
+
+    for (i = 0; i < n_intout; i++)
+        gem_set_word(pb.intout, n_intout, i, h_intout[i]);
+    for (i = 0; i < n_ptsout; i++)
+        gem_set_word(pb.ptsout, n_ptsout, i, h_ptsout[i]);
+
+    gem_set_word(pb.control, VDI_CONTROL_WORDS, 2, h_control[2]);
+    gem_set_word(pb.control, VDI_CONTROL_WORDS, 4, h_control[4]);
+
+    /* Opening a workstation answers with its handle here rather than in
+     * intout, which is why every binding reads it back out of the control
+     * array afterwards */
+    gem_set_word(pb.control, VDI_CONTROL_WORDS, 6, h_control[6]);
+
+#ifdef ENABLE_VDI_TRACE
+    printf("Return from %s: %d values, %d points\n",
+           vdi_name(pb.opcode), n_intout, n_ptsout/2);
+#endif
 }

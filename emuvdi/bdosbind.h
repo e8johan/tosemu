@@ -37,11 +37,17 @@
 #define BDOSBIND_H
 
 /* The mode argument, which asks for supervisor memory. There is one kind of
- * memory here, so it is accepted and ignored. */
+ * memory here, so it is accepted and ignored. vdi_control.c defines this for
+ * itself if nobody else has. */
+#ifndef MX_SUPER
 #define MX_SUPER (3)
+#endif
 
 void *host_vdi_alloc(long size);
 void host_vdi_free(void *block);
+
+/* Raw console input, which the sampling input functions poll */
+#define Crawio(c)  ((LONG)0)
 
 #define Mxalloc(amount, mode) host_vdi_alloc((long)(amount))
 #define Mfree(block)          host_vdi_free(block)

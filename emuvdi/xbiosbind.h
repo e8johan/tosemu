@@ -33,6 +33,9 @@
 WORD Getrez(void);
 void Setscreen(LONG lscrn, LONG pscrn, WORD rez, WORD mode);
 
+/* A screen dump, to a printer that is not attached */
+#define Scrdmp()  ((void)0)
+
 WORD Setcolor(WORD colornum, WORD color);
 WORD EsetColor(WORD colornum, WORD color);
 void VsetRGB(WORD index, WORD count, LONG rgb);

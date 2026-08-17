@@ -1,0 +1,151 @@
+/*
+ * TOSEMU - an emulated environment for TOS applications
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
+
+/* Drawing, from the far side of the trap.
+ *
+ * emuvdi's own test checks that the ported VDI draws, by calling it directly
+ * on the host. This checks the rest of the way: that an application in the
+ * emulated machine can open a workstation, draw into it, and read back what
+ * it drew, with the parameter block crossing between the two.
+ *
+ * It opens a physical workstation, which is what a program with no AES under
+ * it has to do. That is how a test reaches the VDI while there is no AES to
+ * ask for a window, and not a promise that programs which take over the whole
+ * screen are meant to work.
+ *
+ * v_get_pixel is what makes this a test rather than a demonstration: the
+ * answer comes back out of the surface, so a call that quietly did nothing is
+ * told apart from one that drew.
+ */
+
+#include <stdio.h>
+#include <gem.h>
+
+static int n;
+
+static void check(long got, long want, const char *name)
+{
+    n++;
+    if (got == want)
+        printf("ok %d - %s\n", n, name);
+    else
+        printf("not ok %d - %s (got %ld, want %ld)\n", n, name, got, want);
+}
+
+static short work_in[11];
+static short work_out[57];
+static short handle;
+
+/* The colour index at a point, which is the second of the two answers
+ * v_get_pixel gives: the first is the value in the planes. */
+static short pixel(short x, short y)
+{
+    short pel, index;
+
+    v_get_pixel(handle, x, y, &pel, &index);
+
+    return index;
+}
+
+int main(int argc, char **argv)
+{
+    short pxy[8];
+    short i;
+
+    /* Every attribute defaulted, and coordinates in pixels rather than in the
+     * normalised space nothing has used since GEM was portable */
+    for (i = 0; i < 10; i++)
+        work_in[i] = 1;
+    work_in[10] = 2;
+
+    v_opnwk(work_in, &handle, work_out);
+    check(handle > 0, 1, "v_opnwk gives a workstation handle");
+
+    /* What the workstation says it is. The screen is 320x200 for now, and
+     * work_out holds the largest addressable pixel rather than the count. */
+    check(work_out[0], 319, "the workstation is 320 pixels across");
+    check(work_out[1], 199, "the workstation is 200 pixels down");
+    check(work_out[13], 16, "the workstation has 16 colours");
+
+    vswr_mode(handle, MD_REPLACE);
+
+    /* A filled rectangle, and then the corners of it */
+    vsf_interior(handle, FIS_SOLID);
+    vsf_color(handle, 1);
+    pxy[0] = 10; pxy[1] = 20;
+    pxy[2] = 40; pxy[3] = 50;
+    v_bar(handle, pxy);
+
+    check(pixel(10, 20), 1, "v_bar filled its top left corner");
+    check(pixel(40, 50), 1, "v_bar filled its bottom right corner");
+    check(pixel(25, 35), 1, "v_bar filled its middle");
+    check(pixel(9, 20), 0, "v_bar left the pixel outside it alone");
+    check(pixel(41, 50), 0, "v_bar stopped at its right edge");
+    check(pixel(10, 51), 0, "v_bar stopped at its bottom edge");
+
+    /* A second bar in another colour, to show the planes are separate: 5 is
+     * planes 0 and 2, so a colour that came back as 1 or 4 would mean one of
+     * them was not written */
+    vsf_color(handle, 5);
+    pxy[0] = 60; pxy[1] = 20;
+    pxy[2] = 80; pxy[3] = 50;
+    v_bar(handle, pxy);
+    check(pixel(70, 35), 5, "a bar in colour 5 lights planes 0 and 2");
+
+    /* A line, which is drawn by different code from a fill */
+    vsl_color(handle, 3);
+    vsl_type(handle, 1);
+    pxy[0] = 100; pxy[1] = 100;
+    pxy[2] = 200; pxy[3] = 100;
+    v_pline(handle, 2, pxy);
+
+    check(pixel(100, 100), 3, "v_pline drew its first point");
+    check(pixel(150, 100), 3, "v_pline drew its middle");
+    check(pixel(200, 100), 3, "v_pline drew its last point");
+    check(pixel(150, 101), 0, "v_pline drew one row only");
+
+    /* Clipping, which the workstation applies rather than the caller */
+    vs_clip(handle, 1, pxy);        /* pxy is still 100,100 - 200,100 */
+    vsf_color(handle, 2);
+    pxy[0] = 90;  pxy[1] = 90;
+    pxy[2] = 210; pxy[3] = 110;
+    v_bar(handle, pxy);
+    check(pixel(150, 100), 2, "a clipped bar drew inside the rectangle");
+    check(pixel(150, 105), 0, "a clipped bar drew nothing outside it");
+    vs_clip(handle, 0, pxy);
+
+    /* Text, which reaches the fonts and the blit written for this */
+    vswr_mode(handle, MD_REPLACE);
+    vst_color(handle, 1);
+    v_gtext(handle, 10, 150, "A");
+    for (i = 0; i < 16; i++)
+        if (pixel(10 + i % 8, 143 + i / 8))
+            break;
+    check(i < 16, 1, "v_gtext put something in the cell it was given");
+
+    v_clrwk(handle);
+    check(pixel(25, 35), 0, "v_clrwk emptied the screen");
+
+    v_clswk(handle);
+
+    printf("1..%d\n", n);
+
+    return 0;
+}

@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aes.c aesappl.c vdi.c \
+              gem.c aes.c aesappl.c vdi.c surface.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -13,17 +13,18 @@ MUSASHIGENERATEDFILES = gen/m68kops.c gen/m68kopac.c gen/m68kopdm.c gen/m68kopnz
 # The VDI, which comes from EmuTOS. These are built as they stand, out of the
 # submodule, and everything that adapts them is in emuvdi/ - see emuvdi/README.
 EMUTOS = 3rdparty/emutos
-EMUTOSFILES = $(EMUTOS)/vdi/vdi_control.c \
+EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
               $(EMUTOS)/vdi/vdi_raster.c $(EMUTOS)/vdi/vdi_col.c \
               $(EMUTOS)/vdi/vdi_bezier.c $(EMUTOS)/vdi/vdi_gdp.c \
               $(EMUTOS)/vdi/vdi_marker.c $(EMUTOS)/vdi/vdi_misc.c \
               $(EMUTOS)/vdi/vdi_text.c $(EMUTOS)/vdi/vdi_textblit.c \
+              $(EMUTOS)/vdi/vdi_esc.c $(EMUTOS)/vdi/vdi_input.c \
               $(EMUTOS)/bios/fnt_st_6x6.c $(EMUTOS)/bios/fnt_st_8x8.c \
               $(EMUTOS)/bios/fnt_st_8x16.c \
               $(EMUTOS)/bios/fnt_off_6x6.c $(EMUTOS)/bios/fnt_off_8x8.c \
               $(EMUTOS)/util/intmath.c
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c
 
 # Compilation flags
 CC = gcc
@@ -113,7 +114,7 @@ emuvdi/%.o: emuvdi/%.c Makefile
 -include $(EMUTOSOBJECTS:.o=.d)
 
 # Main emulator target
-bin/tosemu: $(OBJECTS)
+bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 	$(LD) $(LDFLAGS) $^ -o $@
 
 # Draws with the ported VDI and compares against what it should have drawn.

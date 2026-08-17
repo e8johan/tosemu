@@ -43,6 +43,16 @@ UWORD V_REZ_HZ;
 UWORD V_REZ_VT;
 UWORD BYTES_LIN;
 
+/* The alpha text cursor, which the escapes address. A hosted VDI has no
+ * console on the surface, but the escapes still keep track of where one
+ * would be. */
+UWORD v_cel_ht;
+UWORD v_cel_wr;
+UWORD v_cel_mx;
+UWORD v_cel_my;
+UWORD v_cur_cx;
+UWORD v_cur_cy;
+
 /*
  * log2(8/v_planes): turns a pixel column into a byte offset, as
  * (x & 0xfff0) >> v_planes_shift. EmuTOS computes it in bios/lineainit.c.
@@ -70,10 +80,13 @@ WORD MFILL;
 WORD COPYTRAN;
 WORD LN_MASK, LSTLIN;
 WORD TERM_CH;
-WORD flip_y;
 WORD line_cw;
 WORD num_qc_lines;
 WORD val_mode, chc_mode, loc_mode, str_mode;
+
+/* The font the VDI last drew with, which screen() mirrors out of the
+ * workstation after every call so that line-A sees the same one */
+const Fonthead *CUR_FONT;
 
 /* Text state */
 WORD XDDA;
@@ -147,10 +160,17 @@ void host_vdi_free(void *block)
 }
 
 /*
- * The escapes and the mouse, which are the parts of the VDI a hosted one
- * answers for itself. Nothing draws a pointer here, the compositor has one,
- * and the terminal escapes have nowhere to go yet. Opening and closing a
- * workstation still calls these, so they exist and do nothing.
+ * The mouse.
+ *
+ * EmuTOS draws a pointer into the screen itself, saving and restoring what it
+ * covers, because on an ST there is nothing else to draw one. Here there will
+ * be a compositor with a pointer of its own, so none of vdi_mouse.c is built
+ * and these stand in its place. They are the calls screen() dispatches to, so
+ * they have to exist for the table to link.
+ *
+ * v_show_c and v_hide_c are honest as they stand: hiding a cursor nothing
+ * draws is nothing to do. vsc_form, which sets the shape, will have to say
+ * something to the compositor once there is one.
  */
 void vdimouse_init(void)
 {
@@ -160,12 +180,53 @@ void vdimouse_exit(void)
 {
 }
 
-void esc_init(Vwk *vwk)
+void vdi_v_locator(Vwk *vwk)
+{
+    /* Asking where the pointer is, in the requesting or the sampling form.
+     * Neither can answer until there is a pointer. */
+    (void)vwk;
+}
+
+void vdi_v_show_c(Vwk *vwk)
 {
     (void)vwk;
 }
 
-void esc_exit(Vwk *vwk)
+void vdi_v_hide_c(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void vdi_vq_mouse(Vwk *vwk)
+{
+    /* Where the pointer is and which buttons are down. Nothing moves it yet,
+     * so it is wherever it was left, which is the top left corner. */
+    INTOUT[0] = MOUSE_BT;
+    PTSOUT[0] = GCURX;
+    PTSOUT[1] = GCURY;
+}
+
+void vdi_vsc_form(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void vdi_vex_butv(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void vdi_vex_motv(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void vdi_vex_curv(Vwk *vwk)
+{
+    (void)vwk;
+}
+
+void vdi_vex_wheelv(Vwk *vwk)
 {
     (void)vwk;
 }

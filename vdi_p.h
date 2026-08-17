@@ -27,29 +27,15 @@
 #define VDI_TRACE_CONTEXT
 #include "config.h"
 
-/* The parameter block of the call being served.
+/* The handle in control[6], naming the workstation the call is for, and the
+ * sub function in control[5], for the two opcodes that carry one: the
+ * generalised drawing primitives and the escapes.
  *
- * Unlike the AES, the VDI rarely answers with a single value. Results go into
- * the intout and ptsout arrays, and the caller is told how many arrived
- * through the control array, so a handler that produces output says how much
- * of it there is.
+ * There are no other accessors, and no per function handlers. A VDI call is
+ * unpacked into host arrays and handed to EmuTOS's own dispatcher whole - see
+ * emuvdi/emuvdi.h - so nothing here reaches into the arrays a value at a time.
  */
-int16_t vdi_control(int index);
-int16_t vdi_intin(int index);
-int16_t vdi_ptsin(int index);
-void vdi_set_intout(int index, int16_t value);
-void vdi_set_ptsout(int index, int16_t value);
-
-/* How many words the handler put in intout and ptsout. Both start at zero for
- * every call, so a handler with nothing to report says nothing. */
-void vdi_set_intout_count(int words);
-void vdi_set_ptsout_count(int words);
-
-/* The handle in control[6], naming the workstation the call is for */
 int16_t vdi_handle();
-
-/* The sub function in control[5], for the two opcodes that carry one: the
- * generalised drawing primitives and the escapes */
 int16_t vdi_subfunction();
 
 #endif /* VDI_P_H */

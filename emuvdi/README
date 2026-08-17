@@ -25,15 +25,27 @@ and the Atari ST system fonts, bios/fnt_st_*.c with their offset tables.
 
 Not used, because they are the parts a hosted VDI has to answer for itself:
 
-    vdi_main.c                 the freestanding boot and the trap entry
+    vdi_main.c                 nothing: it is the freestanding boot, but the
+                               dispatcher in it is wanted, so it is built
     vdi_mouse.c vdi_input.c    the pointer and the input, which belong to the
                                compositor
     vdi_esc.c                  terminal escapes
     every .S                   see below
 
 vdi_control.c is the workstation management - opening, closing and clearing
-them, and vq_extnd - rather than the trap entry, which is vdi_main.c. It is
-built, so opening a workstation is EmuTOS's code and not ours.
+them, and vq_extnd - rather than the trap entry, which is vdi_main.c. Both are
+built. screen() in vdi_main.c reads the control array, finds the workstation
+the handle names, fills in how many answers there are and calls the right
+function, so tosemu does not dispatch VDI calls at all: it copies the arrays
+out of the emulated memory and hands them over whole. See emuvdi.h and
+bridge.c, which are the only things on both sides.
+
+vdi_mouse.c stays out. EmuTOS draws a pointer into the screen itself, saving
+and restoring what it covers, because on an ST there is nothing else to draw
+one; here there will be a compositor with a pointer of its own. The calls
+screen() dispatches to still have to exist, so hostvars.c stands in for them.
+v_show_c and v_hide_c are honest as they are. vsc_form, which sets the shape,
+will have to say something to the compositor once there is one.
 
 
 How it is adapted
