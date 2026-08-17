@@ -33,85 +33,6 @@
 
 /* XBIOS functions */
 
-static uint32_t dreg[5], areg[4];
-
-static void save_regs(void)
-{
-    int i;
-    for(i=0; i<5; i++)
-        dreg[i] = m68k_get_reg(0, M68K_REG_D3+i);
-    for(i=0; i<4; i++)
-        areg[i] = m68k_get_reg(0, M68K_REG_A3+i);
-}
-
-static void restore_regs(void)
-{
-    int i;
-    for(i=0; i<5; i++)
-        m68k_set_reg(M68K_REG_D3+i, dreg[i]);
-    for(i=0; i<4; i++)
-        m68k_set_reg(M68K_REG_A3+i, areg[i]);
-}
-
-/* Supexec has been implemented using magic memory, which provides a mechanism 
- * for triggering a callback. The general idea is:
- * 
- * 1. Switch to supervisor mode, thus switching stack
- * 2. Push the current PC, i.e. the return address
- * 3. Push the magic value 0x200
- * 4. Set the PC to the sub-routine address
- * 
- * When the RTS call is made, the PC will be set to 0x200, triggering a read to
- * the addresses 0x200 and 0x201. This will hit the magic memory area 
- * registered for this purpose, resulting in calls to magic_xbios_supexec_read.
- * When 0x201 is called, the PC is popped from the stack before the supervisor
- * mode is disabled, PC updated and D0 set to 0 (the XBIOS return code for no
- * error).  The instruction at 0x200 will be executed before the PC update
- * takes effect, so the memory reads return a NOP at that address.
- */
-uint32_t XBIOS_Supexec()
-{
-    uint32_t lv0 = peek_u32(2);
-
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", lv0);
-    }
-    
-    save_regs();
-
-    enable_supervisor_mode();
-    push_u32(m68k_get_reg(0, M68K_REG_PC));
-    push_u32(0x200);
-    m68k_set_reg(M68K_REG_PC, lv0);
-
-    return 0;
-}
-
-/* Magic memory for supexec */
-uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address)
-{
-    uint32_t lv0;
-    if (address == 0x200)
-        return 0x4e;
-    else if (address == 0x201)
-    {
-        lv0 = pop_u32();
-        disable_supervisor_mode();
-        m68k_set_reg(M68K_REG_PC, lv0);
-        restore_regs();
-        return 0x71;
-    }
-    
-    return 0;
-}
-
-/* Protection for magic memory for supexec */
-void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value)
-{
-    printf("Attempted to write to magic memory at 0x%x\n", address);
-    halt_execution();
-}
-
 /* Floppy functions **********************************************************/
 
 /* There is no floppy controller, but the seek rate is a setting rather than an
@@ -205,7 +126,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Blitmode NULL
 #define XBIOS_Buffoper NULL
 #define XBIOS_Buffptr NULL
-#define XBIOS_Dbmsg NULL
 #define XBIOS_Devconnect NULL
 #define XBIOS_DMAread NULL
 #define XBIOS_DMAwrite NULL
@@ -251,7 +171,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Floprd NULL
 #define XBIOS_Flopver NULL
 #define XBIOS_Flopwr NULL
-#define XBIOS_Gettime NULL
 #define XBIOS_Giaccess NULL
 #define XBIOS_Gpio NULL
 #define XBIOS_Ikbdws NULL
@@ -262,16 +181,13 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Kbdvbase NULL
 #define XBIOS_Kbrate NULL
 #define XBIOS_Locksnd NULL
-#define XBIOS_Metainit NULL
 #define XBIOS_Mfpint NULL
 #define XBIOS_Midiws NULL
-#define XBIOS_NVMaccess NULL
 #define XBIOS_Offgibit NULL
 #define XBIOS_Ongibit NULL
 #define XBIOS_Protobt NULL
 #define XBIOS_Prtblk NULL
 #define XBIOS_Puntaes NULL
-#define XBIOS_Random NULL
 #define XBIOS_Rsconf NULL
 #define XBIOS_Scrdmp NULL
 #define XBIOS_Setbuffer NULL
@@ -279,7 +195,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_Setmode NULL
 #define XBIOS_Setmontracks NULL
 #define XBIOS_Setprt NULL
-#define XBIOS_Settime NULL
 #define XBIOS_Settracks NULL
 #define XBIOS_Sndstatus NULL
 #define XBIOS_Soundcmd NULL
@@ -388,7 +303,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Physbase", XBIOS_Physbase, 0x02, FN_HALT, 0},
     {"Protobt", XBIOS_Protobt, 0x12, FN_STUB, 0},
     {"Prtblk", XBIOS_Prtblk, 0x24, FN_HALT, 0},
-    {"Puntaes", XBIOS_Puntaes, 0x27, FN_HALT, 0},
+    {"Puntaes", XBIOS_Puntaes, 0x27, FN_STUB, 0},
     {"Random", XBIOS_Random, 0x11, FN_HALT, 0},
     {"Rsconf", XBIOS_Rsconf, 0x0F, FN_HALT, 0},
     {"Scrdmp", XBIOS_Scrdmp, 0x14, FN_STUB, 0},
@@ -407,7 +322,7 @@ struct XBIOS_function XBIOS_functions[] = {
     {"Settracks", XBIOS_Settracks, 0x85, FN_STUB, 0},
     {"Sndstatus", XBIOS_Sndstatus, 0x8C, FN_STUB, 0},
     {"Soundcmd", XBIOS_Soundcmd, 0x82, FN_STUB, 0},
-    {"Ssbrk", XBIOS_Ssbrk, 0x01, FN_HALT, 0},
+    {"Ssbrk", XBIOS_Ssbrk, 0x01, FN_STUB, 0},
     {"Supexec", XBIOS_Supexec, 0x26, FN_HALT, 0},
     {"Unlocksnd", XBIOS_Unlocksnd, 0x81, FN_STUB, 0},
     {"VgetMonitor", XBIOS_VgetMonitor, 0x59, FN_STUB, 0},

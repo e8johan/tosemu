@@ -50,4 +50,14 @@ uint32_t XBIOS_VgetSize();
 uint32_t XBIOS_VsetRGB();
 uint32_t XBIOS_VgetRGB();
 
+/* System functions, xbiossys.c */
+
+uint32_t XBIOS_Supexec();
+uint32_t XBIOS_Gettime();
+uint32_t XBIOS_Settime();
+uint32_t XBIOS_Random();
+uint32_t XBIOS_NVMaccess();
+uint32_t XBIOS_Dbmsg();
+uint32_t XBIOS_Metainit();
+
 #endif /* XBIOS_P_H */

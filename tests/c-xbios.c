@@ -42,6 +42,16 @@
     (long)trap_14_wwlll(0xa5,(short)(a),(long)(b),(long)(c),(long)(d))
 #endif
 
+/* Metainit is bound in mint/metados.h and Dbmsg only in mint/sysbind.h,
+ * neither of which can be included next to osbind.h, so bind them here */
+#ifndef Metainit
+# define Metainit(buffer) (void)trap_14_wl((short)0x30,(long)(buffer))
+#endif
+#ifndef Dbmsg
+# define Dbmsg(a,b,c) \
+    (void)trap_14_wwwl((short)0x0b,(short)(a),(short)(b),(long)(c))
+#endif
+
 /* mint/falcon.h binds VsetMask through trap_14_www, which takes two arguments
  * where VsetMask passes three, so it does not compile. Bind it correctly. */
 #undef VsetMask
@@ -148,6 +158,38 @@ int main(int argc, char **argv)
     survived("Vsync");
     Scrdmp();
     survived("Scrdmp");
+
+    /* System and clock. These have a real equivalent on the host. */
+    check(Gettime() != 0L, 1, "Gettime reports a time");
+    check((Gettime() >> 25) >= 40, 1, "Gettime reports a year past 2020");
+    Settime(0L);
+    survived("Settime");
+    check(Gettime() != 0L, 1, "Settime left the host clock alone");
+    check((Random() & 0xff000000L), 0, "Random stays within 24 bits");
+    check(Random() != Random(), 1, "Random gives different values");
+    check((long)Ssbrk(16), 0, "Ssbrk reports 0");
+
+    /* Battery backed memory, which round trips within a run */
+    buffer[0] = 0x5a;
+    buffer[1] = 0xa5;
+    check(NVMaccess(1, 4, 2, buffer), 0, "NVMaccess writes");
+    buffer[0] = buffer[1] = 0;
+    check(NVMaccess(0, 4, 2, buffer), 0, "NVMaccess reads");
+    check(buffer[0] & 0xff, 0x5a, "NVMaccess kept the first byte");
+    check(buffer[1] & 0xff, 0xa5, "NVMaccess kept the second byte");
+    check(NVMaccess(2, 0, 0, buffer), 0, "NVMaccess clears");
+    NVMaccess(0, 4, 2, buffer);
+    check(buffer[0] & 0xff, 0, "NVMaccess really cleared it");
+    check(NVMaccess(0, 60, 2, buffer) != 0, 1, "NVMaccess rejects a bad range");
+
+    /* No MetaDOS, reported by zeroing the caller's structure */
+    for (i = 0; i < 12; i++)
+        buffer[i] = 0x7f;
+    Metainit(buffer);
+    check(buffer[0] | buffer[4] | buffer[8], 0, "Metainit reports no MetaDOS");
+
+    Dbmsg(0x5abc, 0, 0L);
+    survived("Dbmsg");
 
     /* Floppy and DMA. There is no controller, so every operation on a disk
      * reports that the drive is not ready. Nothing pretends to have written. */
