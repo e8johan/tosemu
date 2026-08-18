@@ -102,11 +102,18 @@ static struct {
 /* Input *******************************************************************/
 
 /*
- * The scan codes for the keys that are not characters.
+ * The scan code of a key, which is the half of it that says which key rather
+ * than which letter.
  *
- * An application reads the high byte of a key for these, and the low byte for
- * anything it can print. Only the ones a GEM program actually looks at are
- * here: the arrows for moving about, the function keys, and the editing keys.
+ * Most of them need no table at all. An ST's keyboard reports the IBM XT scan
+ * codes for its main block, and so does a Linux evdev keyboard, so the number
+ * that arrives from the compositor is already the number GEM expects: S is
+ * 0x1f on both. The range below 0x54 is the block where that holds.
+ *
+ * What does not hold is the cursor and editing keys. An ST has them where a PC
+ * has its keypad, and evdev gives them numbers of their own well above the
+ * block, so those are looked up by what they mean rather than by where they
+ * are.
  * http://toshyp.atari.org/en/003007.html
  */
 static uint16_t scancode_for(xkb_keysym_t sym)
@@ -264,7 +271,17 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
         return;
 
     sym = xkb_state_key_get_one_sym(w.xkb_state, code);
-    scan = scancode_for(sym);
+
+    /*
+     * The number the compositor gave, when it is one the ST would have given
+     * too. A GEM application reads this half to tell keys apart: a menu
+     * shortcut is a scan code, not a letter, so leaving it empty makes every
+     * shortcut in every application unreachable.
+     */
+    if (key >= 1 && key < 0x54)
+        scan = (uint16_t)key;
+    else
+        scan = scancode_for(sym);
 
     /* Anything that types a single byte types it. GEM predates any of the
      * ways of saying more than one. */
