@@ -115,10 +115,14 @@ uint32_t AES_form_alert();
 void aes_menu_reset();
 
 /* Whether a point is in the menu bar, and running the menu when one is */
-int aes_menu_hit(int16_t x, int16_t y);
+int aes_menu_shown();
+int aes_menu_arrived(int16_t x, int16_t y);
 void aes_menu_click();
 
 uint32_t AES_menu_bar();
+uint32_t AES_menu_icheck();
+uint32_t AES_menu_ienable();
+uint32_t AES_menu_tnormal();
 
 /* Window functions, aeswind.c */
 

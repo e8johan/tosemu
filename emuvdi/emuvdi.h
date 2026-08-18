@@ -177,6 +177,9 @@ int16_t emuvdi_menu_do(int16_t *title, int16_t *item);
 
 /* How tall the menu bar is, which is the height of one box */
 int16_t emuvdi_menu_height();
+void emuvdi_menu_active(int16_t *x, int16_t *y, int16_t *w, int16_t *h);
+int16_t emuvdi_menu_change(void *tree, int16_t object, uint16_t bit,
+                           int16_t set, int16_t draw, int16_t only_if_enabled);
 
 /*
  * Puts up an alert - the box with an icon, a line or three of text and up to

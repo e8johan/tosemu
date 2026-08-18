@@ -27,7 +27,7 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/util/intmath.c \
               $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
               $(EMUTOS)/aes/gemgsxif.c \
-              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemmnlib.c $(EMUTOS)/aes/gemfmlib.c \
+              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemfmlib.c \
               $(EMUTOS)/aes/gemrslib.c \
               $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
@@ -46,7 +46,7 @@ WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
-              emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
+              emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 
 # Compilation flags

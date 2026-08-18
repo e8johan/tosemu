@@ -44,6 +44,7 @@
 #include "aesext.h"
 #include "struct.h"
 #include "gemlib.h"
+#include "gemgsxif.h"
 #include "gsxdefs.h"
 
 #include <string.h>
@@ -89,6 +90,22 @@ void emuvdi_aes_init()
      */
     gem_rsc_init();
     gem_rsc_fixit();
+
+    /*
+     * Somewhere to keep what is underneath a menu or an alert while one is up.
+     *
+     * The AES draws a menu straight over whatever was there and puts the
+     * pixels back afterwards, so it needs a buffer to put them in, and it
+     * works out how large from the character size - which is why this comes
+     * after the workstation is open rather than with the rest of the setup.
+     *
+     * Without it the AES does not fail: bb_set finds a buffer of no length,
+     * decides it can save a rectangle nought pixels high, and carries on. Its
+     * own comment for that case says "this will leave droppings", and it is
+     * right - what is left on the screen is the menu that was supposed to have
+     * been taken away.
+     */
+    gsx_malloc();
 }
 
 void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
@@ -266,9 +283,42 @@ int16_t emuvdi_menu_do(int16_t *title, int16_t *item)
     return chosen;
 }
 
+extern MOBLK gl_ctwait;
+
+/* EmuTOS's menu library, aes/gemmnlib.c (our copy of it) */
+BOOL do_chg(OBJECT *tree, WORD iitem, UWORD chgvalue,
+            WORD dochg, WORD dodraw, WORD chkdisabled);
+
+/*
+ * Ticking an entry, greying one out, and putting a title back to normal.
+ *
+ * All three are the same thing - a bit of an object's state, set or cleared,
+ * with or without redrawing it - which is why they are one function here as
+ * they are one line each in the AES.
+ */
+int16_t emuvdi_menu_change(void *tree, int16_t object, uint16_t bit,
+                           int16_t set, int16_t draw, int16_t only_if_enabled)
+{
+    return do_chg(tree, object, bit, set, draw, only_if_enabled);
+}
+
 int16_t emuvdi_menu_height()
 {
     return gl_hbox;
+}
+
+/*
+ * The part of the bar the titles are in, which mn_bar works out and puts away
+ * for whoever is watching the mouse. On real GEM that is the control manager,
+ * which waits for the pointer to arrive in this rectangle and runs the menu
+ * when it does.
+ */
+void emuvdi_menu_active(int16_t *x, int16_t *y, int16_t *w, int16_t *h)
+{
+    *x = gl_ctwait.m_gr.g_x;
+    *y = gl_ctwait.m_gr.g_y;
+    *w = gl_ctwait.m_gr.g_w;
+    *h = gl_ctwait.m_gr.g_h;
 }
 
 /* EmuTOS's form library, aes/gemfmlib.c */

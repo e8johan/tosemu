@@ -19,11 +19,19 @@ TOSEMU_SCREENSHOT will still write out what was drawn:
     TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu demos/dialog
 
 and TOSEMU_KEYS and TOSEMU_CLICKS will press something, for when there is
-nobody to. Keys are characters, with \r for Return; clicks are places to press
-and release the left button:
+nobody to. Keys are characters, with \r for Return. Clicks are places to press
+and release the left button, and can also drag or only move:
+
+    x,y             press and release there
+    x,y-x2,y2       press at the first, release at the second
+    @x,y            move the pointer there, pressing nothing
 
     TOSEMU_KEYS='\r' ./bin/tosemu demos/dialog
     TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
+    TOSEMU_CLICKS='@96,5 @100,27 100,27' ./bin/tosemu demos/menu
+
+Moving without pressing is not a nicety: a GEM menu opens when the pointer
+arrives among the titles, so a menu cannot be worked by clicking alone.
 
 
 The emulated screen is never shown. It is a coordinate space and a piece of
@@ -78,3 +86,26 @@ which one it was and exits.
 The tree is built in C rather than loaded from a resource file. A real
 application would carry a .RSC and call rsrc_load, which needs a TOS path
 resolved the way GEMDOS resolves one, and that is not written yet.
+
+
+menu
+----
+
+A menu bar with two titles, and the shape a menu tree has to have.
+
+Unlike a dialog, a menu is not a tree of any shape the application likes. The
+AES walks it by position - the screen, the bar and the row of titles first, and
+the box holding the drop-down menus last - and it rebuilds the Desk menu every
+time a bar goes up, splicing in an entry for each accessory that has
+registered. Those entries are written after the Desk menu's first one, so the
+room for them has to be there whether or not anything ever fills it in. A
+resource editor produces all of that without being asked, which is why it is so
+rarely written down; this one builds it by hand, so it says it out loud.
+
+The menu opens on hover rather than on a click, which is how GEM menus always
+worked: the pointer arriving among the titles is what starts one, and the click
+that follows is what chooses. Open File and choose Quit, or let go outside and
+nothing is chosen.
+
+The bar is a window of the desktop's like any other here, so it follows this
+program about rather than sitting at the top of a picture of an ST.

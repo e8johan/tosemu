@@ -122,9 +122,6 @@ uint32_t aes_global()
 #define AES_evnt_button     NULL
 #define AES_evnt_mouse      NULL
 #define AES_evnt_dclick     NULL
-#define AES_menu_icheck     NULL
-#define AES_menu_ienable    NULL
-#define AES_menu_tnormal    NULL
 #define AES_menu_text       NULL
 #define AES_menu_register   NULL
 #define AES_menu_popup      NULL

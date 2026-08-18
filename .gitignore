@@ -16,3 +16,5 @@ gen/
 emuvdi/obj/
 emuvdi/*.d
 demos/dialog
+demos/window
+demos/menu

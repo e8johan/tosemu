@@ -184,6 +184,26 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         long left;
         int wayland;
 
+        /*
+         * The menu bar, before the application hears about anything.
+         *
+         * It belongs to the AES rather than to the application, so it is
+         * watched whatever the application asked for: one waiting only for a
+         * message still gets its menus, and what it eventually hears is the
+         * message saying what was chosen.
+         */
+        {
+            int16_t px, py, pb;
+
+            gfx_mouse(&px, &py, &pb);
+
+            if (aes_menu_arrived(px, py))
+            {
+                aes_menu_click();
+                continue;
+            }
+        }
+
         if ((wanted & MU_MESAG) && message_take(message))
             return MU_MESAG;
 
@@ -191,84 +211,95 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             return MU_KEYBD;
 
         /*
-         * The buttons, which are waited for as a state rather than as a
-         * change.
+         * The buttons.
          *
-         * Anything that happened while nobody was looking is looked at first,
-         * one at a time, because a click quick enough for the press and the
-         * release to arrive together would otherwise be a button that was
-         * never down. What was clicked is worked out from where the pointer
-         * was at the time, so each change carries its own position.
-         *
-         * When none of those is what was asked for, the way things are now
-         * may be: that is the case of asking for a button to be up when it
-         * already is, which happens after every click the AES handles.
+         * A wait is for a state - "tell me when button one is down", or "when
+         * it is up" - and it is answered the moment the button is that way,
+         * not only when it next changes. Getting that wrong is what made a
+         * click need two clicks: the AES asks for the button to be up after it
+         * has already seen it come up, and waiting for another change means
+         * waiting for another click.
          */
         if (wanted & MU_BUTTON)
         {
-            int16_t b, bx, by;
-            int seen = 0;
+            int16_t now, nx, ny;
 
-            while (gfx_button_take(&b, &bx, &by))
+            gfx_mouse(&nx, &ny, &now);
+
+            if (buttons_are(now, bmask, bstate))
             {
-                seen = 1;
+                if (buttons)
+                    *buttons = now;
+                if (mx)
+                    *mx = nx;
+                if (my)
+                    *my = ny;
 
-                /*
-                 * A press in the menu bar belongs to the AES rather than to
-                 * the application: the menu drops down, follows the pointer,
-                 * and sends a message saying what was chosen. The application
-                 * hears about it as a message, which is what it was waiting
-                 * for anyway, and never sees the click.
-                 */
-                if (b && aes_menu_hit(bx, by))
-                {
-                    aes_menu_click();
-                    continue;
-                }
-
-                if (buttons_are(b, bmask, bstate))
-                {
-                    if (buttons)
-                        *buttons = b;
-                    if (mx)
-                        *mx = bx;
-                    if (my)
-                        *my = by;
-
-                    return MU_BUTTON;
-                }
-            }
-
-            if (!seen)
-            {
-                int16_t now, nx, ny;
-
-                gfx_mouse(&nx, &ny, &now);
-
-                if (buttons_are(now, bmask, bstate))
-                {
-                    if (buttons)
-                        *buttons = now;
-                    if (mx)
-                        *mx = nx;
-                    if (my)
-                        *my = ny;
-
-                    return MU_BUTTON;
-                }
+                return MU_BUTTON;
             }
         }
 
         if (wanted & (MU_M1|MU_M2))
         {
-            int16_t mx, my, buttons;
+            int16_t px, py, pb;
+            int16_t which = 0;
 
-            gfx_mouse(&mx, &my, &buttons);
+            gfx_mouse(&px, &py, &pb);
 
-            if ((wanted & MU_M1) && in_rectangle(mx, my, m1, m1flags))
-                return MU_M1;
-            if ((wanted & MU_M2) && in_rectangle(mx, my, m2, m2flags))
-                return MU_M2;
+            if ((wanted & MU_M1) && in_rectangle(px, py, m1, m1flags))
+                which = MU_M1;
+            else if ((wanted & MU_M2) && in_rectangle(px, py, m2, m2flags))
+                which = MU_M2;
+
+            if (which)
+            {
+                /*
+                 * Where the pointer is, which is the answer as much as the
+                 * fact that it arrived: the menu works out which title it is
+                 * over from this, and cannot be told twice.
+                 */
+                if (mx)
+                    *mx = px;
+                if (my)
+                    *my = py;
+                if (buttons)
+                    *buttons = pb;
+
+                return which;
+            }
+        }
+
+        /*
+         * Nothing that was wanted is true of things as they are, so move on to
+         * the next thing that happened and ask again.
+         *
+         * This is the other half of waiting for a state. The state has to be
+         * allowed to move on or a button held down answers every wait for a
+         * press for ever, with the release sitting behind it in the queue
+         * unlooked at - but it must not move on before the state it is in has
+         * been considered, or a wait is answered by where the pointer went
+         * next rather than by where it is.
+         *
+         * There is a queue at all because a click can be quicker than anyone
+         * looking. Press and release both arriving between two rounds would
+         * otherwise be a button that was never down.
+         */
+        if (gfx_motion_take())
+            continue;
+
+        {
+            int16_t b, bx, by;
+
+            /*
+             * Whether or not this caller cares about the button. On an ST
+             * nobody has to drain anything: the button is a level the keyboard
+             * processor updates, and a wait either likes what it finds or
+             * sleeps. Draining only for callers who asked leaves the rest
+             * stuck behind a release nobody wanted - and everything queued
+             * behind it, including where the pointer was going next.
+             */
+            if (gfx_button_take(&b, &bx, &by))
+                continue;
         }
 
         /*

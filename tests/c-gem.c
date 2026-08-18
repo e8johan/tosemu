@@ -420,6 +420,104 @@ int main(int argc, char **argv)
             check(call_aes(52, 1, 1, 1, 0), 1, "form_alert ends on OK");
         }
 
+        /*
+         * A menu bar.
+         *
+         * The tree has to have the shape the AES walks - the screen, the bar
+         * and the row of titles first, the box holding the menus last, and the
+         * Desk menu inside it with room after its first entry for the
+         * accessories the AES splices in. Nothing here has any accessories,
+         * but the room still has to be there: the AES rebuilds that menu
+         * whenever a bar goes up, and it does not check.
+         */
+        {
+            enum {
+                THESCREEN, THEBAR, THEACTIVE,
+                T_DESK,
+                THEMENUS,
+                M_DESK, I_ABOUT, I_SEP,
+                I_ACC1, I_ACC2, I_ACC3, I_ACC4, I_ACC5, I_ACC6,
+                NUM_OBJECTS
+            };
+            static OBJECT bar[NUM_OBJECTS];
+            short hbox = 11, wide = 8 * 8;
+            short j;
+
+            for (j = 0; j < NUM_OBJECTS; j++)
+            {
+                bar[j].ob_next = bar[j].ob_head = bar[j].ob_tail = NIL;
+                bar[j].ob_type = G_STRING;
+                bar[j].ob_flags = bar[j].ob_state = 0;
+                bar[j].ob_spec.free_string = "  entry       ";
+                bar[j].ob_x = bar[j].ob_y = 0;
+                bar[j].ob_width = wide;
+                bar[j].ob_height = hbox;
+            }
+
+            bar[THESCREEN].ob_head = THEBAR;
+            bar[THESCREEN].ob_tail = THEMENUS;
+            bar[THESCREEN].ob_type = G_IBOX;
+            bar[THESCREEN].ob_width = 320;
+            bar[THESCREEN].ob_height = 200;
+
+            bar[THEBAR].ob_next = THEMENUS;
+            bar[THEBAR].ob_head = bar[THEBAR].ob_tail = THEACTIVE;
+            bar[THEBAR].ob_type = G_BOX;
+            bar[THEBAR].ob_spec.index = 0x00001100L;
+            bar[THEBAR].ob_width = 320;
+
+            bar[THEACTIVE].ob_next = THEBAR;
+            bar[THEACTIVE].ob_head = bar[THEACTIVE].ob_tail = T_DESK;
+            bar[THEACTIVE].ob_type = G_IBOX;
+
+            bar[T_DESK].ob_next = THEACTIVE;
+            bar[T_DESK].ob_type = G_TITLE;
+            bar[T_DESK].ob_spec.free_string = "  Desk  ";
+
+            bar[THEMENUS].ob_next = THESCREEN;
+            bar[THEMENUS].ob_head = bar[THEMENUS].ob_tail = M_DESK;
+            bar[THEMENUS].ob_type = G_IBOX;
+            bar[THEMENUS].ob_width = 320;
+            bar[THEMENUS].ob_height = 200;
+
+            bar[M_DESK].ob_next = THEMENUS;
+            bar[M_DESK].ob_head = I_ABOUT;
+            bar[M_DESK].ob_tail = I_ACC6;
+            bar[M_DESK].ob_type = G_BOX;
+            bar[M_DESK].ob_spec.index = 0x00ff11f0L;
+            bar[M_DESK].ob_y = hbox;
+            bar[M_DESK].ob_width = 14 * 8;
+            bar[M_DESK].ob_height = 8 * hbox;
+
+            for (j = I_ABOUT; j <= I_ACC6; j++)
+            {
+                bar[j].ob_next = (j == I_ACC6) ? M_DESK : j + 1;
+                bar[j].ob_y = (short)((j - I_ABOUT) * hbox);
+                bar[j].ob_width = 14 * 8;
+            }
+            bar[I_ABOUT].ob_spec.free_string = "  About...    ";
+            bar[I_ACC6].ob_flags = OF_LASTOB;
+
+            addrin[0] = (long)bar;
+            intin[0] = 1;
+            check(call_aes(30, 1, 1, 1, 0), 1, "menu_bar puts a bar up");
+
+            addrin[0] = (long)bar;
+            intin[0] = 0;
+            check(call_aes(30, 1, 1, 1, 0), 1, "menu_bar takes it away again");
+
+            /* Twice, because the AES rebuilds the Desk menu every time and
+             * the second rebuild is the one that would find the tree in
+             * whatever state the first left it */
+            addrin[0] = (long)bar;
+            intin[0] = 1;
+            check(call_aes(30, 1, 1, 1, 0), 1, "menu_bar puts it up again");
+
+            addrin[0] = (long)bar;
+            intin[0] = 0;
+            call_aes(30, 1, 1, 1, 0);
+        }
+
         v_clsvwk(vwk);
         call_aes(19, 0, 1, 0, 0);           /* appl_exit */
     }

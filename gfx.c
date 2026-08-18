@@ -96,6 +96,7 @@ struct window {
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
+    struct xdg_popup *popup;
     struct xdg_dialog_v1 *dialog;
     struct zxdg_toplevel_decoration_v1 *decoration;
 
@@ -108,14 +109,22 @@ struct window {
 
     /* And how large that is once scaled, which is what the compositor sees */
     int width, height;
+
+    /* The compositor dismissed it, which only happens to menus */
+    int gone;
 };
 
 /*
- * Slot 0 is the dialog, because there is one of those at a time. The rest are
- * GEM windows, which the AES allows eight of.
+ * Slot 0 is the dialog, because there is one of those at a time. Then the GEM
+ * windows, which the AES allows eight of and numbers from one, so their handle
+ * is their slot. The menu bar and whichever menu is down get slots of their
+ * own after those: the AES does not give them handles, and taking one of the
+ * eight would be taking a window an application is entitled to.
  */
-#define DIALOG  (0)
-#define WINDOWS (9)
+#define DIALOG   (0)
+#define MENUBAR  (9)
+#define MENU     (10)
+#define WINDOWS  (11)
 
 static struct {
     struct wl_display *display;
@@ -140,6 +149,15 @@ static struct {
      * screen's coordinates rather than in that window's */
     struct window *pointer_in;
 
+    /*
+     * The last thing the person did, as the compositor numbers them.
+     *
+     * Taking a grab has to be answering something they did - it is how a menu
+     * is allowed to take over the pointer, and how a program is stopped from
+     * taking it over whenever it likes.
+     */
+    uint32_t serial;
+
     struct surface *screen;
 
     /* Keys waiting to be read, oldest first */
@@ -148,6 +166,16 @@ static struct {
 
     int16_t mouse_x, mouse_y;   /* In the screen's pixels, not a window's */
     int16_t buttons;
+
+    /*
+     * Whether the pointer has ever been anywhere.
+     *
+     * Before it has, there is no answer to where it is - not a position of
+     * nought, which is a real place, and one in the top left corner where the
+     * menu bar's first title is. A menu opening by itself on the way up is
+     * what that costs.
+     */
+    int mouse_known;
 
     /*
      * Every time the buttons change, rather than what they are now.
@@ -162,6 +190,7 @@ static struct {
     struct {
         int16_t buttons;
         int16_t x, y;
+        int move;               /* Only the pointer moving, nothing pressed */
     } clicks[32];
     int click_count;
 
@@ -300,6 +329,13 @@ void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
     *buttons = w.buttons;
 }
 
+int gfx_mouse_known(void)
+{
+    clicks_from_environment();
+
+    return w.mouse_known;
+}
+
 uint16_t gfx_kstate()
 {
     uint16_t state = 0;
@@ -339,28 +375,95 @@ static void clicks_from_environment(void)
 
     done = 1;
 
-    while (sscanf(clicks, "%d,%d%n", &x, &y, &n) == 2)
+    while (*clicks)
     {
+        int ux, uy, n2, moving = 0;
+
+        if (*clicks == '@')
+        {
+            moving = 1;
+            clicks++;
+        }
+
+        if (sscanf(clicks, "%d,%d%n", &x, &y, &n) != 2)
+            break;
+
+        ux = x; uy = y;
+
         if (w.click_count + 2 > (int)(sizeof w.clicks / sizeof w.clicks[0]))
             break;
 
-        w.clicks[w.click_count].buttons = 1;    /* down */
+        /*
+         * "@x,y" only moves the pointer there. A menu cannot be worked
+         * without it: GEM opens a menu when the pointer arrives among the
+         * titles, so getting one open means moving rather than clicking.
+         */
+        if (moving)
+        {
+            w.clicks[w.click_count].buttons = 0;
+            w.clicks[w.click_count].x = (int16_t)x;
+            w.clicks[w.click_count].y = (int16_t)y;
+            w.clicks[w.click_count].move = 1;
+            w.click_count++;
+
+            clicks += n;
+            while (*clicks == ' ' || *clicks == ',')
+                clicks++;
+            continue;
+        }
+
+        /*
+         * "x,y-x2,y2" presses at the first and releases at the second, the
+         * pointer having moved in between. That is a drag, and a menu cannot
+         * be worked without one: pulling a menu down is a press on the title,
+         * a move to the entry and a release on it.
+         */
+        if (clicks[n] == '-'
+            && sscanf(clicks + n + 1, "%d,%d%n", &ux, &uy, &n2) == 2)
+            n += 1 + n2;
+
+        w.clicks[w.click_count].buttons = 1;    /* down where it started */
         w.clicks[w.click_count].x = (int16_t)x;
         w.clicks[w.click_count].y = (int16_t)y;
+        w.clicks[w.click_count].move = 0;
         w.click_count++;
 
-        w.clicks[w.click_count].buttons = 0;    /* and up again */
-        w.clicks[w.click_count].x = (int16_t)x;
-        w.clicks[w.click_count].y = (int16_t)y;
+        w.clicks[w.click_count].buttons = 0;    /* and up where it ended */
+        w.clicks[w.click_count].x = (int16_t)ux;
+        w.clicks[w.click_count].y = (int16_t)uy;
+        w.clicks[w.click_count].move = 0;
         w.click_count++;
-
-        w.mouse_x = (int16_t)x;
-        w.mouse_y = (int16_t)y;
 
         clicks += n;
-        if (*clicks == ' ' || *clicks == ',')
+        while (*clicks == ' ' || *clicks == ',')
             clicks++;
     }
+}
+
+/*
+ * Moves the pointer to the next place it was going, and says whether it went
+ * anywhere. Whoever is waiting looks again after each one, because a wait for
+ * the pointer to arrive somewhere is answered by where it is rather than by
+ * anything having been pressed.
+ */
+int gfx_motion_take(void)
+{
+    int i;
+
+    clicks_from_environment();
+
+    if (w.click_count == 0 || !w.clicks[0].move)
+        return 0;
+
+    w.mouse_x = w.clicks[0].x;
+    w.mouse_y = w.clicks[0].y;
+    w.mouse_known = 1;
+
+    for (i = 1; i < w.click_count; i++)
+        w.clicks[i-1] = w.clicks[i];
+    w.click_count--;
+
+    return 1;
 }
 
 int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
@@ -369,12 +472,22 @@ int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
 
     clicks_from_environment();
 
-    if (w.click_count == 0)
+    if (w.click_count == 0 || w.clicks[0].move)
         return 0;
 
     *buttons = w.clicks[0].buttons;
     *x = w.clicks[0].x;
     *y = w.clicks[0].y;
+
+    /*
+     * Taking a change moves the pointer to where it happened. Anything asking
+     * afterwards how things are gets the answer as of the change it was just
+     * handed, rather than as of some later one it has not seen yet.
+     */
+    w.mouse_x = *x;
+    w.mouse_y = *y;
+    w.buttons = *buttons;
+    w.mouse_known = 1;
 
     for (i = 1; i < w.click_count; i++)
         w.clicks[i-1] = w.clicks[i];
@@ -522,13 +635,15 @@ static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
 
     w.mouse_x = (int16_t)(win->sx + wl_fixed_to_int(x) / SCALE);
     w.mouse_y = (int16_t)(win->sy + wl_fixed_to_int(y) / SCALE);
+    w.mouse_known = 1;
 }
 
 static void pt_enter(void *data, struct wl_pointer *p, uint32_t serial,
                      struct wl_surface *s, wl_fixed_t x, wl_fixed_t y)
 {
-    (void)data; (void)p; (void)serial;
+    (void)data; (void)p;
 
+    w.serial = serial;
     w.pointer_in = window_of(s);
     pointer_at(w.pointer_in, x, y);
 }
@@ -536,9 +651,51 @@ static void pt_enter(void *data, struct wl_pointer *p, uint32_t serial,
 static void pt_leave(void *data, struct wl_pointer *p, uint32_t serial,
                      struct wl_surface *s)
 {
-    (void)data; (void)p; (void)serial; (void)s;
+    (void)data; (void)p; (void)serial;
+
+    /*
+     * Only if it is the window the pointer is actually in.
+     *
+     * Leaving one window and entering another is two messages, and they do not
+     * have to arrive in that order - a menu closing under the pointer gets the
+     * new window first and the old one's leave afterwards. Forgetting where
+     * the pointer is because a window it had already left says so leaves us
+     * ignoring every move it makes after that, which looks exactly like
+     * everything having stopped.
+     */
+    if (w.pointer_in != window_of(s))
+        return;
 
     w.pointer_in = 0;
+
+    /*
+     * And nothing is pressed any more, as far as we can tell.
+     *
+     * We only hear about the button while the pointer is ours. Press something
+     * that closes the window it was pressed in - a menu entry does exactly
+     * that - and the release goes to whatever the pointer is over afterwards,
+     * which is somebody else's window or the desktop. It never arrives, and a
+     * button held down for ever answers every wait for a press: the AES stops
+     * looking at where the pointer is and nothing responds again.
+     *
+     * So the button comes up when the pointer leaves. That is not a guess
+     * about what the person did - it is the honest answer, which is that we do
+     * not know and will not pretend otherwise. If it really is still held, the
+     * enter that follows says so.
+     */
+    if (w.buttons)
+    {
+        w.buttons = 0;
+
+        if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
+        {
+            w.clicks[w.click_count].buttons = 0;
+            w.clicks[w.click_count].x = w.mouse_x;
+            w.clicks[w.click_count].y = w.mouse_y;
+            w.clicks[w.click_count].move = 0;
+            w.click_count++;
+        }
+    }
 }
 
 static void pt_motion(void *data, struct wl_pointer *p, uint32_t time,
@@ -554,7 +711,9 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
 {
     int16_t bit;
 
-    (void)data; (void)p; (void)serial; (void)time;
+    (void)data; (void)p; (void)time;
+
+    w.serial = serial;
 
     /* GEM numbers them from the left, and has two */
     switch (button)
@@ -817,6 +976,64 @@ static struct window *window_topmost(void)
     return 0;
 }
 
+static void window_present(struct window *win);
+
+static void popup_configure(void *data, struct xdg_popup *popup,
+                            int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    (void)data; (void)popup; (void)x; (void)y; (void)width; (void)height;
+}
+
+/* The compositor taking the menu away, which it does when something is clicked
+ * outside it. The AES is watching the pointer itself and will come to the same
+ * conclusion; this is only the window going. */
+static void popup_done(void *data, struct xdg_popup *popup)
+{
+    struct window *win = data;
+
+    (void)popup;
+
+    win->gone = 1;
+
+    /*
+     * The compositor took the menu away, which is what it does when something
+     * outside it is clicked. The AES has no idea: the click was never ours to
+     * see, which is the whole reason for the grab.
+     *
+     * So it is told the only way it understands - that the pointer is nowhere
+     * near the menu and that a button went down there. That is what a click
+     * outside a menu is, and the AES does with it what it would have done:
+     * puts the menu away and reports that nothing was chosen.
+     */
+    if (w.screen)
+    {
+        int16_t x = (int16_t)(surface_width(w.screen) - 1);
+        int16_t y = (int16_t)(surface_height(w.screen) - 1);
+        int i;
+
+        w.mouse_x = x;
+        w.mouse_y = y;
+        w.mouse_known = 1;
+
+        for (i = 0; i < 2; i++)
+        {
+            if (w.click_count >= (int)(sizeof w.clicks / sizeof w.clicks[0]))
+                break;
+
+            w.clicks[w.click_count].buttons = (i == 0) ? 1 : 0;
+            w.clicks[w.click_count].x = x;
+            w.clicks[w.click_count].y = y;
+            w.clicks[w.click_count].move = 0;
+            w.click_count++;
+        }
+    }
+}
+
+static const struct xdg_popup_listener popup_listener = {
+    popup_configure,
+    popup_done,
+};
+
 static int window_create(struct window *win, const char *title,
                          struct surface *shows,
                          int16_t sx, int16_t sy, int16_t sw, int16_t sh,
@@ -915,6 +1132,8 @@ static void window_destroy(struct window *win)
         zxdg_toplevel_decoration_v1_destroy(win->decoration);
     if (win->dialog)
         xdg_dialog_v1_destroy(win->dialog);
+    if (win->popup)
+        xdg_popup_destroy(win->popup);
     if (win->toplevel)
         xdg_toplevel_destroy(win->toplevel);
     if (win->xdg_surface)
@@ -1055,6 +1274,101 @@ void gfx_window_close(int16_t handle)
     window_destroy(&w.windows[handle]);
 }
 
+/*
+ * A menu that has dropped down.
+ *
+ * It is a popup rather than a window: it belongs to the bar, has no frame and
+ * nothing to drag it by, does not appear in the window list, and goes away
+ * when it is done with. That is what a menu is on any desktop, and saying so
+ * gets all of it from the compositor rather than drawing an imitation.
+ *
+ * Where it goes is said relative to the bar, because a client is not allowed
+ * to know where its own windows are, let alone put one somewhere. That is no
+ * loss here: the menu belongs directly under its title, and where that is on
+ * the bar is exactly what we do know.
+ */
+void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
+{
+    struct window *win = &w.windows[MENU];
+    struct window *bar = &w.windows[MENUBAR];
+    struct xdg_positioner *where;
+
+    if (!w.display || !bar->used)
+        return;
+
+    gfx_menu_close();
+
+    memset(win, 0, sizeof *win);
+
+    win->shows = w.screen;
+    win->sx = x;
+    win->sy = y;
+    win->sw = sw;
+    win->sh = sh;
+    win->width = sw * SCALE;
+    win->height = sh * SCALE;
+
+    win->surface = wl_compositor_create_surface(w.compositor);
+    win->xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, win->surface);
+    xdg_surface_add_listener(win->xdg_surface, &xdg_surface_listener, win);
+
+    /*
+     * The rectangle it hangs off, in the bar's pixels: the point on the bar
+     * directly above where the menu goes. Anchoring the menu's top left corner
+     * there puts it under its title, and lets the compositor slide it along if
+     * it would otherwise run off the edge of the screen.
+     */
+    where = xdg_wm_base_create_positioner(w.wm_base);
+    xdg_positioner_set_size(where, win->width, win->height);
+    xdg_positioner_set_anchor_rect(where, (x - bar->sx) * SCALE,
+                                   (y - bar->sy) * SCALE, 1, 1);
+    xdg_positioner_set_anchor(where, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+    xdg_positioner_set_gravity(where, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    xdg_positioner_set_constraint_adjustment(where,
+        XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
+        | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+
+    win->popup = xdg_surface_get_popup(win->xdg_surface, bar->xdg_surface,
+                                       where);
+    xdg_positioner_destroy(where);
+
+    xdg_popup_add_listener(win->popup, &popup_listener, win);
+
+    /*
+     * Take the pointer and the keyboard for as long as the menu is down.
+     *
+     * Without this a click next to the menu goes to whatever is underneath -
+     * another program, or the desktop - and we are never told it happened, so
+     * the menu stays down for ever with no way to dismiss it. The compositor
+     * tells us instead, by taking the menu away and saying so.
+     *
+     * A grab has to be answering something the person did, and there is
+     * nothing to answer when the input was made up rather than done, which is
+     * what happens under a test. Asking anyway would have the menu dismissed
+     * the moment it appeared.
+     */
+    if (w.seat && w.serial)
+        xdg_popup_grab(win->popup, w.seat, w.serial);
+
+    wl_surface_commit(win->surface);
+    wl_display_roundtrip(w.display);
+
+    win->used = 1;
+
+    if (!window_buffer(win))
+    {
+        window_destroy(win);
+        return;
+    }
+
+    window_present(win);
+}
+
+void gfx_menu_close(void)
+{
+    window_destroy(&w.windows[MENU]);
+}
+
 void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
                      int16_t sw, int16_t sh)
 {
@@ -1094,7 +1408,21 @@ void gfx_dispatch()
         return;
 
     if (wl_display_dispatch(w.display) < 0)
+    {
+        int why = wl_display_get_error(w.display);
+
+        /*
+         * Saying which, because the two are nothing alike: a window closed is
+         * the person finishing, and a protocol error is this program having
+         * done something a compositor will not stand for. Both look identical
+         * from here - the connection stops - and only one of them is a bug.
+         */
+        if (why)
+            printf("The compositor rejected something we asked for: %s\n",
+                   strerror(why));
+
         w.closed = 1;
+    }
 }
 
 void gfx_flush()
@@ -1150,6 +1478,13 @@ void gfx_present()
 
     if (!gfx_showing())
         return;
+
+    /* A menu the compositor has taken away - which is what it does when
+     * something outside it is clicked - is one we should stop showing. The AES
+     * is watching the pointer itself and will come to the same conclusion in
+     * its own time; this is only the window going. */
+    if (w.windows[MENU].gone)
+        gfx_menu_close();
 
     for (i = 0; i < WINDOWS; i++)
         window_present(&w.windows[i]);

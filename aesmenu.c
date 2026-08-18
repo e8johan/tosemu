@@ -31,10 +31,11 @@
  * bar follows its application about the desktop rather than sitting at the top
  * of a picture of an ST.
  *
- * The dropped-down menu is drawn below the bar, past the bottom of that strip.
- * While one is down the window is made tall enough to show it, and shrinks
- * again afterwards - which is why the menu is run inside a window of its own
- * size rather than the bar's.
+ * A menu that drops down gets a surface of its own, hanging off the bar: no
+ * frame, nothing to drag it by, not a window as far as the desktop is
+ * concerned, and gone again when the menu is. That is what a menu is on any
+ * desktop, and it is the AES that says when one appears - see the note in
+ * emuvdi/gemmnlib.c, which is where the rectangle is known.
  */
 
 #include "aes_p.h"
@@ -54,33 +55,95 @@
 /* The message an application is sent when something is chosen from a menu */
 #define MN_SELECTED (10)
 
-/* The window handle the bar is shown in. The AES gives handles to windows an
- * application asked for, and it did not ask for this one. */
-#define BAR_WINDOW (8)
+/* The bits of an object's state these three calls are each about, obdefs.h */
+#define CHECKED  (0x0004)
+#define DISABLED (0x0008)
+#define SELECTED (0x0001)
+
+/*
+ * The window the bar is shown in.
+ *
+ * The AES gives handles to windows an application asked for, and it did not
+ * ask for this one, so it is not one of the eight it is entitled to - it is a
+ * slot of the desktop's own, past the end of them.
+ */
+#define BAR_WINDOW (9)
 
 /* Where the tree came from, so that what the AES changed in it - a ticked
  * entry, a greyed out one - goes back to the application */
 static uint32_t bar_tree;
 static int bar_shown;
 
+/*
+ * Whether the menu is being run right now.
+ *
+ * Running it means waiting for the mouse, and waiting for the mouse is the
+ * same loop that decides a press in the bar belongs to the menu - so without
+ * this the first press would start the menu, and the menu's own wait would
+ * see that press and start it again.
+ */
+static int bar_running;
+
+/* Whether the pointer was already among the titles last time anyone looked,
+ * so that arriving there counts once rather than every round */
+static int was_among_titles;
+
 void aes_menu_reset()
 {
     bar_tree = 0;
     bar_shown = 0;
+    bar_running = 0;
+    was_among_titles = 0;
+}
+
+/* Whether there is a bar at all, which decides whether clicks have to be
+ * looked at before the application sees them */
+int aes_menu_shown()
+{
+    return bar_shown && !bar_running;
 }
 
 /*
- * Whether a point is in the menu bar, which is what decides between running
- * the menu and handing the click to the application.
+ * Whether the pointer has just arrived among the titles, which is what starts
+ * a menu.
+ *
+ * Hovering rather than clicking is how GEM menus work and always did: the
+ * control manager waits for the pointer to enter the rectangle the titles are
+ * in and runs the menu when it does, with the button still up. The menu then
+ * waits for a press of its own to decide what was chosen, which is why opening
+ * it with a press does not work - the press it is waiting for would already
+ * have happened.
+ *
+ * Only the arrival counts. Sitting in the bar afterwards is not a reason to
+ * start the menu again.
  */
-int aes_menu_hit(int16_t x, int16_t y)
+static int was_among_titles;
+
+int aes_menu_arrived(int16_t x, int16_t y)
 {
-    (void)x;
+    int16_t rx, ry, rw, rh;
+    int inside;
 
-    if (!bar_shown)
+    if (!bar_shown || bar_running || !gfx_mouse_known())
+    {
+        was_among_titles = 0;
         return 0;
+    }
 
-    return y < emuvdi_menu_height();
+    emuvdi_menu_active(&rx, &ry, &rw, &rh);
+
+    inside = (x >= rx) && (x < rx + rw) && (y >= ry) && (y < ry + rh);
+
+    if (inside && !was_among_titles)
+    {
+        was_among_titles = 1;
+        return 1;
+    }
+
+    if (!inside)
+        was_among_titles = 0;
+
+    return 0;
 }
 
 /*
@@ -104,12 +167,9 @@ void aes_menu_click()
     if (!host)
         return;
 
-    emuvdi_menu_bar(host, 1);
+    bar_running = 1;
 
-    /* The menu drops below the bar, so the window has to be tall enough to
-     * show it while it is down */
-    gfx_window_move(BAR_WINDOW, 0, 0, emuvdi_screen_width(),
-                    emuvdi_screen_height());
+    emuvdi_menu_bar(host, 1);
 
     if (emuvdi_menu_do(&title, &item))
     {
@@ -123,12 +183,18 @@ void aes_menu_click()
         aes_message_post(message);
     }
 
-    /* And back to being a strip */
-    gfx_window_move(BAR_WINDOW, 0, 0, emuvdi_screen_width(),
-                    emuvdi_menu_height());
+    bar_running = 0;
+    was_among_titles = 1;      /* still there; do not start again on the spot */
 
     aes_tree_out();
     aes_tree_done();
+
+    /*
+     * The bar has changed - the title that was held open is not held open any
+     * more - and the application is still inside the wait it was in when the
+     * menu started, so nothing else is going to show it.
+     */
+    gem_present();
 }
 
 /* menu_bar ****************************************************************/
@@ -146,28 +212,6 @@ uint32_t AES_menu_bar()
 
     if (!gem_start())
         return AES_ERROR;
-
-    /*
-     * Not yet. Everything below this works as far as handing the tree to
-     * EmuTOS's menu library, and that is where it stops: mn_bar walks a menu
-     * tree by fixed indices - the screen, the bar, the active area, then the
-     * box holding the menus and the Desk menu inside it - and splices entries
-     * into the Desk menu for whichever accessories have registered.
-     *
-     * A tree from a resource file has that shape and blank entries waiting to
-     * be filled in. One built by hand does not, and mn_bar walks off it. The
-     * copy has room after the end of it now, so nothing is corrupted, but the
-     * shape is what has to be got right, and checking that is the next piece
-     * of work rather than this one.
-     *
-     * Stopping here says so, which is better than drawing something wrong or
-     * falling over.
-     */
-    halt_execution();
-    printf("AES menu_bar is not implemented yet: the menu library is built "
-           "and wired, but a menu tree has to have the shape mn_bar walks "
-           "and that is not checked yet\n");
-    return AES_ERROR;
 
     switch (what)
     {
@@ -207,4 +251,96 @@ uint32_t AES_menu_bar()
     }
 
     return AES_E_OK;
+}
+
+/* Where a menu has dropped down, which is the AES telling us through the one
+ * place that knows: see emuvdi/gemmnlib.c */
+void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    gfx_menu_open(x, y, width, height);
+}
+
+void host_menu_end(void)
+{
+    gfx_menu_close();
+}
+
+/* The three that change one entry ******************************************/
+
+/*
+ * Ticking an entry, greying one out, and putting a title back to normal after
+ * something was chosen from it.
+ *
+ * All three are one bit of one object's state, so they are one function with
+ * the differences written out. The tree goes across and comes back, because
+ * what changed is a state and states are what get written back - the
+ * application asked for this, and will draw the bar again expecting to see it.
+ *
+ * The last of them is not a nicety. The AES leaves a title held open after
+ * something is chosen from it, deliberately, so that it still looks open while
+ * the application does whatever was asked; putting it back is the
+ * application's job, and until this call works there is no way to do it.
+ */
+static uint32_t menu_change(uint16_t bit, int16_t set, int16_t draw,
+                            int16_t only_if_enabled, int16_t object)
+{
+    uint32_t address = aes_addrin(0);
+    void *host;
+    int16_t answer;
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    answer = emuvdi_menu_change(host, object, bit, set, draw, only_if_enabled);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    return (uint32_t)(uint16_t)answer;
+}
+
+uint32_t AES_menu_icheck()
+{
+    int16_t item = aes_intin(0);
+    int16_t ticked = aes_intin(1);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    item: %d, %s\n", item, ticked ? "ticked" : "not ticked");
+    }
+
+    return menu_change(CHECKED, ticked, 0, 0, item);
+}
+
+uint32_t AES_menu_ienable()
+{
+    int16_t item = aes_intin(0);
+    int16_t enabled = aes_intin(1);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    item: %d, %s\n", item & 0x7fff,
+               enabled ? "enabled" : "disabled");
+    }
+
+    /* The top bit of the item says to draw it now rather than leave it for
+     * the next time the bar is drawn */
+    return menu_change(DISABLED, !enabled, (item & 0x8000) != 0, 0,
+                       item & 0x7fff);
+}
+
+uint32_t AES_menu_tnormal()
+{
+    int16_t title = aes_intin(0);
+    int16_t normal = aes_intin(1);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    title: %d, %s\n", title, normal ? "normal" : "held open");
+    }
+
+    return menu_change(SELECTED, !normal, 1, 1, title);
 }

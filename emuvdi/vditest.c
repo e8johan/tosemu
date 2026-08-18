@@ -126,6 +126,15 @@ void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
 }
 
+void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    (void)x; (void)y; (void)width; (void)height;
+}
+
+void host_menu_end(void)
+{
+}
+
 void host_dialog_end(void)
 {
 }

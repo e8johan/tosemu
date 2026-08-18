@@ -80,6 +80,15 @@ void host_message_post(const int16_t *message);
 void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
 void host_dialog_end(void);
 
+/*
+ * The same for a menu that has dropped down, which wants a surface of its own
+ * for the same reason and a different kind of one: a menu hangs off the bar,
+ * has no frame and nothing to drag it by, and is not a window as far as the
+ * desktop is concerned.
+ */
+void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height);
+void host_menu_end(void);
+
 int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,

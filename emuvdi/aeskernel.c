@@ -170,7 +170,7 @@ WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, LONG tmcount,
 {
     WORD m1[4], m2[4];
     WORD m1flags = 0, m2flags = 0;
-    WORD key = 0, mx = 0, my = 0, buttons = 0, kstate = 0;
+    WORD key = 0, mx = 0, my = 0, buttons = 0, shifts = 0;
     WORD happened;
 
     m1[0] = m1[1] = m1[2] = m1[3] = 0;
@@ -204,14 +204,28 @@ WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, LONG tmcount,
                                pmomouse, m1, m1flags, m2, m2flags,
                                (int16_t)((buparm >> 8) & 0xff),
                                (int16_t)(buparm & 0xff),
-                               &key, &mx, &my, &buttons, &kstate);
+                               &key, &mx, &my, &buttons, &shifts);
 
     rets[0] = mx;
     rets[1] = my;
     rets[2] = buttons;
-    rets[3] = kstate;
+    rets[3] = shifts;
     rets[4] = key;
     rets[5] = buttons ? 1 : 0;      /* how many clicks, which is not counted */
+
+    /*
+     * And the AES's own idea of where things are.
+     *
+     * These four are globals on a real AES, written by the interrupt that
+     * reads the keyboard and the mouse, and the library files read them
+     * directly rather than being told: the menu code asks the button whether
+     * it is down before deciding what to wait for next, and gets it wrong for
+     * as long as the answer is whatever it was when the program started.
+     */
+    xrat = mx;
+    yrat = my;
+    button = buttons;
+    kstate = shifts;
 
     return happened;
 }
@@ -338,18 +352,29 @@ AESPD *fpdnm(char *pname, UWORD pid)
     return rlr;
 }
 
-/* The control manager's process, and the rectangle it waits on. Both are the
- * desktop's, which is not written. */
-AESPD *ctl_pd;
+/*
+ * The control manager's process, and the rectangle it waits on.
+ *
+ * On real GEM the control manager is a process of its own, sitting between the
+ * applications and the mouse. Here there is nothing between them, so it is the
+ * one application - and it has to be something, because the menu code reaches
+ * through this for somewhere to put a keystroke without first asking whether
+ * there is anybody there.
+ */
+AESPD *ctl_pd = &the_application;
 MOBLK gl_ctwait;
 
-/* Putting a key back where the application will read it, which the menu code
- * does with a keystroke that turned out not to be a shortcut */
+/*
+ * Putting a key back where it will be read again.
+ *
+ * The menu code does this after installing or removing a bar, to make the
+ * control manager notice that the rectangle it was waiting on has changed. We
+ * have no control manager waiting on a rectangle, so there is nothing to wake:
+ * the next call that asks about the mouse reads where it is now.
+ */
 void post_keybd(CDA *c, UWORD ch)
 {
     (void)c;
-
-    needs_kernel("putting a key back");
     (void)ch;
 }
 

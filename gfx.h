@@ -77,6 +77,14 @@ void gfx_window_close(int16_t handle);
  * rectangle happens to be shown, so dragging the window about changes nothing
  * the application can observe.
  */
+/*
+ * A menu that has dropped down: a popup belonging to the bar, showing that
+ * rectangle of the screen. It has no frame, cannot be moved and is not a
+ * window as far as the desktop is concerned, which is what a menu should be.
+ */
+void gfx_menu_open(int16_t x, int16_t y, int16_t w, int16_t h);
+void gfx_menu_close(void);
+
 void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
                      int16_t w, int16_t h);
 void gfx_dialog_close();
@@ -108,6 +116,10 @@ void gfx_present();
  */
 int gfx_key_take(uint16_t *key);
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);
+
+/* Whether the pointer has been anywhere yet. Where it is means nothing until
+ * it has: nought,nought is a real place, and things happen there. */
+int gfx_mouse_known(void);
 uint16_t gfx_kstate();
 /*
  * The next time the buttons changed, with where the pointer was when they did,
@@ -120,5 +132,9 @@ uint16_t gfx_kstate();
  * have happened.
  */
 int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y);
+
+/* Whether the pointer moved without anything being pressed. Only injected
+ * input produces these; a real pointer is simply somewhere when asked. */
+int gfx_motion_take(void);
 
 #endif /* GFX_H */
