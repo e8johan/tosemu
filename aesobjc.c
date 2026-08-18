@@ -32,6 +32,8 @@
 
 #include "gem_p.h"
 #include "emuvdi/emuvdi.h"
+#include "gfx.h"
+#include "tossystem.h"
 
 /*
  * form_do - run a dialog until something ends it
@@ -96,6 +98,76 @@ uint32_t AES_objc_draw()
      * did not move, and it keeps every one of these the same shape */
     aes_tree_out();
     aes_tree_done();
+
+    return AES_E_OK;
+}
+
+/* form_dial ***************************************************************/
+
+/*
+ * form_dial - reserve or release the screen a dialog sits on
+ *
+ * On a real machine this is how an application asks the AES to remember what
+ * is under a dialog so that it can be put back afterwards. FMD_START says a
+ * rectangle is about to be covered, FMD_FINISH says it is free again, and the
+ * two in between draw the box that grows and shrinks as a dialog appears.
+ *
+ * Here the rectangle becomes a window of the compositor's, which is what makes
+ * a GEM dialog behave like a dialog: kept above the window it belongs to, the
+ * parent out of reach while it is up, and movable with whatever the desktop
+ * uses for moving windows even though the application inside it is blocked.
+ *
+ * Nothing needs remembering, because nothing is covered: the screen behind is
+ * still there, in the other window, exactly as it was.
+ *
+ * http://toshyp.atari.org/en/007005.html
+ */
+#define FMD_START  (0)
+#define FMD_GROW   (1)
+#define FMD_SHRINK (2)
+#define FMD_FINISH (3)
+
+uint32_t AES_form_dial()
+{
+    int16_t what = aes_intin(0);
+    int16_t x = aes_intin(5);
+    int16_t y = aes_intin(6);
+    int16_t width = aes_intin(7);
+    int16_t height = aes_intin(8);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %d, %d,%d %dx%d\n", what, x, y, width, height);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    switch (what)
+    {
+        case FMD_START:
+            gfx_dialog_open(x, y, width, height);
+            break;
+
+        case FMD_FINISH:
+            gfx_dialog_close();
+            break;
+
+        case FMD_GROW:
+        case FMD_SHRINK:
+            /*
+             * The box that grows out of nothing and shrinks back into it. It
+             * was there to show where a dialog came from on a screen that
+             * could not move windows; a compositor has its own way of showing
+             * that, and drawing this one over the top would fight it.
+             */
+            break;
+
+        default:
+            halt_execution();
+            printf("AES form_dial was asked for %d, which is not one of the "
+                   "four it has\n", what);
+            return AES_ERROR;
+    }
 
     return AES_E_OK;
 }

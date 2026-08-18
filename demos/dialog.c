@@ -149,9 +149,25 @@ int main(int argc, char **argv)
 
     build_dialog();
 
-    /* Draw it, then let the AES run it until a button ends it */
-    objc_draw(dialog, ROOT, 8, 0, 0, work_out[0] + 1, work_out[1] + 1);
+    /*
+     * form_dial reserves the screen the dialog sits on. On an ST that is so
+     * the AES can put back what was underneath; here it is what gives the
+     * dialog a window of its own, so the desktop treats it as a dialog - above
+     * its parent, modal, and movable even while this program is blocked inside
+     * form_do waiting for a button.
+     */
+    form_dial(FMD_START, 0, 0, 0, 0,
+              dialog[ROOT].ob_x, dialog[ROOT].ob_y,
+              dialog[ROOT].ob_width, dialog[ROOT].ob_height);
+
+    objc_draw(dialog, ROOT, 8, dialog[ROOT].ob_x, dialog[ROOT].ob_y,
+              dialog[ROOT].ob_width, dialog[ROOT].ob_height);
+
     pressed = form_do(dialog, 0);
+
+    form_dial(FMD_FINISH, 0, 0, 0, 0,
+              dialog[ROOT].ob_x, dialog[ROOT].ob_y,
+              dialog[ROOT].ob_width, dialog[ROOT].ob_height);
 
     /* A button that ended a dialog is left selected, and an application is
      * expected to put that back before it draws the tree again */

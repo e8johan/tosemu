@@ -19,21 +19,30 @@
  */
 
 /*
- * The window the emulated screen is shown in.
+ * The windows the emulated screen is shown in.
+ *
+ * The AES draws everything into one flat screen, the way it always did. What
+ * is shown are rectangles of that screen: one window for the screen itself,
+ * and another for a dialog while one is up, so that a GEM dialog is a window
+ * of the compositor's rather than a picture of one drawn inside a larger
+ * window.
+ *
+ * That split is invisible from the other side. An application asks for a
+ * rectangle and draws in it; where the rectangle is being shown, and whether
+ * the person watching has since dragged it somewhere else, is not something it
+ * can observe or needs to. It is the same reason the AES keeps a coordinate
+ * space of its own rather than asking the compositor where anything is - see
+ * aeswind.c - and it is what lets a modal dialog be dragged about while the
+ * application inside it is blocked waiting for a button.
  *
  * A surface is Atari memory: planes, a word of each in turn, and a palette of
- * colour registers. A compositor wants none of that, so this is where the two
- * meet - the planes are gathered into colours, the colours looked up, and the
- * result written into memory the compositor can read.
+ * colour registers. Gathering the planes into colours and looking them up is
+ * the other thing that happens here.
  *
- * The scaling is done here rather than left to the compositor. An ST pixel is
- * not a small modern pixel, it is a large old one, and the only honest way to
- * make it large again is to repeat it. A compositor asked to scale would
+ * The scaling is done here rather than handed to the compositor. An ST pixel
+ * is not a small modern pixel, it is a large old one, and the only honest way
+ * to make it large again is to repeat it. A compositor asked to scale would
  * smooth it, which is the one thing it must not do.
- *
- * Three coordinate spaces meet in this file, and surface.h names them: the
- * surface's own pixels, those multiplied by the scale, and what the compositor
- * deals in. Nothing here mixes them without saying so.
  */
 
 /* memfd_create is a GNU extension, and this has to be said before the first
@@ -48,11 +57,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>
 
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 #include "xdg-shell-client-protocol.h"
+#include "xdg-dialog-v1-client-protocol.h"
 
 #include "surface.h"
 #include "emuvdi/emuvdi.h"
@@ -60,23 +69,43 @@
 /* How much larger than an ST pixel one on the screen is */
 #define SCALE (3)
 
+/*
+ * A window, which shows one rectangle of the screen. There are two: the screen
+ * itself, and a dialog when one is up. Everything about showing something is
+ * the same for both, which is why it is a structure rather than a special
+ * case.
+ */
+struct window {
+    int used;
+    int configured;
+
+    struct wl_surface *surface;
+    struct xdg_surface *xdg_surface;
+    struct xdg_toplevel *toplevel;
+    struct xdg_dialog_v1 *dialog;
+
+    struct wl_buffer *buffer;
+    uint32_t *pixels;
+    size_t bytes;
+
+    /* The part of the screen it shows, in the screen's own pixels */
+    int16_t sx, sy, sw, sh;
+
+    /* And how large that is once scaled, which is what the compositor sees */
+    int width, height;
+};
+
+#define MAIN    (0)
+#define DIALOG  (1)
+#define WINDOWS (2)
+
 static struct {
     struct wl_display *display;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct xdg_wm_base *wm_base;
-
-    struct wl_surface *surface;
-    struct xdg_surface *xdg_surface;
-    struct xdg_toplevel *toplevel;
-
-    struct wl_buffer *buffer;
-    uint32_t *pixels;
-    size_t bytes;
-
-    struct surface *screen;
-    int width, height;      /* In compositor pixels, so already scaled */
+    struct xdg_wm_dialog_v1 *wm_dialog;
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
@@ -86,15 +115,22 @@ static struct {
     struct xkb_keymap *keymap;
     struct xkb_state *xkb_state;
 
+    struct window windows[WINDOWS];
+
+    /* Which window the pointer is in, so that where it is can be given in the
+     * screen's coordinates rather than in that window's */
+    struct window *pointer_in;
+
+    struct surface *screen;
+
     /* Keys waiting to be read, oldest first */
     uint16_t keys[32];
     int key_count;
 
-    int16_t mouse_x, mouse_y;   /* In surface pixels, not window ones */
+    int16_t mouse_x, mouse_y;   /* In the screen's pixels, not a window's */
     int16_t buttons;
     int buttons_changed;
 
-    int configured;
     int closed;
     int showing;
 } w;
@@ -368,19 +404,50 @@ static const struct wl_keyboard_listener keyboard_listener = {
 
 /* Pointer *****************************************************************/
 
+static struct window *window_of(struct wl_surface *surface)
+{
+    int i;
+
+    for (i = 0; i < WINDOWS; i++)
+        if (w.windows[i].used && w.windows[i].surface == surface)
+            return &w.windows[i];
+
+    return 0;
+}
+
+/*
+ * Where the pointer is, in the screen's own pixels.
+ *
+ * A window shows a rectangle of the screen scaled up by a whole number, so
+ * going back is dividing by the scale and adding where that rectangle starts.
+ * Doing it here is what keeps every other part of the emulator from having to
+ * know a window was involved at all - and it is why a dialog can be dragged
+ * anywhere without the application noticing.
+ */
+static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
+{
+    if (!win)
+        return;
+
+    w.mouse_x = (int16_t)(win->sx + wl_fixed_to_int(x) / SCALE);
+    w.mouse_y = (int16_t)(win->sy + wl_fixed_to_int(y) / SCALE);
+}
+
 static void pt_enter(void *data, struct wl_pointer *p, uint32_t serial,
                      struct wl_surface *s, wl_fixed_t x, wl_fixed_t y)
 {
-    (void)data; (void)p; (void)serial; (void)s;
+    (void)data; (void)p; (void)serial;
 
-    w.mouse_x = (int16_t)(wl_fixed_to_int(x) / SCALE);
-    w.mouse_y = (int16_t)(wl_fixed_to_int(y) / SCALE);
+    w.pointer_in = window_of(s);
+    pointer_at(w.pointer_in, x, y);
 }
 
 static void pt_leave(void *data, struct wl_pointer *p, uint32_t serial,
                      struct wl_surface *s)
 {
     (void)data; (void)p; (void)serial; (void)s;
+
+    w.pointer_in = 0;
 }
 
 static void pt_motion(void *data, struct wl_pointer *p, uint32_t time,
@@ -388,9 +455,7 @@ static void pt_motion(void *data, struct wl_pointer *p, uint32_t time,
 {
     (void)data; (void)p; (void)time;
 
-    /* Out of the window's pixels and back into the screen's */
-    w.mouse_x = (int16_t)(wl_fixed_to_int(x) / SCALE);
-    w.mouse_y = (int16_t)(wl_fixed_to_int(y) / SCALE);
+    pointer_at(w.pointer_in, x, y);
 }
 
 static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
@@ -482,6 +547,8 @@ static const struct wl_seat_listener seat_listener = {
     seat_name
 };
 
+/* Windows *****************************************************************/
+
 /* Wayland asks to be told the connection is still wanted */
 static void wm_base_ping(void *data, struct xdg_wm_base *base, uint32_t serial)
 {
@@ -497,11 +564,13 @@ static const struct xdg_wm_base_listener wm_base_listener = {
  * A configure says the window may now be drawn, and has to be acknowledged
  * before anything is attached to it
  */
-static void surface_configure(void *data, struct xdg_surface *s, uint32_t serial)
+static void surface_configure(void *data, struct xdg_surface *s,
+                              uint32_t serial)
 {
-    (void)data;
+    struct window *win = data;
+
     xdg_surface_ack_configure(s, serial);
-    w.configured = 1;
+    win->configured = 1;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -515,16 +584,25 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
     /*
      * The compositor is entitled to a say in how large the window is. What it
      * is not entitled to is a stretched picture, so the size it asks for is
-     * noted and the picture stays the size it is - a window larger than the
-     * screen it shows has a border, and one smaller shows less of it.
+     * noted and the picture stays the size it is.
      */
     (void)data; (void)t; (void)width; (void)height; (void)states;
 }
 
 static void toplevel_close(void *data, struct xdg_toplevel *t)
 {
-    (void)data; (void)t;
-    w.closed = 1;
+    struct window *win = data;
+
+    (void)t;
+
+    /*
+     * Closing the dialog's window is not something GEM has a way of saying, so
+     * it is left up: the application is inside form_do waiting for one of its
+     * buttons, and the honest thing is to make it use one. Closing the screen
+     * is the whole emulator being told to stop.
+     */
+    if (win == &w.windows[MAIN])
+        w.closed = 1;
 }
 
 static const struct xdg_toplevel_listener toplevel_listener = {
@@ -545,6 +623,9 @@ static void registry_global(void *data, struct wl_registry *registry,
         w.shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     else if (!strcmp(interface, xdg_wm_base_interface.name))
         w.wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+    else if (!strcmp(interface, xdg_wm_dialog_v1_interface.name))
+        w.wm_dialog = wl_registry_bind(registry, name,
+                                       &xdg_wm_dialog_v1_interface, 1);
     else if (!strcmp(interface, wl_seat_interface.name))
     {
         w.seat = wl_registry_bind(registry, name, &wl_seat_interface, 5);
@@ -564,38 +645,117 @@ static const struct wl_registry_listener registry_listener = {
 
 /* Memory both this and the compositor can see, which is how a picture is
  * handed over without copying it through the socket */
-static int make_buffer(void)
+static int window_buffer(struct window *win)
 {
     struct wl_shm_pool *pool;
     int fd;
 
-    w.bytes = (size_t)w.width * w.height * 4;
+    win->bytes = (size_t)win->width * win->height * 4;
 
-    fd = memfd_create("tosemu-screen", MFD_CLOEXEC);
+    fd = memfd_create("tosemu-window", MFD_CLOEXEC);
     if (fd < 0)
         return 0;
 
-    if (ftruncate(fd, (off_t)w.bytes) < 0)
+    if (ftruncate(fd, (off_t)win->bytes) < 0)
     {
         close(fd);
         return 0;
     }
 
-    w.pixels = mmap(0, w.bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (w.pixels == MAP_FAILED)
+    win->pixels = mmap(0, win->bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (win->pixels == MAP_FAILED)
     {
-        w.pixels = 0;
+        win->pixels = 0;
         close(fd);
         return 0;
     }
 
-    pool = wl_shm_create_pool(w.shm, fd, (int32_t)w.bytes);
-    w.buffer = wl_shm_pool_create_buffer(pool, 0, w.width, w.height,
-                                         w.width * 4, WL_SHM_FORMAT_XRGB8888);
+    pool = wl_shm_create_pool(w.shm, fd, (int32_t)win->bytes);
+    win->buffer = wl_shm_pool_create_buffer(pool, 0, win->width, win->height,
+                                            win->width * 4,
+                                            WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    return w.buffer != 0;
+    return win->buffer != 0;
+}
+
+static int window_create(struct window *win, const char *title,
+                         int16_t sx, int16_t sy, int16_t sw, int16_t sh,
+                         struct window *parent)
+{
+    memset(win, 0, sizeof *win);
+
+    win->sx = sx;
+    win->sy = sy;
+    win->sw = sw;
+    win->sh = sh;
+    win->width = sw * SCALE;
+    win->height = sh * SCALE;
+
+    win->surface = wl_compositor_create_surface(w.compositor);
+    win->xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, win->surface);
+    xdg_surface_add_listener(win->xdg_surface, &xdg_surface_listener, win);
+
+    win->toplevel = xdg_surface_get_toplevel(win->xdg_surface);
+    xdg_toplevel_add_listener(win->toplevel, &toplevel_listener, win);
+    xdg_toplevel_set_title(win->toplevel, title);
+    xdg_toplevel_set_app_id(win->toplevel, "se.e8johan.tosemu");
+
+    /*
+     * A dialog says so, and says whose it is. That is what buys the behaviour
+     * that makes it a dialog rather than merely look like one: kept above its
+     * parent, the parent kept out of reach while it is up, and the decorations
+     * a compositor gives a dialog rather than a document.
+     *
+     * None of it stops the window being moved, which is the point of doing it
+     * this way round rather than by making the one window smaller.
+     */
+    if (parent)
+    {
+        xdg_toplevel_set_parent(win->toplevel, parent->toplevel);
+
+        if (w.wm_dialog)
+        {
+            win->dialog = xdg_wm_dialog_v1_get_xdg_dialog(w.wm_dialog,
+                                                          win->toplevel);
+            xdg_dialog_v1_set_modal(win->dialog);
+        }
+    }
+
+    wl_surface_commit(win->surface);
+    wl_display_roundtrip(w.display);    /* Waits for the first configure */
+
+    if (!window_buffer(win))
+        return 0;
+
+    win->used = 1;
+
+    return 1;
+}
+
+static void window_destroy(struct window *win)
+{
+    if (!win->used)
+        return;
+
+    if (w.pointer_in == win)
+        w.pointer_in = 0;
+
+    if (win->pixels)
+        munmap(win->pixels, win->bytes);
+    if (win->buffer)
+        wl_buffer_destroy(win->buffer);
+    if (win->dialog)
+        xdg_dialog_v1_destroy(win->dialog);
+    if (win->toplevel)
+        xdg_toplevel_destroy(win->toplevel);
+    if (win->xdg_surface)
+        xdg_surface_destroy(win->xdg_surface);
+    if (win->surface)
+        wl_surface_destroy(win->surface);
+
+    memset(win, 0, sizeof *win);
 }
 
 int gfx_open(struct surface *screen)
@@ -603,16 +763,14 @@ int gfx_open(struct surface *screen)
     memset(&w, 0, sizeof w);
 
     /*
-     * A way to say no. The tests run GEM programs, and a test suite that
-     * opens and closes windows on whoever's desktop happens to be logged in
-     * is a nuisance rather than a feature.
+     * A way to say no. The tests run GEM programs, and a test suite that opens
+     * and closes windows on whoever's desktop happens to be logged in is a
+     * nuisance rather than a feature.
      */
     if (getenv("TOSEMU_NO_WINDOW"))
         return 0;
 
     w.screen = screen;
-    w.width = surface_width(screen) * SCALE;
-    w.height = surface_height(screen) * SCALE;
 
     w.display = wl_display_connect(0);
     if (!w.display)
@@ -634,21 +792,11 @@ int gfx_open(struct surface *screen)
 
     w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
-    w.surface = wl_compositor_create_surface(w.compositor);
-    w.xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, w.surface);
-    xdg_surface_add_listener(w.xdg_surface, &xdg_surface_listener, 0);
-
-    w.toplevel = xdg_surface_get_toplevel(w.xdg_surface);
-    xdg_toplevel_add_listener(w.toplevel, &toplevel_listener, 0);
-    xdg_toplevel_set_title(w.toplevel, "TOS");
-    xdg_toplevel_set_app_id(w.toplevel, "se.e8johan.tosemu");
-
-    wl_surface_commit(w.surface);
-    wl_display_roundtrip(w.display);    /* Waits for the first configure */
-
-    if (!make_buffer())
+    if (!window_create(&w.windows[MAIN], "TOS", 0, 0,
+                       (int16_t)surface_width(screen),
+                       (int16_t)surface_height(screen), 0))
     {
-        printf("GFX: no room for a %dx%d window\n", w.width, w.height);
+        printf("GFX: no room for a window the size of the screen\n");
         gfx_close();
         return 0;
     }
@@ -660,22 +808,17 @@ int gfx_open(struct surface *screen)
 
 void gfx_close()
 {
+    int i;
+
+    for (i = 0; i < WINDOWS; i++)
+        window_destroy(&w.windows[i]);
+
     if (w.xkb_state)
         xkb_state_unref(w.xkb_state);
     if (w.keymap)
         xkb_keymap_unref(w.keymap);
     if (w.xkb)
         xkb_context_unref(w.xkb);
-    if (w.pixels)
-        munmap(w.pixels, w.bytes);
-    if (w.buffer)
-        wl_buffer_destroy(w.buffer);
-    if (w.toplevel)
-        xdg_toplevel_destroy(w.toplevel);
-    if (w.xdg_surface)
-        xdg_surface_destroy(w.xdg_surface);
-    if (w.surface)
-        wl_surface_destroy(w.surface);
     if (w.display)
         wl_display_disconnect(w.display);
 
@@ -685,6 +828,25 @@ void gfx_close()
 int gfx_showing()
 {
     return w.showing && !w.closed;
+}
+
+void gfx_dialog_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
+{
+    if (!gfx_showing())
+        return;
+
+    gfx_dialog_close();
+
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    if (!window_create(&w.windows[DIALOG], "", x, y, sw, sh, &w.windows[MAIN]))
+        window_destroy(&w.windows[DIALOG]);
+}
+
+void gfx_dialog_close()
+{
+    window_destroy(&w.windows[DIALOG]);
 }
 
 int gfx_fd()
@@ -707,33 +869,34 @@ void gfx_flush()
         wl_display_flush(w.display);
 }
 
-void gfx_present()
+/*
+ * Puts the part of the screen a window shows into it.
+ *
+ * A pixel at a time, through the palette and out to as many pixels as the
+ * scale asks for. This is the whole of that rectangle every time rather than
+ * the part that changed: at ST sizes it is a few hundred thousand writes, and
+ * knowing what changed is worth having only once there is something to spend
+ * the saving on.
+ */
+static void window_present(struct window *win)
 {
     int x, y, sx, sy;
-    int sw, sh;
 
-    if (!gfx_showing() || !w.configured)
+    if (!win->used || !win->configured)
         return;
 
-    sw = surface_width(w.screen);
-    sh = surface_height(w.screen);
-
-    /*
-     * A pixel at a time, through the palette and out to as many pixels as the
-     * scale asks for. This is the whole picture every time rather than the
-     * part that changed: at ST sizes it is a few hundred thousand writes, and
-     * knowing what changed is worth having only once there is something to
-     * spend the saving on.
-     */
-    for (y = 0; y < sh; y++)
+    for (y = 0; y < win->sh; y++)
     {
-        for (x = 0; x < sw; x++)
+        for (x = 0; x < win->sw; x++)
         {
-            uint32_t argb = emuvdi_palette_argb(surface_pixel(w.screen, x, y));
+            uint32_t argb = emuvdi_palette_argb(
+                surface_pixel(w.screen, (uint16_t)(win->sx + x),
+                              (uint16_t)(win->sy + y)));
 
             for (sy = 0; sy < SCALE; sy++)
             {
-                uint32_t *row = w.pixels + (size_t)(y*SCALE + sy) * w.width
+                uint32_t *row = win->pixels
+                              + (size_t)(y*SCALE + sy) * win->width
                               + x*SCALE;
 
                 for (sx = 0; sx < SCALE; sx++)
@@ -742,8 +905,20 @@ void gfx_present()
         }
     }
 
-    wl_surface_attach(w.surface, w.buffer, 0, 0);
-    wl_surface_damage_buffer(w.surface, 0, 0, w.width, w.height);
-    wl_surface_commit(w.surface);
+    wl_surface_attach(win->surface, win->buffer, 0, 0);
+    wl_surface_damage_buffer(win->surface, 0, 0, win->width, win->height);
+    wl_surface_commit(win->surface);
+}
+
+void gfx_present()
+{
+    int i;
+
+    if (!gfx_showing())
+        return;
+
+    for (i = 0; i < WINDOWS; i++)
+        window_present(&w.windows[i]);
+
     wl_display_flush(w.display);
 }

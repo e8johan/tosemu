@@ -107,6 +107,7 @@ void aes_tree_done();
 
 uint32_t AES_objc_draw();
 uint32_t AES_form_do();
+uint32_t AES_form_dial();
 
 /* Window functions, aeswind.c */
 

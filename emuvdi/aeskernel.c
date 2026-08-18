@@ -206,9 +206,17 @@ WORD ev_button(WORD bflgclks, WORD bmask, WORD bstate, WORD *rets)
 #endif
 }
 
+/*
+ * Giving the processor to whoever is waiting for it, which is what an
+ * application does while it watches for a button to come up. There is one
+ * application, so it has already had its turn - the same answer appl_yield
+ * gives, and for the same reason.
+ *
+ * The waiting itself is not lost by this being empty: the loops that call it
+ * go on to ev_multi, which is where the waiting happens.
+ */
 void dsptch(void)
 {
-    needs_kernel("the scheduler");
 }
 
 /* The control manager *****************************************************/

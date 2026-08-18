@@ -37,8 +37,9 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 # The header is generated too, but only the source becomes an object
-WAYLANDGENERATED = gen/xdg-shell-protocol.c
-WAYLANDHEADERS = gen/xdg-shell-client-protocol.h
+WAYLANDGENERATED = gen/xdg-shell-protocol.c gen/xdg-dialog-protocol.c
+WAYLANDHEADERS = gen/xdg-shell-client-protocol.h \
+                 gen/xdg-dialog-v1-client-protocol.h
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 
@@ -189,6 +190,14 @@ gen/xdg-shell-protocol.c:
 gen/xdg-shell-client-protocol.h:
 	@mkdir -p gen/
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+gen/xdg-dialog-protocol.c:
+	@mkdir -p gen/
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/xdg-dialog/xdg-dialog-v1.xml $@
+
+gen/xdg-dialog-v1-client-protocol.h:
+	@mkdir -p gen/
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/xdg-dialog/xdg-dialog-v1.xml $@
 
 gfx.o: $(WAYLANDHEADERS)
 

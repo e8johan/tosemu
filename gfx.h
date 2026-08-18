@@ -26,16 +26,21 @@
 struct surface;
 
 /*
- * Showing a surface, and hearing about the keyboard and the mouse.
+ * Showing the screen, and hearing about the keyboard and the mouse.
+ *
+ * What is shown is not the screen but rectangles of it. There is one for the
+ * screen itself, and a dialog gets another, so that a GEM dialog is a window
+ * of the compositor's rather than a picture of one drawn inside a bigger
+ * window. The AES goes on drawing everything into one flat screen either way,
+ * which is what lets an application be unaware of any of this.
  *
  * There is no compositor in a test, and there does not need to be: everything
  * here answers that it is not showing anything, and the emulator runs exactly
- * as it did before with the screen only in memory. That is not a fallback so
- * much as the ordinary case for a test suite, and it is what keeps the tests
- * runnable where nobody is logged in.
+ * as it did before with the screen only in memory.
  */
 
-/* Opens a window, or reports 0 if there is no compositor to open one on */
+/* Opens the window the screen is shown in, or reports 0 if there is no
+ * compositor to open one on */
 int gfx_open(struct surface *screen);
 void gfx_close();
 
@@ -43,19 +48,29 @@ void gfx_close();
 int gfx_showing();
 
 /*
+ * A dialog: a window of its own showing that rectangle of the screen, marked
+ * modal and belonging to the main window, so that the compositor gives it the
+ * treatment a dialog gets - kept above its parent, and the parent kept out of
+ * reach while it is up.
+ *
+ * It stays movable. Nothing here knows or cares where the compositor puts it:
+ * what an application sees is the rectangle it asked for, wherever that
+ * rectangle happens to be shown, so dragging the window about changes nothing
+ * the application can observe.
+ */
+void gfx_dialog_open(int16_t x, int16_t y, int16_t w, int16_t h);
+void gfx_dialog_close();
+
+/*
  * The connection, for the event loop to wait on beside its timer, or -1 when
- * there is no window. Events are read with gfx_dispatch when it becomes
- * readable, and gfx_flush is what sends anything queued up towards the
- * compositor before waiting.
+ * there is no window.
  */
 int gfx_fd();
 void gfx_dispatch();
 void gfx_flush();
 
-/*
- * Puts what is in the surface on the screen: the planes turned into colours,
- * scaled up by a whole number, and handed over.
- */
+/* Puts what is in the surface on the screen, in every window showing part
+ * of it */
 void gfx_present();
 
 /* Input ********************************************************************/
@@ -64,28 +79,16 @@ void gfx_present();
  * The keyboard and the mouse, as GEM wants them.
  *
  * A key is one word: the IKBD scan code in the high byte and the character in
- * the low one. An application reads the low byte for text and the high byte
- * for the keys that are not characters, which is why both travel together.
+ * the low one.
  *
- * The mouse is in surface pixels rather than window ones. The window is a
- * whole number of times larger, and dividing that back out here is what keeps
- * the rest of the emulator from ever having to know it was scaled.
+ * The mouse is in the screen's own pixels. A window shows a rectangle of the
+ * screen at some whole-number scale, so a pointer position is divided by the
+ * scale and moved by where that rectangle starts - which is what keeps every
+ * other part of the emulator from having to know a window was involved.
  */
-
-/* Takes the oldest key waiting, or reports 0 if none is */
 int gfx_key_take(uint16_t *key);
-
-/* Where the pointer is and which buttons are down, now */
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);
-
-/* Which of shift, control and alt are held, in the bits GEM uses */
 uint16_t gfx_kstate();
-
-/*
- * Whether a button has gone up or down since this was last asked. The AES
- * waits for a change rather than for a state, so the change is what it needs
- * to be told about.
- */
 int gfx_buttons_changed();
 
 #endif /* GFX_H */
