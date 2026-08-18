@@ -33,3 +33,14 @@
   emuvdi/gemoblib.c to construct a PARMBLK there, fill it from the host side
   of the seam, and hand back what the routine returns. lattice/EXAMPLES/WTEST
   has two of them and is the thing to test it against.
+- Add a configuration item (or command line option) to select from six 
+  different graphics modes:
+    1. 320x200, 4bpp (Atari ST)
+    2. 640x200, 2bpp (Atari ST)
+    3. 640x400, 1bpp (Atari ST)
+    4. 1280x960, 1bpp (Atari TT)
+    5. 640x480, 18bpp (Atari Falcon)
+    6. Native screen resolution split by scaling factor, 24bpp (Best possible)
+- Add a configuration item (or command line option) to select the memory size 
+  from what the various Atari models (ST, TT and Falcon) offered, and then the
+  maximum possible given the restrictions of the APIs.
