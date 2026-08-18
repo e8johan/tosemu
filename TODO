@@ -21,3 +21,15 @@
 - Ptermres, which has nowhere to stay resident in.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
+- Objects an application draws itself - G_USERDEF, which a resource editor
+  calls G_PROGDEF - are drawn as empty boxes. The object's ob_spec points at
+  an APPLBLK holding the address of a routine in the machine's memory, and
+  calling it is more than reaching it: what the routine is handed is a
+  PARMBLK describing what to draw, and in that block is the address of the
+  tree. That has to be the application's own tree rather than the copy
+  aestree.c makes, because the application can only read its own, and it has
+  to be built in the machine's memory in the machine's layout - both blocks
+  are, and the routine walks them. So this needs the Supexec trampoline in
+  emuvdi/gemoblib.c to construct a PARMBLK there, fill it from the host side
+  of the seam, and hand back what the routine returns. lattice/EXAMPLES/WTEST
+  has two of them and is the thing to test it against.
