@@ -35,6 +35,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <stdint.h>
 
 /* Describing the surface being drawn into */
 UWORD v_planes;
@@ -351,6 +352,35 @@ WORD Setcolor(WORD colornum, WORD color)
         palette[colornum] = color;
 
     return old;
+}
+
+/*
+ * What a colour index actually looks like.
+ *
+ * Two steps, because there are two mappings. MAP_COL turns the index an
+ * application asked for into the pen the planes hold, and the palette turns
+ * that pen into a colour. A surface holds pens, so it is looked up the way
+ * round the screen sees it: pen first, colour second.
+ *
+ * An entry is 0x0RGB with four bits a gun. Repeating each nibble is what
+ * spreads four bits over eight without darkening everything: 0xf becomes 0xff
+ * rather than 0xf0.
+ */
+uint32_t emuvdi_palette_argb(int pen)
+{
+    UWORD c;
+    uint32_t r, g, b;
+
+    if (pen < 0 || pen >= (int)(sizeof palette / sizeof palette[0]))
+        return 0xff000000;
+
+    c = palette[pen];
+
+    r = (c >> 8) & 0xf;
+    g = (c >> 4) & 0xf;
+    b = c & 0xf;
+
+    return 0xff000000u | (r * 0x11 << 16) | (g * 0x11 << 8) | (b * 0x11);
 }
 
 WORD EsetColor(WORD colornum, WORD color)

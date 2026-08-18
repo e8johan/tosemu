@@ -2,6 +2,7 @@
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aes.c aesappl.c aesevnt.c aesgraf.c vdi.c surface.c \
+              gfx.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -30,6 +31,16 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
               $(EMUTOS)/aes/mforms.c
+# The Wayland side. The protocol code is generated rather than written, from
+# the descriptions in wayland-protocols.
+WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
+WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
+# The header is generated too, but only the source becomes an object
+WAYLANDGENERATED = gen/xdg-shell-protocol.c
+WAYLANDHEADERS = gen/xdg-shell-client-protocol.h
+WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
+WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
+
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
@@ -41,8 +52,12 @@ LD = gcc
 # keeps every address in the program below the four gigabyte line, because GEM
 # keeps pointers in thirty two bit fields and the VDI and AES are linked in
 # here. See EMUTOSLDFLAGS.
-CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie
-LDFLAGS = -lc -no-pie
+CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS)
+LDFLAGS = -no-pie
+
+# Libraries go after the objects that want them, which is where the linker
+# looks for them
+LIBS = -lc $(WAYLANDLIBS)
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -116,7 +131,7 @@ devpac-tests: bin/tosemu
 lattice-tests: bin/tosemu
 	$(MAKE) -C tests/lattice
 
-OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES)))
+OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES) $(WAYLANDGENERATED)))
 # Objects from the submodule are built outside it. It is a checkout of somebody
 # else's tree, and leaving build output in it means git reports it as dirty for
 # work nobody did.
@@ -144,7 +159,7 @@ emuvdi/%.o: emuvdi/%.c Makefile
 
 # Main emulator target
 bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
-	$(LD) $(LDFLAGS) $^ -o $@
+	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
@@ -155,6 +170,19 @@ bin/vditest: emuvdi/vditest.c $(EMUTOSOBJECTS)
 
 emuvdi-check: bin/vditest
 	./bin/vditest | diff -u emuvdi/vditest.expected -
+
+# The Wayland protocol code. wayland-scanner turns the protocol description
+# into the marshalling both sides of the socket agree on, so it is generated
+# here rather than carried.
+gen/xdg-shell-protocol.c:
+	@mkdir -p gen/
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+gen/xdg-shell-client-protocol.h:
+	@mkdir -p gen/
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+gfx.o: $(WAYLANDHEADERS)
 
 # Every object needs the generated m68kops.h, so none of them may be compiled
 # before m64kmake has run

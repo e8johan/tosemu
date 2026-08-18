@@ -96,6 +96,15 @@ void emuvdi_mfdb_set(void *mfdb, void *data, int16_t width, int16_t height,
 void emuvdi_control_set_pointer(int16_t *control, int index, void *p);
 
 /*
+ * A colour register, as something that can be put on a screen.
+ *
+ * The VDI works in colour indices and the hardware in pen numbers, and neither
+ * is a colour. This turns an index into the colour it stands for, which is
+ * what a compositor wants.
+ */
+uint32_t emuvdi_palette_argb(int index);
+
+/*
  * Whether the VDI has a function for this opcode. Everything it does not is
  * either a call no driver ever implemented or one of the GDOS extensions,
  * which arrive on their own range well above the VDI proper.

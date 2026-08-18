@@ -6,7 +6,11 @@ STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
 CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi
 
 CC=m68k-atari-mint-gcc
-TOSEMU=../bin/tosemu
+
+# The GEM tests would each open a window on whatever desktop is logged in,
+# which is no way for a test suite to behave. The screen is in memory either
+# way, and that is the part being tested.
+TOSEMU=TOSEMU_NO_WINDOW=1 ../bin/tosemu
 
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 

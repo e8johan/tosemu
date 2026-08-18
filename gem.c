@@ -39,6 +39,7 @@
 #include "gem_p.h"
 #include "tossystem.h"
 #include "surface.h"
+#include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -79,6 +80,14 @@ int gem_start()
     surface_select(screen);
     emuvdi_init();
 
+    /*
+     * A window to show it in, if there is a compositor to open one on. There
+     * usually is not while a test is running, and the emulator is no different
+     * for it: the screen is in memory either way, and this only decides
+     * whether anyone can see it.
+     */
+    gfx_open(screen);
+
     started = 1;
 
     return 1;
@@ -108,6 +117,8 @@ void gem_reset()
 {
     aes_reset();
     vdi_reset();
+
+    gfx_close();
 
     surface_free(screen);
     screen = 0;

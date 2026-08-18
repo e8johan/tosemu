@@ -45,6 +45,7 @@
 #include <time.h>
 
 #include "gem_p.h"
+#include "gfx.h"
 #include "tossystem.h"
 #include "m68k.h"
 
@@ -135,14 +136,37 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
 {
     long deadline = (timeout < 0) ? -1 : now_ms() + timeout;
 
+    /*
+     * Whatever was drawn since the last wait goes on the screen now. An
+     * application draws and then waits, over and over, so this is where a
+     * picture is finished as far as anyone watching is concerned.
+     */
+    gfx_present();
+
     for (;;)
     {
         struct pollfd fds[1];
         int nfds = 0;
         long left;
+        int wayland;
 
         if ((wanted & MU_MESAG) && message_take(message))
             return MU_MESAG;
+
+        /*
+         * The compositor's connection, which has to be listened to whether or
+         * not the application asked for anything from it: it is where a ping
+         * arrives, and a ping that goes unanswered is how a window comes to be
+         * declared not responding.
+         */
+        wayland = gfx_fd();
+        if (wayland >= 0)
+        {
+            gfx_flush();
+            fds[nfds].fd = wayland;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
 
         if (deadline < 0)
             left = -1;
@@ -173,6 +197,9 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
         }
 
         poll(fds, nfds, (left < 0) ? -1 : (int)left);
+
+        if (wayland >= 0 && (fds[0].revents & POLLIN))
+            gfx_dispatch();
     }
 }
 
@@ -192,6 +219,8 @@ uint32_t AES_evnt_timer()
      * is pending, and there is nothing else to be pending yet */
     if (ms > 0)
         wait_for(MU_TIMER, ms, 0);
+    else
+        gfx_present();
 
     return AES_E_OK;
 }

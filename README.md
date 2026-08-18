@@ -47,6 +47,12 @@ against what it should have drawn; unlike the other tests it builds for the
 host rather than for the emulated machine, because what it is checking is the
 port.
 
+When there is a compositor to open one on, a GEM program gets a window showing
+the emulated screen, scaled up by a whole number so that an ST pixel stays a
+square rather than being smoothed into a modern one. Set `TOSEMU_NO_WINDOW` to
+keep the screen in memory, which is what the tests do: the emulator runs the
+same either way, and the variable only decides whether anyone can see it.
+
 The `make clean` target produces a clean source tree.
 
 
