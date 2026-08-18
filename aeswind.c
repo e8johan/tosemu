@@ -744,3 +744,88 @@ uint32_t AES_wind_update()
     return AES_E_OK;
 }
 
+
+
+/* wind_find and wind_new **************************************************/
+
+/*
+ * wind_find - which window a point is in
+ *
+ * The one in front that covers it, and nought for the desktop where none does.
+ * An application uses it to work out what a click landed on when it was
+ * watching the whole screen rather than one of its own windows.
+ *
+ * Windows here are the desktop's and it decides which is in front, so the
+ * answer comes from the AES's own idea of the order rather than from anything
+ * the compositor knows. That is the same answer an application would have got
+ * on an ST, and it is the answer it is asking about: it wants to know which of
+ * its windows a coordinate in the screen belongs to.
+ */
+uint32_t AES_wind_find()
+{
+    int16_t x = aes_intin(0);
+    int16_t y = aes_intin(1);
+    int16_t handle;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    at %d,%d\n", x, y);
+    }
+
+    /* The topped one first, because it is the one in front */
+    if (topped > 0)
+    {
+        struct window *win = window_at(topped);
+
+        if (win && win->open
+            && x >= win->x && x < win->x + win->w
+            && y >= win->y && y < win->y + win->h)
+            return (uint32_t)(uint16_t)topped;
+    }
+
+    for (handle = 1; handle < WINDOWS; handle++)
+    {
+        struct window *win = window_at(handle);
+
+        if (!win || !win->open)
+            continue;
+
+        if (x >= win->x && x < win->x + win->w
+            && y >= win->y && y < win->y + win->h)
+            return (uint32_t)(uint16_t)handle;
+    }
+
+    /* The desktop, which is what is there when no window is */
+    return 0;
+}
+
+/*
+ * wind_new - take every window away and start again
+ *
+ * What an application calls when it is about to give up and does not trust
+ * itself to have closed everything, and what a desktop calls between one
+ * program and the next. It is wind_close and wind_delete for all of them at
+ * once, without the application having to remember which it had.
+ */
+uint32_t AES_wind_new()
+{
+    int16_t handle;
+
+    FUNC_TRACE_ENTER
+
+    for (handle = 1; handle < WINDOWS; handle++)
+    {
+        struct window *win = window_at(handle);
+
+        if (!win || !win->used)
+            continue;
+
+        if (win->open)
+            gfx_window_close(handle);
+
+        memset(win, 0, sizeof *win);
+    }
+
+    topped = 0;
+
+    return AES_E_OK;
+}

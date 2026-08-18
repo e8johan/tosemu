@@ -112,6 +112,11 @@ int main(int argc, char **argv)
     /* 19 appl_exit, by hand */
     check(call_aes(19, 0, 1, 0, 0), 1, "appl_exit answers success");
 
+    /* Which window a point is in, with none open: the desktop, which is
+     * nought, and is what an application gets when its click missed */
+    check(call_aes(106, 2, 1, 0, 0), 0,
+          "wind_find answers with the desktop when no window is there");
+
     /* 17 appl_yield - stubbed, because an application yielding when it is the
      * only one has already had its turn */
     check(call_aes(10, 0, 1, 0, 0) >= 0, 1, "appl_init again for appl_yield");
@@ -514,6 +519,18 @@ int main(int argc, char **argv)
             addrin[0] = (long)bar;
             intin[0] = 1;
             check(call_aes(30, 1, 1, 1, 0), 1, "menu_bar puts it up again");
+
+            /*
+             * Changing what an entry says. The words go into the string the
+             * entry already points at, so the check is that the string
+             * changed rather than that the entry points somewhere new.
+             */
+            addrin[0] = (long)bar;
+            addrin[1] = (long)"  Later...    ";
+            intin[0] = I_ABOUT;
+            check(call_aes(34, 1, 1, 2, 0), 1, "menu_text changes an entry");
+            check(strncmp(bar[I_ABOUT].ob_spec.free_string, "  Later...", 10),
+                  0, "and the words are the new ones");
 
             addrin[0] = (long)bar;
             intin[0] = 0;

@@ -678,3 +678,146 @@ uint32_t AES_objc_change()
 
     return AES_E_OK;
 }
+
+
+/* The rest of the form calls **********************************************/
+
+/*
+ * form_do is the whole of running a dialog and these are the pieces of it, for
+ * an application that wants the loop to be its own - one that has something
+ * else to watch while the dialog is up, or wants a keystroke to mean something
+ * form_do does not know about.
+ */
+
+uint32_t AES_form_keybd()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t next = aes_intin(1);
+    int16_t key = aes_intin(2);
+    void *host;
+    int16_t carry;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d, key 0x%x\n", obj, key);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    carry = emuvdi_form_keybd(host, obj, &key, &next);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    /* Whether the dialog carries on, and what to do next: which object the
+     * keystroke moved to, and what is left of the keystroke itself */
+    aes_set_intout(1, next);
+    aes_set_intout(2, key);
+
+    return (uint32_t)(uint16_t)carry;
+}
+
+uint32_t AES_form_button()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t clicks = aes_intin(1);
+    int16_t next = 0;
+    void *host;
+    int16_t carry;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d, %d clicks\n", obj, clicks);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    carry = emuvdi_form_button(host, obj, clicks, &next);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    aes_set_intout(1, next);
+
+    return (uint32_t)(uint16_t)carry;
+}
+
+/*
+ * form_error - the alert the AES puts up for a GEMDOS error
+ *
+ * An application hands over a number and gets the words for it, which is why
+ * every GEM program of the period said the same thing when a disk was full.
+ */
+uint32_t AES_form_error()
+{
+    int16_t which = aes_intin(0);
+    int16_t button;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    error %d\n", which);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    button = emuvdi_form_error(which);
+
+    gem_present();
+
+    return (uint32_t)(uint16_t)button;
+}
+
+/*
+ * objc_edit - a character typed into an editable field
+ *
+ * The application does the waiting and this does the editing: where the cursor
+ * is, what a backspace takes out, and whether the character fits the field's
+ * template. An application that runs its own dialog loop needs it, and one
+ * that uses form_do never sees it.
+ */
+uint32_t AES_objc_edit()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t key = aes_intin(1);
+    int16_t index = aes_intin(2);
+    int16_t what = aes_intin(3);
+    void *host;
+    int16_t answer;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d, key 0x%x, at %d, %d\n", obj, key, index, what);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    answer = emuvdi_objc_edit(host, obj, key, &index, what);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    aes_set_intout(1, index);
+
+    return (uint32_t)(uint16_t)answer;
+}

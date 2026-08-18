@@ -344,3 +344,61 @@ uint32_t AES_menu_tnormal()
 
     return menu_change(SELECTED, !normal, 1, 1, title);
 }
+
+
+/* menu_text ***************************************************************/
+
+/*
+ * Changing what a menu entry says.
+ *
+ * The new words are copied into the string the entry already points at rather
+ * than the entry being pointed somewhere else, which is what GEM does and what
+ * an application expects: the string belongs to the application, usually
+ * inside its resource, and it is entitled to have kept a pointer to it.
+ *
+ * Done in the machine's own memory, because both the tree and the string are
+ * there and nothing has to come across to copy one into the other.
+ */
+uint32_t AES_menu_text()
+{
+    uint32_t tree = aes_addrin(0);
+    uint32_t from = aes_addrin(1);
+    int16_t item = aes_intin(0);
+    uint32_t to;
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    item %d\n", item);
+    }
+
+    if (!tree || !from || item < 0)
+        return AES_ERROR;
+
+    /* Where the entry's words are now. An entry is a string object, so its
+     * spec is the address of the words rather than anything about them. */
+    to = m68k_read_memory_32(tree + item*24 + 12);
+    if (!to)
+        return AES_ERROR;
+
+    /*
+     * As many characters as were there, and no more. The string was made the
+     * size of the longest thing the application meant to put in it, and there
+     * is nothing here that knows how large that was - so a longer one is cut
+     * rather than written past the end of somebody's resource.
+     */
+    for (i = 0; i < 256; i++)
+    {
+        uint8_t c = (uint8_t)m68k_read_memory_8(from + i);
+        uint8_t was = (uint8_t)m68k_read_memory_8(to + i);
+
+        if (was == 0)
+            break;
+
+        m68k_write_memory_8(to + i, c);
+
+        if (c == 0)
+            break;
+    }
+
+    return AES_E_OK;
+}

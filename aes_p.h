@@ -144,9 +144,13 @@ uint32_t AES_objc_find();
 uint32_t AES_objc_offset();
 uint32_t AES_objc_order();
 uint32_t AES_objc_change();
+uint32_t AES_objc_edit();
 uint32_t AES_form_do();
 uint32_t AES_form_dial();
 uint32_t AES_form_center();
+uint32_t AES_form_keybd();
+uint32_t AES_form_button();
+uint32_t AES_form_error();
 uint32_t AES_form_alert();
 
 /* Menu functions, aesmenu.c */
@@ -162,6 +166,7 @@ uint32_t AES_menu_bar();
 uint32_t AES_menu_icheck();
 uint32_t AES_menu_ienable();
 uint32_t AES_menu_tnormal();
+uint32_t AES_menu_text();
 
 /* Window functions, aeswind.c */
 
@@ -175,6 +180,8 @@ uint32_t AES_wind_get();
 uint32_t AES_wind_set();
 uint32_t AES_wind_calc();
 uint32_t AES_wind_update();
+uint32_t AES_wind_find();
+uint32_t AES_wind_new();
 
 /* Graphics functions, aesgraf.c */
 

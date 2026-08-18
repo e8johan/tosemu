@@ -513,3 +513,56 @@ void emuvdi_objc_change(void *tree, int16_t obj, uint16_t state, int16_t draw)
 {
     ob_change(tree, obj, state, draw);
 }
+
+
+/* EmuTOS's form library, the rest of it ***********************************/
+
+WORD fm_keybd(OBJECT *tree, WORD obj, WORD *pchar, WORD *pnew_obj);
+WORD fm_button(OBJECT *tree, WORD new_obj, WORD clks, WORD *pnew_obj);
+WORD fm_error(WORD n);
+WORD ob_edit(OBJECT *tree, WORD obj, WORD in_char, WORD *idx, WORD kind);
+
+int16_t emuvdi_form_keybd(void *tree, int16_t obj, int16_t *key,
+                          int16_t *next)
+{
+    WORD k = *key, n = *next;
+    WORD carry;
+
+    carry = fm_keybd(tree, obj, &k, &n);
+
+    *key = k;
+    *next = n;
+
+    return carry;
+}
+
+int16_t emuvdi_form_button(void *tree, int16_t obj, int16_t clicks,
+                           int16_t *next)
+{
+    WORD n = *next;
+    WORD carry;
+
+    carry = fm_button(tree, obj, clicks, &n);
+
+    *next = n;
+
+    return carry;
+}
+
+int16_t emuvdi_form_error(int16_t which)
+{
+    return fm_error(which);
+}
+
+int16_t emuvdi_objc_edit(void *tree, int16_t obj, int16_t key,
+                         int16_t *index, int16_t what)
+{
+    WORD i = *index;
+    WORD answer;
+
+    answer = ob_edit(tree, obj, key, &i, what);
+
+    *index = i;
+
+    return answer;
+}

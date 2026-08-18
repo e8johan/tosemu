@@ -100,3 +100,20 @@
   them windows of their own, and it closes the same way: a surface for the
   drag that lives as long as the drag does, marked so the desktop leaves it
   alone. It is the overlay surface in the plan.
+- The file selector, fsel_input and fsel_exinput, which is the largest thing
+  still missing and the one an application notices first: a program that cannot
+  open a file is barely a program.
+
+  EmuTOS has it, in aes/gemfslib.c, and it is not a bridge like the rest of the
+  reused library was. The others compute and draw, which is the same work
+  wherever it happens; this one walks a filesystem, and it does it by calling
+  GEMDOS - dos_sfirst, dos_snext, dos_gdir, dos_chdir - from the host side of
+  the seam. tosemu's GEMDOS is host C already, in gemdosfile.c, but every
+  entrance to it reads its arguments off the 68000's stack, and Fsfirst and
+  Fsnext keep their results in a DTA in the machine's memory. So it needs a
+  host callable layer over the parts of GEMDOS that walk a directory, with
+  somewhere to put a DTA that is not in the emulated machine.
+
+  That layer is worth having for its own sake - shel_find wants it too - but it
+  is the work, and the file selector is what comes out of it rather than what
+  has to be written.
