@@ -1,6 +1,8 @@
 *~
 tests/test-*
 tests/out
+tests/out2
+tests/TEST.RSC
 tests/devpac/*.PRG
 tests/devpac/out
 tests/devpac/out2

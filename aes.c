@@ -155,11 +155,6 @@ uint32_t aes_global()
 #define AES_fsel_exinput    NULL
 #define AES_wind_find       NULL
 #define AES_wind_new        NULL
-#define AES_rsrc_load       NULL
-#define AES_rsrc_free       NULL
-#define AES_rsrc_gaddr      NULL
-#define AES_rsrc_saddr      NULL
-#define AES_rsrc_obfix      NULL
 #define AES_rsrc_rcfix      NULL
 #define AES_shel_read       NULL
 #define AES_shel_write      NULL

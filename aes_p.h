@@ -72,6 +72,16 @@ void aes_set_addrout(int index, uint32_t value);
  * array and is written by appl_init alone */
 uint32_t aes_global();
 
+/* Resource files, aesrsrc.c */
+
+void aes_rsrc_reset();
+
+uint32_t AES_rsrc_load();
+uint32_t AES_rsrc_free();
+uint32_t AES_rsrc_gaddr();
+uint32_t AES_rsrc_saddr();
+uint32_t AES_rsrc_obfix();
+
 /* Application functions, aesappl.c */
 
 void aes_appl_reset();

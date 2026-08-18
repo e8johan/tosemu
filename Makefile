@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesobjc.c aestree.c vdi.c surface.c \
+              gem.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesobjc.c aesrsrc.c aestree.c vdi.c surface.c \
               gfx.c \
               tossystem.c utils.c memory.c cpu.c
 

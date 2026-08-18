@@ -33,6 +33,8 @@
  */
 
 #include <stdio.h>
+#include <string.h>
+#include <osbind.h>
 #include <gem.h>
 
 /* What appl_init reports for an AES that has only just been started */
@@ -516,6 +518,129 @@ int main(int argc, char **argv)
             addrin[0] = (long)bar;
             intin[0] = 0;
             call_aes(30, 1, 1, 1, 0);
+        }
+
+        /*
+         * A resource file.
+         *
+         * Written here rather than checked in, because what is being tested is
+         * the reading of the format and a file to hand would only say that
+         * this agrees with whatever wrote it. Three objects, a box holding two
+         * strings, and every pointer in it an offset from the front - which is
+         * the whole of what rsrc_load has to put right.
+         */
+        {
+            static unsigned char rsc[] = {
+                /* header */
+                0,0,        /* version */
+                0,40,       /* object */
+                0,112,      /* tedinfo, and none of them */
+                0,112,      /* iconblk */
+                0,112,      /* bitblk */
+                0,112,      /* free strings */
+                0,112,      /* string data */
+                0,119,      /* image data */
+                0,119,      /* free images */
+                0,36,       /* tree index */
+                0,3,        /* objects */
+                0,1,        /* trees */
+                0,0, 0,0, 0,0, 0,0, 0,0,    /* ted, ib, bb, string, image */
+                0,119,      /* how large the whole thing is */
+
+                /* the tree index: one tree, whose root is at 40 */
+                0,0,0,40,
+
+                /* object 0: a box holding the other two */
+                255,255, 0,1, 0,2,          /* next, head, tail */
+                0,20,                       /* G_BOX */
+                0,0, 0,0,                   /* flags, state */
+                0,2,17,0,                   /* ob_spec: colours, not a pointer */
+                0,0, 0,0, 0,20, 0,3,        /* x, y, w, h in characters */
+
+                /* object 1: a string, pointing at offset 112 */
+                0,2, 255,255, 255,255,
+                0,28,                       /* G_STRING */
+                0,0, 0,0,
+                0,0,0,112,
+                0,1, 0,1, 0,10, 0,1,
+
+                /* object 2: another, and the last object in the tree */
+                0,0, 255,255, 255,255,
+                0,28,
+                0,32,                       /* LASTOB */
+                0,0,
+                0,0,0,115,
+                0,1, 0,2, 0,10, 0,1,
+
+                /* the strings they point at */
+                'H','i',0,
+                'B','y','e',0
+            };
+            long handle;
+            short tree, wchar, hchar, wbox, hbox;
+            short vh = graf_handle(&wchar, &hchar, &wbox, &hbox);
+
+            (void)vh;
+
+            handle = Fcreate("TEST.RSC", 0);
+            check(handle >= 0, 1, "a resource file can be written");
+            if (handle >= 0)
+            {
+                Fwrite((short)handle, (long)sizeof rsc, rsc);
+                Fclose((short)handle);
+            }
+
+            addrin[0] = (long)"TEST.RSC";
+            check(call_aes(110, 0, 1, 1, 0), 1, "rsrc_load reads a resource");
+
+            /* Where the trees are, which the AES writes into the global array
+             * rather than answering with */
+            check((global[5] != 0) || (global[6] != 0), 1,
+                  "rsrc_load says where the trees are");
+
+            intin[0] = 0;                   /* R_TREE */
+            intin[1] = 0;
+            addrout[0] = 0;
+            check(call_aes(112, 2, 1, 0, 1), 1, "rsrc_gaddr answers for a tree");
+            check(addrout[0] != 0, 1, "rsrc_gaddr gives an address");
+
+            if (addrout[0])
+            {
+                OBJECT *root = (OBJECT *)addrout[0];
+
+                check(root->ob_head, 1, "the tree came back put together");
+                check(root->ob_type, 20, "and with its types intact");
+
+                /*
+                 * The offsets became addresses. A string that still held its
+                 * offset would point at the front of the resource, which is
+                 * the header and not a string at all.
+                 */
+                check(strcmp(root[1].ob_spec.free_string, "Hi"), 0,
+                      "an offset to a string became a pointer to one");
+                check(strcmp(root[2].ob_spec.free_string, "Bye"), 0,
+                      "and so did the next one");
+
+                /* And the characters became pixels */
+                check(root[1].ob_x, wchar, "a coordinate in characters "
+                                           "became one in pixels");
+                check(root[1].ob_width, 10 * wchar, "and so did a width");
+                check(root->ob_spec.index, 0x00021100L,
+                      "a box's colours were left alone");
+            }
+
+            /* An index past the end is asked for by applications that guess */
+            intin[0] = 0;
+            intin[1] = 99;
+            check(call_aes(112, 2, 1, 0, 1), 0,
+                  "rsrc_gaddr refuses a tree that is not there");
+
+            tree = call_aes(111, 0, 1, 0, 0);       /* rsrc_free */
+            check(tree, 1, "rsrc_free gives the memory back");
+            check((global[5] == 0) && (global[6] == 0), 1,
+                  "and forgets where the trees were");
+
+            Fdelete("TEST.RSC");
         }
 
         v_clsvwk(vwk);

@@ -46,6 +46,7 @@ void aes_appl_reset()
     aes_evnt_reset();
     aes_wind_reset();
     aes_menu_reset();
+    aes_rsrc_reset();
 }
 
 /*
