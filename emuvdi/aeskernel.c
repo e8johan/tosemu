@@ -185,8 +185,16 @@ WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, LONG tmcount,
         m2flags = pmo2->m_out;
     }
 
+    /*
+     * The buttons are asked for as a mask and the state to wait for, packed
+     * into one long: how many clicks in the top half, then the mask and the
+     * state. Waiting for a state rather than for a change is the whole of what
+     * makes a click work - see host_event_wait.
+     */
     happened = host_event_wait(flags, (flags & MU_TIMER) ? tmcount : -1,
                                pmomouse, m1, m1flags, m2, m2flags,
+                               (int16_t)((buparm >> 8) & 0xff),
+                               (int16_t)(buparm & 0xff),
                                &key, &mx, &my, &buttons, &kstate);
 
     rets[0] = mx;
@@ -201,12 +209,16 @@ WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, LONG tmcount,
 
 WORD ev_button(WORD bflgclks, WORD bmask, WORD bstate, WORD *rets)
 {
+    LONG buparm = ((LONG)(bflgclks & 0xff) << 16)
+                | ((LONG)(bmask & 0xff) << 8)
+                | (bstate & 0xff);
+
     /* Waiting for the buttons alone, which is evnt_multi with one thing in
-     * the mask */
+     * the mask and the same button conditions packed the same way */
 #if CONF_WITH_MENU_EXTENSION
-    return ev_multi(MU_BUTTON, 0, 0, 0, 0L, 0L, 0, rets);
+    return ev_multi(MU_BUTTON, 0, 0, 0, 0L, buparm, 0, rets);
 #else
-    return ev_multi(MU_BUTTON, 0, 0, 0L, 0L, 0, rets);
+    return ev_multi(MU_BUTTON, 0, 0, 0L, buparm, 0, rets);
 #endif
 }
 

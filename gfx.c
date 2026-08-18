@@ -62,6 +62,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include "xdg-shell-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
+#include "xdg-decoration-unstable-v1-client-protocol.h"
 
 #include "surface.h"
 #include "emuvdi/emuvdi.h"
@@ -88,6 +89,7 @@ struct window {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
     struct xdg_dialog_v1 *dialog;
+    struct zxdg_toplevel_decoration_v1 *decoration;
 
     struct wl_buffer *buffer;
     uint32_t *pixels;
@@ -111,6 +113,7 @@ static struct {
     struct wl_shm *shm;
     struct xdg_wm_base *wm_base;
     struct xdg_wm_dialog_v1 *wm_dialog;
+    struct zxdg_decoration_manager_v1 *decorations;
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
@@ -134,7 +137,22 @@ static struct {
 
     int16_t mouse_x, mouse_y;   /* In the screen's pixels, not a window's */
     int16_t buttons;
-    int buttons_changed;
+
+    /*
+     * Every time the buttons change, rather than what they are now.
+     *
+     * The AES waits for a press and then for the release, and works out what
+     * was clicked from the two. Reporting only the state loses that: a click
+     * quick enough for both to arrive before anyone looks reads as a button
+     * that is up, and the press it was waiting for never happened. So each
+     * change is kept, with where the pointer was when it happened, and handed
+     * over one at a time.
+     */
+    struct {
+        int16_t buttons;
+        int16_t x, y;
+    } clicks[32];
+    int click_count;
 
     int closed;
     int showing;
@@ -242,6 +260,8 @@ static void keys_from_environment(void)
     }
 }
 
+static void clicks_from_environment(void);
+
 int gfx_key_take(uint16_t *key)
 {
     int i;
@@ -262,6 +282,8 @@ int gfx_key_take(uint16_t *key)
 
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
 {
+    clicks_from_environment();
+
     *x = w.mouse_x;
     *y = w.mouse_y;
     *buttons = w.buttons;
@@ -288,13 +310,66 @@ uint16_t gfx_kstate()
     return state;
 }
 
-int gfx_buttons_changed()
+/*
+ * Clicks asked for on the command line, for when nobody is going to click.
+ *
+ * TOSEMU_CLICKS is a list of places to press and release the left button, as
+ * x,y pairs: "80,96" clicks once there. A dialog cannot be tested without
+ * something pressing a button in it, and TOSEMU_KEYS only presses keys.
+ */
+static void clicks_from_environment(void)
 {
-    int changed = w.buttons_changed;
+    static int done;
+    const char *clicks = getenv("TOSEMU_CLICKS");
+    int x, y, n;
 
-    w.buttons_changed = 0;
+    if (done || !clicks)
+        return;
 
-    return changed;
+    done = 1;
+
+    while (sscanf(clicks, "%d,%d%n", &x, &y, &n) == 2)
+    {
+        if (w.click_count + 2 > (int)(sizeof w.clicks / sizeof w.clicks[0]))
+            break;
+
+        w.clicks[w.click_count].buttons = 1;    /* down */
+        w.clicks[w.click_count].x = (int16_t)x;
+        w.clicks[w.click_count].y = (int16_t)y;
+        w.click_count++;
+
+        w.clicks[w.click_count].buttons = 0;    /* and up again */
+        w.clicks[w.click_count].x = (int16_t)x;
+        w.clicks[w.click_count].y = (int16_t)y;
+        w.click_count++;
+
+        w.mouse_x = (int16_t)x;
+        w.mouse_y = (int16_t)y;
+
+        clicks += n;
+        if (*clicks == ' ' || *clicks == ',')
+            clicks++;
+    }
+}
+
+int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
+{
+    int i;
+
+    clicks_from_environment();
+
+    if (w.click_count == 0)
+        return 0;
+
+    *buttons = w.clicks[0].buttons;
+    *x = w.clicks[0].x;
+    *y = w.clicks[0].y;
+
+    for (i = 1; i < w.click_count; i++)
+        w.clicks[i-1] = w.clicks[i];
+    w.click_count--;
+
+    return 1;
 }
 
 /* Keyboard ****************************************************************/
@@ -483,7 +558,13 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
     else
         w.buttons &= ~bit;
 
-    w.buttons_changed = 1;
+    if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
+    {
+        w.clicks[w.click_count].buttons = w.buttons;
+        w.clicks[w.click_count].x = w.mouse_x;
+        w.clicks[w.click_count].y = w.mouse_y;
+        w.click_count++;
+    }
 }
 
 static void pt_axis(void *data, struct wl_pointer *p, uint32_t time,
@@ -601,13 +682,24 @@ static void toplevel_close(void *data, struct xdg_toplevel *t)
     (void)t;
 
     /*
-     * Closing the dialog's window is not something GEM has a way of saying, so
-     * it is left up: the application is inside form_do waiting for one of its
-     * buttons, and the honest thing is to make it use one. Closing the screen
-     * is the whole emulator being told to stop.
+     * Closing the screen is the machine being told to stop, and it stops.
+     *
+     * Closing a dialog is not something GEM has a way of saying. There is no
+     * cancel key and no "the dialog was dismissed" - a dialog ends when one of
+     * its own buttons is pressed, and nothing else ends it. What is sent
+     * instead is Undo, which is the key GEM programs use for cancelling, so an
+     * application that handles it gets what it expects. form_do does not, so a
+     * dialog put up by form_do stays up.
+     *
+     * That is a button that does nothing on such a dialog, which is not good,
+     * but the alternative is worse: the only other key that ends form_do is
+     * Return, and Return presses the default button. Closing a window is not
+     * a way anyone should be able to agree to something.
      */
     if (win == &w.windows[MAIN])
         w.closed = 1;
+    else
+        key_post(0x6100);   /* Undo */
 }
 
 static const struct xdg_toplevel_listener toplevel_listener = {
@@ -628,6 +720,10 @@ static void registry_global(void *data, struct wl_registry *registry,
         w.shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     else if (!strcmp(interface, xdg_wm_base_interface.name))
         w.wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+    else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name))
+        w.decorations = wl_registry_bind(registry, name,
+                                         &zxdg_decoration_manager_v1_interface,
+                                         1);
     else if (!strcmp(interface, xdg_wm_dialog_v1_interface.name))
         w.wm_dialog = wl_registry_bind(registry, name,
                                        &xdg_wm_dialog_v1_interface, 1);
@@ -710,6 +806,32 @@ static int window_create(struct window *win, const char *title,
     xdg_toplevel_set_app_id(win->toplevel, "se.e8johan.tosemu");
 
     /*
+     * Neither of these can be resized: the screen is the size the emulated
+     * machine's screen is, and a dialog is the size the application made it.
+     * Saying so both ways is what tells a desktop there is nothing for a
+     * maximise button to do, so it does not offer one.
+     */
+    xdg_toplevel_set_min_size(win->toplevel, win->width, win->height);
+    xdg_toplevel_set_max_size(win->toplevel, win->width, win->height);
+
+    /*
+     * Ask the desktop to put its own frame round it.
+     *
+     * Without this a compositor is entitled to assume the window draws its own,
+     * and a window with no frame has nothing to take hold of: there is no title
+     * bar to drag it by and no buttons to close it with. GEM draws frames round
+     * its own windows, but these are not those - these are the windows GEM's
+     * screen and its dialogs are shown in, and they belong to the desktop.
+     */
+    if (w.decorations)
+    {
+        win->decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(
+            w.decorations, win->toplevel);
+        zxdg_toplevel_decoration_v1_set_mode(
+            win->decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    }
+
+    /*
      * A dialog says so, and says whose it is. That is what buys the behaviour
      * that makes it a dialog rather than merely look like one: kept above its
      * parent, the parent kept out of reach while it is up, and the decorations
@@ -753,6 +875,8 @@ static void window_destroy(struct window *win)
         munmap(win->pixels, win->bytes);
     if (win->buffer)
         wl_buffer_destroy(win->buffer);
+    if (win->decoration)
+        zxdg_toplevel_decoration_v1_destroy(win->decoration);
     if (win->dialog)
         xdg_dialog_v1_destroy(win->dialog);
     if (win->toplevel)
@@ -848,7 +972,13 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
     if (sw <= 0 || sh <= 0 || !shows)
         return;
 
-    if (!window_create(&w.windows[DIALOG], "", shows, x, y, sw, sh,
+    /*
+     * A dialog is a window of the parent's rather than one of its own, so a
+     * desktop will usually keep it out of the task list on purpose - it is
+     * reached by way of the window it belongs to. It still needs a name, for
+     * the frame to put in its title bar.
+     */
+    if (!window_create(&w.windows[DIALOG], "Dialog", shows, x, y, sw, sh,
                        &w.windows[MAIN]))
         window_destroy(&w.windows[DIALOG]);
 }

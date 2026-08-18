@@ -79,6 +79,7 @@ void host_dialog_end(void);
 int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,
+                        int16_t bmask, int16_t bstate,
                         int16_t *key, int16_t *mx, int16_t *my,
                         int16_t *buttons, int16_t *kstate);
 

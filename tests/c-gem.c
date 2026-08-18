@@ -396,6 +396,18 @@ int main(int argc, char **argv)
         check(dlg[2].ob_state & 1, 1, "and the tree comes back with it selected");
 
         /*
+         * A click, rather than a keypress. One click on a button ends the
+         * dialog: the AES sees the press, tracks the button until it comes
+         * back up, and then asks whether the button is up - which it already
+         * is. Answering that only when the buttons next change is what made a
+         * click take two clicks.
+         */
+        dlg[2].ob_state = 0;
+        addrin[0] = (long)dlg;
+        intin[0] = 0;
+        check(call_aes(50, 1, 1, 1, 0), 2, "one click on a button ends form_do");
+
+        /*
          * An alert, which is a dialog the AES builds itself out of a string.
          * It comes from the AES's own resource rather than from the
          * application, so this is also what says that resource was set up.

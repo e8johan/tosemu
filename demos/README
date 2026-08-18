@@ -18,9 +18,12 @@ TOSEMU_SCREENSHOT will still write out what was drawn:
 
     TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu demos/dialog
 
-and TOSEMU_KEYS will press something, for when there is nobody to:
+and TOSEMU_KEYS and TOSEMU_CLICKS will press something, for when there is
+nobody to. Keys are characters, with \r for Return; clicks are places to press
+and release the left button:
 
     TOSEMU_KEYS='\r' ./bin/tosemu demos/dialog
+    TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
 
 
 dialog
@@ -38,6 +41,14 @@ waiting for a button to be pressed.
 Then objc_draw puts the tree up and form_do runs it: it waits, works out what
 was clicked or typed, redraws the button that was pressed, and answers with
 which object ended it.
+
+The dialog is a window of the desktop's, so it has a frame and can be dragged
+about even while the program is blocked waiting inside form_do. Its close
+button sends Undo, the key GEM programs use for cancelling; form_do does not
+listen for that one, so on this dialog it does nothing. GEM has no way of
+saying a dialog was closed, and the only key that would end it is Return, which
+presses the default button - closing a window should not be a way to agree to
+something.
 
 Click OK or Cancel, or press Return for OK - it is the default button, which
 is why the AES draws it with a heavier border. Either way the program prints

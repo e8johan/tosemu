@@ -41,6 +41,7 @@
 #include "aes_p.h"
 
 #include <poll.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -142,10 +143,30 @@ static int in_rectangle(int16_t x, int16_t y, const int16_t *r, int16_t leaving)
     return leaving ? !inside : inside;
 }
 
+/*
+ * Whether the buttons are as somebody is waiting for them to be.
+ *
+ * A caller asks for a state rather than for a change: "tell me when button one
+ * is down", or "when it is up". If they are already that way the answer is
+ * yes, at once, and getting that wrong is what made a click need two clicks -
+ * the AES asks for the button to be up after it has already seen it come up,
+ * and waiting for another change means waiting for another click.
+ */
+static int buttons_are(int16_t buttons, int16_t mask, int16_t state)
+{
+    /* A mask of nothing is a caller that does not care */
+    if (mask == 0)
+        return 1;
+
+    return (buttons & mask) == (state & mask);
+}
+
 static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,
-                        uint16_t *key)
+                        int16_t bmask, int16_t bstate,
+                        uint16_t *key, int16_t *mx, int16_t *my,
+                        int16_t *buttons)
 {
     long deadline = (timeout < 0) ? -1 : now_ms() + timeout;
 
@@ -169,10 +190,60 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         if ((wanted & MU_KEYBD) && gfx_key_take(key))
             return MU_KEYBD;
 
+        /*
+         * The buttons, which are waited for as a state rather than as a
+         * change.
+         *
+         * Anything that happened while nobody was looking is looked at first,
+         * one at a time, because a click quick enough for the press and the
+         * release to arrive together would otherwise be a button that was
+         * never down. What was clicked is worked out from where the pointer
+         * was at the time, so each change carries its own position.
+         *
+         * When none of those is what was asked for, the way things are now
+         * may be: that is the case of asking for a button to be up when it
+         * already is, which happens after every click the AES handles.
+         */
         if (wanted & MU_BUTTON)
         {
-            if (gfx_buttons_changed())
-                return MU_BUTTON;
+            int16_t b, bx, by;
+            int seen = 0;
+
+            while (gfx_button_take(&b, &bx, &by))
+            {
+                seen = 1;
+
+                if (buttons_are(b, bmask, bstate))
+                {
+                    if (buttons)
+                        *buttons = b;
+                    if (mx)
+                        *mx = bx;
+                    if (my)
+                        *my = by;
+
+                    return MU_BUTTON;
+                }
+            }
+
+            if (!seen)
+            {
+                int16_t now, nx, ny;
+
+                gfx_mouse(&nx, &ny, &now);
+
+                if (buttons_are(now, bmask, bstate))
+                {
+                    if (buttons)
+                        *buttons = now;
+                    if (mx)
+                        *mx = nx;
+                    if (my)
+                        *my = ny;
+
+                    return MU_BUTTON;
+                }
+            }
         }
 
         if (wanted & (MU_M1|MU_M2))
@@ -193,6 +264,20 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
          * arrives, and a ping that goes unanswered is how a window comes to be
          * declared not responding.
          */
+        /*
+         * The screen's window being closed is the machine being told to stop.
+         * Halting is not enough from in here: this is inside a trap the AES
+         * will not return from, so it stops the way the case below does.
+         */
+        if (gfx_fd() >= 0 && !gfx_showing())
+        {
+            printf("The window was closed.\n");
+            fflush(stdout);
+
+            halt_execution();
+            exit(0);
+        }
+
         wayland = gfx_fd();
         if (wayland >= 0)
         {
@@ -219,14 +304,24 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         if (nfds == 0 && left < 0)
         {
             /*
-             * Waiting for ever with nothing that could end the wait. Without a
-             * window there is no keyboard and no mouse, so an application
-             * asking for either would hang, and a hang says nothing about why.
+             * Waiting for ever with nothing that could end the wait: no
+             * window, so no keyboard and no mouse, and no timer to give up
+             * after.
+             *
+             * Halting is not enough here. The emulated machine stops when a
+             * trap returns and the loop notices, and this is inside a trap
+             * that the AES will not return from - form_do would go straight
+             * back to waiting, and say so again, for ever. There is provably
+             * no way forward, so this is where it ends.
              */
-            halt_execution();
             printf("AES: an application is waiting for the keyboard or the "
-                   "mouse, and there is no window for either to arrive at\n");
-            return 0;
+                   "mouse, and there is no window for either to arrive at.\n"
+                   "Run it where there is a compositor, or give it something "
+                   "to work with through TOSEMU_KEYS or TOSEMU_CLICKS.\n");
+            fflush(stdout);
+
+            halt_execution();
+            exit(1);
         }
 
         poll(fds, nfds, (left < 0) ? -1 : (int)left);
@@ -247,17 +342,21 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,
+                        int16_t bmask, int16_t bstate,
                         int16_t *key, int16_t *mx, int16_t *my,
                         int16_t *buttons, int16_t *kstate)
 {
     uint16_t k = 0;
     int16_t happened;
 
-    happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags, &k);
+    /* Where the pointer is now, unless a button event says where it was when
+     * it happened, which wait_for fills in over the top of these */
+    gfx_mouse(mx, my, buttons);
+
+    happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags,
+                        bmask, bstate, &k, mx, my, buttons);
 
     *key = (int16_t)k;
-
-    gfx_mouse(mx, my, buttons);
     *kstate = (int16_t)gfx_kstate();
 
     return happened;
@@ -278,7 +377,7 @@ uint32_t AES_evnt_timer()
     /* Zero is not a wait at all, it is a way of asking whether anything else
      * is pending, and there is nothing else to be pending yet */
     if (ms > 0)
-        wait_for(MU_TIMER, ms, 0, 0, 0, 0, 0, 0);
+        wait_for(MU_TIMER, ms, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     else
         gem_present();
 
@@ -303,7 +402,7 @@ uint32_t AES_evnt_mesag()
 
     FUNC_TRACE_ENTER
 
-    if (wait_for(MU_MESAG, -1, message, 0, 0, 0, 0, 0) != MU_MESAG)
+    if (wait_for(MU_MESAG, -1, message, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) != MU_MESAG)
         return AES_ERROR;
 
     message_to_application(buffer, message);
@@ -348,15 +447,17 @@ uint32_t AES_evnt_multi()
     for (i = 0; i < 4; i++)
         m2[i] = aes_intin(10 + i);
 
+    gfx_mouse(&mx, &my, &buttons);
+
     happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags,
-                        &key);
+                        aes_intin(2), aes_intin(3),
+                        &key, &mx, &my, &buttons);
 
     if (happened == MU_MESAG)
         message_to_application(buffer, message);
 
     /* Where the mouse was and what was held down when it happened, which an
      * application reads whatever it was waiting for */
-    gfx_mouse(&mx, &my, &buttons);
 
     aes_set_intout(1, mx);
     aes_set_intout(2, my);

@@ -53,6 +53,10 @@ square rather than being smoothed into a modern one. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
+`TOSEMU_KEYS` hands over keystrokes and `TOSEMU_CLICKS` places to click, for
+when there is nobody to type or click - a test suite, mostly. Keys are
+characters with `\r` for Return; clicks are `x,y` pairs.
+
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.

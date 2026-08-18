@@ -90,6 +90,16 @@ void gfx_present();
 int gfx_key_take(uint16_t *key);
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);
 uint16_t gfx_kstate();
-int gfx_buttons_changed();
+/*
+ * The next time the buttons changed, with where the pointer was when they did,
+ * or 0 if they have not changed since this was last asked.
+ *
+ * Changes are kept rather than only the state, because the AES waits for a
+ * press and then for the release and works out what was clicked from the two.
+ * A click quick enough that both arrive before anyone looks would otherwise
+ * read as a button that is up, and the press it was waiting for would never
+ * have happened.
+ */
+int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y);
 
 #endif /* GFX_H */
