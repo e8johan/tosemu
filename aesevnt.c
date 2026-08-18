@@ -213,6 +213,19 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             {
                 seen = 1;
 
+                /*
+                 * A press in the menu bar belongs to the AES rather than to
+                 * the application: the menu drops down, follows the pointer,
+                 * and sends a message saying what was chosen. The application
+                 * hears about it as a message, which is what it was waiting
+                 * for anyway, and never sees the click.
+                 */
+                if (b && aes_menu_hit(bx, by))
+                {
+                    aes_menu_click();
+                    continue;
+                }
+
                 if (buttons_are(b, bmask, bstate))
                 {
                     if (buttons)
@@ -329,6 +342,12 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         if (wayland >= 0 && (fds[0].revents & POLLIN))
             gfx_dispatch();
     }
+}
+
+/* What the AES reaches when it sends an application a message */
+void host_message_post(const int16_t *message)
+{
+    aes_message_post(message);
 }
 
 /*

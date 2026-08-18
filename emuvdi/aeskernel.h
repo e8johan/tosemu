@@ -73,6 +73,10 @@ WORD host_call_userdef(USERBLK *ub, PARMBLK *pb);
  * this for an application's dialogs; the alert in gemfmalt.c does it for the
  * AES's own, so that the two behave alike.
  */
+/* Putting a message where the application will find it. The AES sends one for
+ * a menu selection, for a window that needs redrawing, and for much else. */
+void host_message_post(const int16_t *message);
+
 void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
 void host_dialog_end(void);
 

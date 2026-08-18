@@ -111,6 +111,14 @@ static void show(const char *what)
 }
 
 /*
+ * Sending an application a message, which needs an application to send it to.
+ * Here for the linker, like the two below.
+ */
+void host_message_post(const int16_t *message)
+{
+}
+
+/*
  * Putting a dialog in a window of its own, which is the emulator's to do and
  * this has no windows to do it with. Here for the linker, like the wait below.
  */

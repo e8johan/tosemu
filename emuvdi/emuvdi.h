@@ -162,6 +162,23 @@ char *emuvdi_tedinfo_text(void *ted);
 int16_t emuvdi_form_do(void *tree, int16_t start);
 
 /*
+ * Puts a menu bar up along the top of the screen, or takes it away. The tree
+ * is one aes_tree_in built, and its first two entries are the bar itself and
+ * the row of titles along it.
+ */
+void emuvdi_menu_bar(void *tree, int16_t showit);
+
+/*
+ * Runs the menu, once a press has landed in the bar: follows the pointer down
+ * whichever title it is over, and answers with what was chosen. 0 means the
+ * menu was left without choosing anything.
+ */
+int16_t emuvdi_menu_do(int16_t *title, int16_t *item);
+
+/* How tall the menu bar is, which is the height of one box */
+int16_t emuvdi_menu_height();
+
+/*
  * Puts up an alert - the box with an icon, a line or three of text and up to
  * three buttons - and answers with which button was pressed, counting from
  * one. The string is the packed form an application writes it in, like

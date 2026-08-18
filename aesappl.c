@@ -45,6 +45,7 @@ void aes_appl_reset()
     ap_id = -1;
     aes_evnt_reset();
     aes_wind_reset();
+    aes_menu_reset();
 }
 
 /*

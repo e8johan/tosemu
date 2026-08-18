@@ -76,9 +76,19 @@ static void needs_kernel(const char *what)
  */
 THEGLO D;
 
-/* The process that is running. Every library file that asks whose window or
- * whose mouse this is asks through here. */
-AESPD *rlr;
+/*
+ * The process that is running, and the one there is.
+ *
+ * Every library file that asks whose window this is, or whose mouse, or who a
+ * message is from, asks through here. It is a real structure rather than a
+ * null pointer because the menu code reaches into it for the process number
+ * before it will draw anything.
+ *
+ * When there is more than one application it stops being a variable holding
+ * the only answer and becomes a question for the daemon.
+ */
+static AESPD the_application;
+AESPD *rlr = &the_application;
 
 /* Whether the control manager owns the mouse just now */
 BOOL gl_ctmown;
@@ -124,10 +134,9 @@ void set_mouse_to_hourglass(void)
 
 /* Windows ****************************************************************/
 
-/* The menu bar tree of whichever application owns the bar. backgrcol, which
- * says what colour the desktop is painted, is not here: gemoblib.c defines
- * that one itself. */
-OBJECT *gl_mntree;
+/* backgrcol, which says what colour the desktop is painted, is not here:
+ * gemoblib.c defines that one itself. gl_mntree, the menu bar's tree, is
+ * gemmnlib.c's now that it is built. */
 
 /* The event kernel *******************************************************/
 
@@ -277,6 +286,71 @@ void get_mown(AESPD **pmown)
  * empty. */
 void fq(void)
 {
+}
+
+/* Messages ***************************************************************/
+
+/*
+ * The buffer the AES builds a message in before sending it. One is enough:
+ * a message is built and sent in the same breath, and nothing is running in
+ * between.
+ */
+WORD appl_msg[8];
+
+/*
+ * Sending one. Every message the AES sends is eight words, the first saying
+ * which kind it is and the fourth usually saying which window it is about.
+ *
+ * Who it goes to is ignored, because there is one application to send to. When
+ * there is more than one the daemon does the routing, and this is where it
+ * will ask.
+ */
+void ap_sendmsg(WORD ap_msg[], WORD type, AESPD *towhom,
+                WORD w3, WORD w4, WORD w5, WORD w6, WORD w7)
+{
+    (void)towhom;
+
+    ap_msg[0] = type;
+    ap_msg[1] = rlr ? rlr->p_pid : 0;   /* who it is from */
+    ap_msg[2] = 0;                      /* how much longer than eight words */
+    ap_msg[3] = w3;
+    ap_msg[4] = w4;
+    ap_msg[5] = w5;
+    ap_msg[6] = w6;
+    ap_msg[7] = w7;
+
+    host_message_post(ap_msg);
+}
+
+/*
+ * Finding an application by name or by number, which is how one asks another
+ * to do something.
+ *
+ * There is one, so it is the answer to every question. Answering with nothing
+ * is not the same: the menu code looks itself up before it will draw a bar,
+ * and takes what it gets on trust.
+ */
+AESPD *fpdnm(char *pname, UWORD pid)
+{
+    (void)pname;
+    (void)pid;
+
+    return rlr;
+}
+
+/* The control manager's process, and the rectangle it waits on. Both are the
+ * desktop's, which is not written. */
+AESPD *ctl_pd;
+MOBLK gl_ctwait;
+
+/* Putting a key back where the application will read it, which the menu code
+ * does with a keystroke that turned out not to be a shortcut */
+void post_keybd(CDA *c, UWORD ch)
+{
+    (void)c;
+
+    needs_kernel("putting a key back");
+    (void)ch;
 }
 
 /* Windows and the shell **************************************************/

@@ -235,6 +235,42 @@ int16_t emuvdi_form_alert(int16_t default_button, char *text)
     return fm_alert(default_button, text);
 }
 
+/* EmuTOS's menu library, aes/gemmnlib.c */
+void mn_bar(OBJECT *tree, WORD showit);
+WORD mn_do(WORD *ptitle, WORD *pitem);
+void mn_init(void);
+
+void emuvdi_menu_bar(void *tree, int16_t showit)
+{
+    static int started;
+
+    if (!started)
+    {
+        mn_init();
+        started = 1;
+    }
+
+    mn_bar(tree, showit);
+}
+
+int16_t emuvdi_menu_do(int16_t *title, int16_t *item)
+{
+    WORD t = 0, i = 0;
+    WORD chosen;
+
+    chosen = mn_do(&t, &i);
+
+    *title = t;
+    *item = i;
+
+    return chosen;
+}
+
+int16_t emuvdi_menu_height()
+{
+    return gl_hbox;
+}
+
 /* EmuTOS's form library, aes/gemfmlib.c */
 WORD fm_do(OBJECT *tree, WORD start);
 

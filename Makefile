@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesobjc.c aestree.c vdi.c surface.c \
+              gem.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesobjc.c aestree.c vdi.c surface.c \
               gfx.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -27,7 +27,7 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/util/intmath.c \
               $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
               $(EMUTOS)/aes/gemgsxif.c \
-              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemfmlib.c \
+              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemmnlib.c $(EMUTOS)/aes/gemfmlib.c \
               $(EMUTOS)/aes/gemrslib.c \
               $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
@@ -90,6 +90,7 @@ EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
               -DCONF_WITH_68030_PMMU=0 -DCONF_WITH_CACHE_CONTROL=0 \
               -DDETECT_NATIVE_FEATURES=0 -DCONF_WITH_COLDFIRE_RS232=0 \
               -DCONF_COLDFIRE_TIMER_C=0 -DCONF_WITH_EXTENDED_MOUSE=0 \
+              -DCONF_WITH_MENU_EXTENSION=0 \
               -fno-pie
 
 # GEM keeps pointers in 32 bit fields. An OBJECT's ob_spec is a LONG that

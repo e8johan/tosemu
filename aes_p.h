@@ -110,6 +110,16 @@ uint32_t AES_form_do();
 uint32_t AES_form_dial();
 uint32_t AES_form_alert();
 
+/* Menu functions, aesmenu.c */
+
+void aes_menu_reset();
+
+/* Whether a point is in the menu bar, and running the menu when one is */
+int aes_menu_hit(int16_t x, int16_t y);
+void aes_menu_click();
+
+uint32_t AES_menu_bar();
+
 /* Window functions, aeswind.c */
 
 void aes_wind_reset();

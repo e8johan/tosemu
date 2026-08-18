@@ -95,6 +95,12 @@
  * claims to be has a loop in it rather than that many objects */
 #define MAX_OBJECTS (512)
 
+/*
+ * How many objects to leave after the end of a tree - enough for the Desk
+ * menu's separator and one entry for every accessory that can register.
+ */
+#define TREE_HEADROOM (16)
+
 /* The longest string worth bringing across. GEM strings are short by nature -
  * they have to fit in a dialog - and one that is not is a pointer into
  * something that is not a string. */
@@ -245,7 +251,19 @@ void *aes_tree_in(uint32_t address)
 
     tree.count = i + 1;
 
-    objects = emuvdi_tree_alloc(tree.count);
+    /*
+     * Room after the end of it.
+     *
+     * A menu tree is not only read: the AES splices entries into the Desk menu
+     * for the accessories that have registered, writing objects after the ones
+     * the application supplied. A tree from a resource file has blank entries
+     * waiting for them; one built by hand may not, and running off the end of
+     * the copy would be this emulator's memory rather than the application's.
+     *
+     * The spare objects are not copied back, because the application does not
+     * know about them.
+     */
+    objects = emuvdi_tree_alloc(tree.count + TREE_HEADROOM);
     if (!objects)
     {
         halt_execution();
