@@ -72,8 +72,46 @@
  * application is sent the message it would have got from its own close box */
 void host_window_closed(int16_t handle);
 
-/* How much larger than an ST pixel one on the screen is */
-#define SCALE (3)
+/*
+ * How much larger than an ST pixel one on the desktop is.
+ *
+ * A whole number, because anything else is a blur: an ST pixel becomes a
+ * square block of them and stays a hard edge, which is what the artwork of the
+ * period was drawn for. Three is a reasonable guess at a modern display -
+ * a 640x400 screen becomes 1920x1200 - and TOSEMU_SCALE says otherwise.
+ *
+ * It is kept per window rather than once, because it is a property of how a
+ * window is being shown rather than of the machine: two windows of the same
+ * application can honestly be shown at different sizes, and one day they will
+ * be.
+ */
+#define SCALE_DEFAULT (3)
+#define SCALE_MAX     (16)
+
+static int scale_wanted(void)
+{
+    static int scale;
+    const char *said;
+
+    if (scale)
+        return scale;
+
+    scale = SCALE_DEFAULT;
+
+    said = getenv("TOSEMU_SCALE");
+    if (said)
+    {
+        int n = atoi(said);
+
+        if (n >= 1 && n <= SCALE_MAX)
+            scale = n;
+        else
+            printf("TOSEMU_SCALE has to be a whole number between 1 and %d, "
+                   "so %s is ignored\n", SCALE_MAX, said);
+    }
+
+    return scale;
+}
 
 /*
  * A window, which shows one rectangle of a surface. A GEM window is one of
@@ -107,7 +145,11 @@ struct window {
     /* The part of the screen it shows, in the screen's own pixels */
     int16_t sx, sy, sw, sh;
 
-    /* And how large that is once scaled, which is what the compositor sees */
+    /* How much larger than an ST pixel one of this window's is */
+    int scale;
+
+    /* And how large that rectangle is once scaled, which is what the
+     * compositor sees */
     int width, height;
 
     /* The compositor dismissed it, which only happens to menus */
@@ -633,8 +675,8 @@ static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
     if (!win)
         return;
 
-    w.mouse_x = (int16_t)(win->sx + wl_fixed_to_int(x) / SCALE);
-    w.mouse_y = (int16_t)(win->sy + wl_fixed_to_int(y) / SCALE);
+    w.mouse_x = (int16_t)(win->sx + wl_fixed_to_int(x) / win->scale);
+    w.mouse_y = (int16_t)(win->sy + wl_fixed_to_int(y) / win->scale);
     w.mouse_known = 1;
 }
 
@@ -1046,8 +1088,9 @@ static int window_create(struct window *win, const char *title,
     win->sy = sy;
     win->sw = sw;
     win->sh = sh;
-    win->width = sw * SCALE;
-    win->height = sh * SCALE;
+    win->scale = scale_wanted();
+    win->width = sw * win->scale;
+    win->height = sh * win->scale;
 
     win->surface = wl_compositor_create_surface(w.compositor);
     win->xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, win->surface);
@@ -1305,8 +1348,12 @@ void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
     win->sy = y;
     win->sw = sw;
     win->sh = sh;
-    win->width = sw * SCALE;
-    win->height = sh * SCALE;
+
+    /* At whatever the bar is shown at: the menu is part of the same bar, and
+     * where it goes is said in the bar's own pixels */
+    win->scale = bar->scale;
+    win->width = sw * win->scale;
+    win->height = sh * win->scale;
 
     win->surface = wl_compositor_create_surface(w.compositor);
     win->xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, win->surface);
@@ -1320,8 +1367,8 @@ void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
      */
     where = xdg_wm_base_create_positioner(w.wm_base);
     xdg_positioner_set_size(where, win->width, win->height);
-    xdg_positioner_set_anchor_rect(where, (x - bar->sx) * SCALE,
-                                   (y - bar->sy) * SCALE, 1, 1);
+    xdg_positioner_set_anchor_rect(where, (x - bar->sx) * bar->scale,
+                                   (y - bar->sy) * bar->scale, 1, 1);
     xdg_positioner_set_anchor(where, XDG_POSITIONER_ANCHOR_TOP_LEFT);
     xdg_positioner_set_gravity(where, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
     xdg_positioner_set_constraint_adjustment(where,
@@ -1455,13 +1502,13 @@ static void window_present(struct window *win)
                 surface_pixel(win->shows, (uint16_t)(win->sx + x),
                               (uint16_t)(win->sy + y)));
 
-            for (sy = 0; sy < SCALE; sy++)
+            for (sy = 0; sy < win->scale; sy++)
             {
                 uint32_t *row = win->pixels
-                              + (size_t)(y*SCALE + sy) * win->width
-                              + x*SCALE;
+                              + (size_t)(y*win->scale + sy) * win->width
+                              + x*win->scale;
 
-                for (sx = 0; sx < SCALE; sx++)
+                for (sx = 0; sx < win->scale; sx++)
                     row[sx] = argb;
             }
         }

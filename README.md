@@ -50,8 +50,10 @@ port.
 The emulated screen is never shown. It is a coordinate space and a piece of
 memory: GEM lays its windows out in it and draws into it the way it always did.
 What appears on the desktop are the windows themselves - one for each window a
-GEM application opens, and one for each dialog - scaled up by a whole number so
-that an ST pixel stays a square rather than being smoothed into a modern one.
+GEM application opens, one for each dialog, one for the menu bar and one for
+each menu pulled down from it - scaled up by a whole number so that an ST pixel
+stays a square rather than being smoothed into a modern one. `TOSEMU_SCALE`
+says by how much, and three is the default: a 640x400 screen becomes 1920x1200.
 A GEM application is meant to be part of the desktop it runs on rather than a
 picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
@@ -59,7 +61,10 @@ same either way, and the variable only decides whether anyone can see it.
 
 `TOSEMU_KEYS` hands over keystrokes and `TOSEMU_CLICKS` places to click, for
 when there is nobody to type or click - a test suite, mostly. Keys are
-characters with `\r` for Return; clicks are `x,y` pairs.
+characters with `\r` for Return. Clicks are `x,y` to press and release there,
+`x,y-x2,y2` to drag from one to the other, and `@x,y` to move the pointer
+without pressing anything - which is not a nicety, because a GEM menu opens
+when the pointer arrives among the titles rather than when it is clicked.
 
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what

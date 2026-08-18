@@ -12,6 +12,9 @@ only a person can answer.
     make demos
     ./bin/tosemu demos/dialog
 
+`TOSEMU_SCALE` says how much larger than an ST pixel one on the desktop is,
+and three is the default.
+
 With a compositor there is a window and the mouse and keyboard work. Without
 one the screen is only in memory, which is not very interesting, though
 TOSEMU_SCREENSHOT will still write out what was drawn:
