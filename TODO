@@ -51,3 +51,29 @@
   and have to be composed from a single surface rather than shown side by
   side - which is the same piece of work as the surface router, and neither is
   needed until then.
+- Bridge the scrap to the desktop's own clipboard, so that copying in a GEM
+  program pastes into a modern one and the other way round.
+
+  Going out has to be watched for rather than waited for: a GEM program never
+  says it copied something. scrp_write only says which directory the scrap is
+  in, and the cut itself is a file appearing in it, so inotify on that
+  directory is not a shortcut but the only signal there is. Watch for
+  IN_CLOSE_WRITE rather than IN_MODIFY, or half a file gets read: SCRAP.TXT is
+  written by an ordinary program doing ordinary writes.
+
+  Where the code goes is decided by something less obvious. The daemon looks
+  like the place - it already holds the scrap path, it is session wide, and it
+  outlives any one application - but Wayland only lets a client take the
+  selection in answer to something the person did, and it wants the serial of
+  the input event to prove it. A daemon has no seat, no focus and no serials,
+  so it cannot take the selection at all. The application that wrote the scrap
+  can: it has a connection, and it has the serial of the click on Copy that
+  led to the write. So the watching belongs in the application process, and
+  what the daemon adds is telling the others to stop offering it.
+
+  Coming in is easier and is not inotify at all: when the desktop offers
+  something, write SCRAP.TXT into the scrap directory so that a GEM program
+  pasting finds one. The work there is the conversion. Text on an ST is the
+  Atari character set with CRLF between lines, and the desktop's is UTF-8 with
+  LF, and the two do not agree about anything above 127. SCRAP.IMG against
+  image/png is a second conversion and a larger one; text first.
