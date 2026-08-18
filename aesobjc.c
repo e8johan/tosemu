@@ -225,3 +225,114 @@ uint32_t AES_form_dial()
 
     return AES_E_OK;
 }
+
+
+/* form_center *************************************************************/
+
+/* An OBJECT in the machine, and the fields this needs out of one */
+#define OB_SIZE     (24)
+#define OB_TYPE      (6)
+#define OB_STATE    (10)
+#define OB_SPEC     (12)
+#define OB_X        (16)
+#define OB_Y        (18)
+#define OB_WIDTH    (20)
+#define OB_HEIGHT   (22)
+
+/* The two states that make a tree take up more room than it says, obdefs.h */
+#define OUTLINED (0x0010)
+#define SHADOWED (0x0020)
+
+/* The box types, whose ob_spec holds a border thickness rather than a
+ * pointer */
+#define G_BOX       (20)
+#define G_IBOX      (25)
+#define G_BOXCHAR   (27)
+
+/*
+ * Putting a dialog in the middle of the screen.
+ *
+ * This is done in the machine's own memory rather than by bringing the tree
+ * across, because it changes two fields of one object and reads three more.
+ * Copying a whole tree to move it would be more work than the work, and the
+ * marshaller deliberately does not write geometry back - what it puts back is
+ * what the AES is expected to have changed, and this call is the exception
+ * that would have to become a rule.
+ *
+ * The rectangle answered is not the tree's. It is what has to be reserved on
+ * screen, which is larger when the dialog is drawn with an outline or a shadow
+ * round it - and reserving too little is how a dialog leaves a piece of itself
+ * behind when it goes.
+ */
+uint32_t AES_form_center()
+{
+    uint32_t tree = aes_addrin(0);
+    int16_t handle, wchar, hchar, wbox, hbox;
+    int16_t w, h, x, y, state, type;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    tree: 0x%x\n", tree);
+    }
+
+    if (!gem_start() || !tree)
+        return AES_ERROR;
+
+    emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
+
+    w = (int16_t)m68k_read_memory_16(tree + OB_WIDTH);
+    h = (int16_t)m68k_read_memory_16(tree + OB_HEIGHT);
+    state = (int16_t)m68k_read_memory_16(tree + OB_STATE);
+    type = (int16_t)m68k_read_memory_16(tree + OB_TYPE) & 0xff;
+
+    /* Across the screen, and down what is left of it under the menu bar - a
+     * dialog centred on the whole screen sits too high */
+    x = (int16_t)((emuvdi_screen_width() - w) / 2);
+    y = (int16_t)(hbox + ((emuvdi_screen_height() - hbox - h) / 2));
+
+    m68k_write_memory_16(tree + OB_X, (uint16_t)x);
+    m68k_write_memory_16(tree + OB_Y, (uint16_t)y);
+
+    if (state & OUTLINED)
+    {
+        /* Three pixels of outline on every side, and never off the screen */
+        x -= 3;
+        if (x < 0)
+            x = 0;
+        y -= 3;
+        if (y < 0)
+            y = 0;
+        w += 6;
+        h += 6;
+    }
+
+    if (state & SHADOWED)
+    {
+        int16_t thick = 0;
+
+        if (type == G_BOX || type == G_IBOX || type == G_BOXCHAR)
+        {
+            /* The second byte of the spec, which is signed: a negative
+             * thickness is a border drawn inside the edge rather than out */
+            thick = (int16_t)((m68k_read_memory_32(tree + OB_SPEC) >> 16)
+                              & 0xff);
+            if (thick > 128)
+                thick -= 256;
+            if (thick < 0)
+                thick = -thick;
+        }
+
+        w += thick + thick;
+        h += thick + thick;
+    }
+
+    aes_set_intout(1, x);
+    aes_set_intout(2, y);
+    aes_set_intout(3, w);
+    aes_set_intout(4, h);
+
+    FUNC_TRACE_ARGS {
+        printf("    centred at %d,%d %dx%d\n", x, y, w, h);
+    }
+
+    return AES_E_OK;
+}

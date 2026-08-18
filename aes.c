@@ -137,7 +137,6 @@ uint32_t aes_global()
 #define AES_objc_change     NULL
 #define AES_objc_sysvar     NULL
 #define AES_form_error      NULL
-#define AES_form_center     NULL
 #define AES_form_keybd      NULL
 #define AES_form_button     NULL
 #define AES_graf_rubberbox  NULL

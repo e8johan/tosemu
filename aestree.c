@@ -116,6 +116,20 @@ static struct {
     int block_count;
 } tree;
 
+/* Said once rather than for every object in every tree that has one */
+static void said_userdef(void)
+{
+    static int said;
+
+    if (said)
+        return;
+
+    said = 1;
+
+    printf("AES: this tree has objects the application draws itself, which is "
+           "not implemented - they are drawn as empty boxes\n");
+}
+
 static void *tree_alloc(long size)
 {
     void *block;
@@ -310,14 +324,34 @@ void *aes_tree_in(uint32_t address)
                                        &texts[i].tos_text, &texts[i].length);
                 break;
 
+            case G_USERDEF:
+                /*
+                 * An object the application draws itself.
+                 *
+                 * Its ob_spec points at a routine in the machine's memory, and
+                 * calling it means more than reaching it: what it is handed is
+                 * a block describing what to draw, and in that block is the
+                 * address of the tree - the application's own tree, not this
+                 * copy of it, because that is the only one it can read. None
+                 * of that is written yet.
+                 *
+                 * So it is drawn as an empty box instead. A box is visible and
+                 * the right size, which is what makes the dialog round it
+                 * usable and says plainly that something is missing; leaving
+                 * it as an object the AES will try to call ends in reaching
+                 * through a pointer to nothing.
+                 */
+                said_userdef();
+                type = (type & 0xff00) | G_BOX;
+                host_spec = (void *)(uintptr_t)0x00011100L;
+                break;
+
             default:
                 /*
-                 * Icons, images and user drawn objects, which point at
-                 * structures that point at bitmaps. None of them is brought
-                 * across yet, and an object that is one is left pointing at
-                 * nothing rather than at the wrong thing: the AES draws an
-                 * empty box where it should be, which is visible, rather than
-                 * whatever a 68000 address happens to mean here.
+                 * Icons and images, which point at structures that point at
+                 * bitmaps. Neither is brought across yet, and one that is not
+                 * is left pointing at nothing rather than at the wrong thing:
+                 * a 68000 address means something else entirely here.
                  */
                 host_spec = 0;
                 break;
