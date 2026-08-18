@@ -209,6 +209,12 @@ int16_t emuvdi_graf_slidebox(void *tree, int16_t parent, int16_t obj,
  */
 int16_t emuvdi_form_alert(int16_t default_button, char *text);
 
+void emuvdi_set_clip(int16_t x, int16_t y, int16_t w, int16_t h);
+void emuvdi_objc_offset(void *tree, int16_t obj, int16_t *x, int16_t *y);
+int16_t emuvdi_objc_find(void *tree, int16_t start, int16_t depth,
+                         int16_t x, int16_t y);
+void emuvdi_objc_change(void *tree, int16_t obj, uint16_t state, int16_t draw);
+
 void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
                       int16_t x, int16_t y, int16_t w, int16_t h);
 

@@ -521,6 +521,86 @@ int main(int argc, char **argv)
         }
 
         /*
+         * The calls that change the shape of a tree.
+         *
+         * These are done in the machine's own memory rather than by copying
+         * the tree across, because what they change is which object points at
+         * which - so what is checked here is the pointing, on a tree built for
+         * the purpose and taken apart again.
+         */
+        {
+            static OBJECT t[4];
+            short j;
+
+            for (j = 0; j < 4; j++)
+            {
+                t[j].ob_next = t[j].ob_head = t[j].ob_tail = NIL;
+                t[j].ob_type = G_BOX;
+                t[j].ob_flags = t[j].ob_state = 0;
+                t[j].ob_spec.index = 0x00011101L;
+                t[j].ob_x = t[j].ob_y = 0;
+                t[j].ob_width = t[j].ob_height = 8;
+            }
+            t[3].ob_flags = OF_LASTOB;
+
+            objc_add(t, 0, 1);
+            check(t[0].ob_head, 1, "objc_add makes the first child");
+            check(t[0].ob_tail, 1, "and the last one too");
+            check(t[1].ob_next, 0, "and the child points back at the parent");
+
+            objc_add(t, 0, 2);
+            check(t[0].ob_tail, 2, "a second child goes on the end");
+            check(t[1].ob_next, 2, "after the first");
+            check(t[2].ob_next, 0, "and points back at the parent");
+
+            objc_add(t, 0, 3);
+            check(t[0].ob_tail, 3, "and a third");
+
+            /*
+             * Where an object is, which is its own place plus every parent
+             * above it, and which object a point is in. The children are put
+             * somewhere apart so that finding one says which.
+             */
+            t[0].ob_x = 20; t[0].ob_y = 10;
+            t[0].ob_width = 100; t[0].ob_height = 50;
+            t[1].ob_x = 5; t[1].ob_y = 5;
+            t[2].ob_x = 40; t[2].ob_y = 5;
+            t[3].ob_x = 70; t[3].ob_y = 5;
+
+            {
+                short ox = -1, oy = -1;
+
+                check(objc_offset(t, 2, &ox, &oy), 1, "objc_offset answers");
+                check(ox, 60, "with the parent's place added to the child's");
+                check(oy, 15, "in both directions");
+
+                check(objc_find(t, 0, 8, 62, 17), 2,
+                      "objc_find finds the object a point is in");
+                check(objc_find(t, 0, 8, 25, 40), 0,
+                      "and the parent where no child is");
+                check(objc_find(t, 0, 8, -100, -100), -1,
+                      "and nothing outside the tree");
+            }
+
+            /* Order is drawing order, so first means drawn first and so
+             * underneath */
+            check(objc_order(t, 3, 0), 1, "objc_order moves one to the front");
+            check(t[0].ob_head, 3, "which makes it the first child");
+            check(t[3].ob_next, 1, "with the others after it");
+            check(t[0].ob_tail, 2, "and the last one unchanged");
+
+            check(objc_delete(t, 3), 1, "objc_delete takes one out");
+            check(t[0].ob_head, 1, "and the next one becomes first");
+
+            check(objc_delete(t, 2), 1, "and another");
+            check(t[0].ob_tail, 1, "which leaves the one before it last");
+
+            check(objc_delete(t, 1), 1, "and the last one");
+            check(t[0].ob_head, NIL, "which leaves no children");
+            check(t[0].ob_tail, NIL, "at either end");
+        }
+
+        /*
          * Where the mouse is, asked rather than waited for. The test suite
          * puts it somewhere with TOSEMU_CLICKS, so this is also what says
          * that injected input and the AES agree about where it went.

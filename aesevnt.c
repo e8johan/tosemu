@@ -573,3 +573,129 @@ uint32_t AES_evnt_multi()
 
     return happened;
 }
+
+
+/* The waits that ask for one thing ****************************************/
+
+/*
+ * evnt_multi is the general case and these are the particular ones, so each is
+ * that call with everything it is not waiting for left out. They are worth
+ * having as themselves rather than as advice to use evnt_multi, because a GEM
+ * program that only wants a keypress writes evnt_keybd and would otherwise
+ * stop dead on a call that is a line long.
+ */
+
+uint32_t AES_evnt_keybd()
+{
+    uint16_t key = 0;
+    int16_t mx = 0, my = 0, buttons = 0;
+
+    FUNC_TRACE_ENTER
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    wait_for(MU_KEYBD, -1, 0, 0, 0, 0, 0, 0, 0, &key, &mx, &my, &buttons);
+
+    FUNC_TRACE_ARGS {
+        printf("    key: 0x%x\n", key);
+    }
+
+    return key;
+}
+
+/*
+ * Waiting for the button to be a certain way.
+ *
+ * The mask says which buttons are being asked about and the state says how
+ * they are to be, so this waits for "button one down" or "button one up"
+ * rather than for a click. How many clicks were wanted is asked for and
+ * answered, and answered with one: counting them means timing them, and
+ * nothing yet asks how quickly two presses followed each other.
+ */
+uint32_t AES_evnt_button()
+{
+    int16_t clicks = aes_intin(0);
+    int16_t mask = aes_intin(1);
+    int16_t state = aes_intin(2);
+    uint16_t key = 0;
+    int16_t mx = 0, my = 0, buttons = 0;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %d clicks, mask 0x%x, state 0x%x\n", clicks, mask, state);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    gfx_mouse(&mx, &my, &buttons);
+
+    wait_for(MU_BUTTON, -1, 0, 0, 0, 0, 0, mask, state,
+             &key, &mx, &my, &buttons);
+
+    aes_set_intout(1, mx);
+    aes_set_intout(2, my);
+    aes_set_intout(3, buttons);
+    aes_set_intout(4, (int16_t)gfx_kstate());
+
+    return 1;
+}
+
+/* Waiting for the pointer to arrive in a rectangle, or to leave one */
+uint32_t AES_evnt_mouse()
+{
+    int16_t leaving = aes_intin(0);
+    int16_t rect[4];
+    uint16_t key = 0;
+    int16_t mx = 0, my = 0, buttons = 0;
+    int i;
+
+    for (i = 0; i < 4; i++)
+        rect[i] = aes_intin(1 + i);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    wait to %s %d,%d %dx%d\n", leaving ? "leave" : "enter",
+               rect[0], rect[1], rect[2], rect[3]);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    gfx_mouse(&mx, &my, &buttons);
+
+    wait_for(MU_M1, -1, 0, rect, leaving, 0, 0, 0, 0,
+             &key, &mx, &my, &buttons);
+
+    gfx_mouse(&mx, &my, &buttons);
+
+    aes_set_intout(1, mx);
+    aes_set_intout(2, my);
+    aes_set_intout(3, buttons);
+    aes_set_intout(4, (int16_t)gfx_kstate());
+
+    return 1;
+}
+
+/*
+ * How quickly two presses have to follow each other to be one double click.
+ *
+ * Asked for and set, on a scale of nought to four. Nothing here times a click
+ * yet, so the number is remembered and given back rather than acted on - an
+ * application that asks is told what it last set, which is what it is entitled
+ * to expect, and one that sets it is not stopped.
+ */
+uint32_t AES_evnt_dclick()
+{
+    int16_t wanted = aes_intin(0);
+    int16_t setting = aes_intin(1);
+    static int16_t speed = 3;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %s, %d\n", setting ? "set" : "ask", wanted);
+    }
+
+    if (setting && wanted >= 0 && wanted <= 4)
+        speed = wanted;
+
+    return (uint32_t)(uint16_t)speed;
+}

@@ -119,6 +119,10 @@ int aes_message_post(const int16_t *message);
 uint32_t AES_evnt_timer();
 uint32_t AES_evnt_mesag();
 uint32_t AES_evnt_multi();
+uint32_t AES_evnt_keybd();
+uint32_t AES_evnt_button();
+uint32_t AES_evnt_mouse();
+uint32_t AES_evnt_dclick();
 
 /* Object trees, aestree.c
  *
@@ -134,6 +138,12 @@ void aes_tree_done();
 /* Object functions, aesobjc.c */
 
 uint32_t AES_objc_draw();
+uint32_t AES_objc_add();
+uint32_t AES_objc_delete();
+uint32_t AES_objc_find();
+uint32_t AES_objc_offset();
+uint32_t AES_objc_order();
+uint32_t AES_objc_change();
 uint32_t AES_form_do();
 uint32_t AES_form_dial();
 uint32_t AES_form_center();

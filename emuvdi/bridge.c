@@ -471,3 +471,45 @@ int16_t emuvdi_graf_slidebox(void *tree, int16_t parent, int16_t obj,
 {
     return gr_slidebox(tree, parent, obj, vertical);
 }
+
+
+/* EmuTOS's object library, the rest of it *********************************/
+
+void ob_offset(OBJECT *tree, WORD obj, WORD *px, WORD *py);
+WORD ob_find(OBJECT *tree, WORD current, WORD depth, WORD mx, WORD my);
+void ob_change(OBJECT *tree, WORD obj, UWORD state, WORD redraw);
+
+/* The rectangle drawing is kept inside, for the calls that draw without
+ * being objc_draw */
+void emuvdi_set_clip(int16_t x, int16_t y, int16_t w, int16_t h)
+{
+    GRECT clip;
+
+    clip.g_x = x;
+    clip.g_y = y;
+    clip.g_w = w;
+    clip.g_h = h;
+
+    gsx_sclip(&clip);
+}
+
+void emuvdi_objc_offset(void *tree, int16_t obj, int16_t *x, int16_t *y)
+{
+    WORD ox = 0, oy = 0;
+
+    ob_offset(tree, obj, &ox, &oy);
+
+    *x = ox;
+    *y = oy;
+}
+
+int16_t emuvdi_objc_find(void *tree, int16_t start, int16_t depth,
+                         int16_t x, int16_t y)
+{
+    return ob_find(tree, start, depth, x, y);
+}
+
+void emuvdi_objc_change(void *tree, int16_t obj, uint16_t state, int16_t draw)
+{
+    ob_change(tree, obj, state, draw);
+}

@@ -336,3 +336,345 @@ uint32_t AES_form_center()
 
     return AES_E_OK;
 }
+
+
+/* The rest of the object calls ********************************************/
+
+/*
+ * These change a tree rather than draw it, and every one of them is EmuTOS's
+ * doing the changing. What is here is the marshalling either side: the tree
+ * comes across, the library walks it, and what it changed goes back.
+ *
+ * The ones that add, delete and reorder change more than a state, so the
+ * marshaller's usual rule - put back what the AES is expected to have changed,
+ * which is a state and an edited string - is not enough for them. They are
+ * done in the machine's own memory instead, where changing a tree is changing
+ * three words and there is nothing to put back.
+ */
+
+/* An OBJECT in the machine, and the fields these need */
+#define OB_NEXT      (0)
+#define OB_HEAD      (2)
+#define OB_TAIL      (4)
+
+/* The end of a list of children, and of the tree */
+#define NIL         (-1)
+
+static int16_t word_at(uint32_t tree, int16_t obj, int field)
+{
+    return (int16_t)m68k_read_memory_16(tree + obj*OB_SIZE + field);
+}
+
+static void set_word(uint32_t tree, int16_t obj, int field, int16_t value)
+{
+    m68k_write_memory_16(tree + obj*OB_SIZE + field, (uint16_t)value);
+}
+
+/*
+ * Whose child an object is.
+ *
+ * A tree records children but not parents, so finding one means walking. The
+ * list of children ends by pointing back at the parent rather than at nothing,
+ * so following next from any child arrives there - it is the first object
+ * along that claims this one.
+ */
+static int16_t parent_of(uint32_t tree, int16_t obj)
+{
+    int16_t walk = obj;
+    int steps;
+
+    for (steps = 0; steps < 512; steps++)
+    {
+        int16_t next = word_at(tree, walk, OB_NEXT);
+
+        if (next == NIL)
+            return NIL;             /* the root, which has no parent */
+
+        if (word_at(tree, next, OB_HEAD) != NIL)
+        {
+            /* Somebody whose children this could be. It is the parent if the
+             * walk arrived here from inside its list rather than past it. */
+            int16_t child;
+
+            for (child = word_at(tree, next, OB_HEAD);
+                 child != NIL && child != next;
+                 child = word_at(tree, child, OB_NEXT))
+                if (child == obj)
+                    return next;
+        }
+
+        walk = next;
+    }
+
+    return NIL;
+}
+
+/* Takes an object out of its parent's list, and says whose it was */
+static int16_t unlink_from_parent(uint32_t tree, int16_t obj)
+{
+    int16_t parent = parent_of(tree, obj);
+    int16_t before, last, walk;
+
+    if (parent == NIL)
+        return NIL;
+
+    if (word_at(tree, parent, OB_HEAD) == obj)
+        set_word(tree, parent, OB_HEAD, word_at(tree, obj, OB_NEXT));
+    else
+    {
+        for (before = word_at(tree, parent, OB_HEAD);
+             before != NIL && word_at(tree, before, OB_NEXT) != obj;
+             before = word_at(tree, before, OB_NEXT))
+            ;
+
+        if (before == NIL)
+            return NIL;
+
+        set_word(tree, before, OB_NEXT, word_at(tree, obj, OB_NEXT));
+    }
+
+    /* The last child again, which may have been the one taken out */
+    last = NIL;
+    for (walk = word_at(tree, parent, OB_HEAD);
+         walk != NIL && walk != parent;
+         walk = word_at(tree, walk, OB_NEXT))
+        last = walk;
+
+    set_word(tree, parent, OB_TAIL, last);
+
+    if (last == NIL)
+        set_word(tree, parent, OB_HEAD, NIL);
+
+    set_word(tree, obj, OB_NEXT, NIL);
+
+    return parent;
+}
+
+/*
+ * objc_add - make one object the last child of another
+ *
+ * A child list runs from the parent's head through each child's next and ends
+ * by pointing back at the parent, which is what makes walking one terminate
+ * without a count.
+ */
+uint32_t AES_objc_add()
+{
+    uint32_t tree = aes_addrin(0);
+    int16_t parent = aes_intin(0);
+    int16_t child = aes_intin(1);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %d becomes a child of %d\n", child, parent);
+    }
+
+    if (!tree || parent < 0 || child < 0)
+        return AES_ERROR;
+
+    set_word(tree, child, OB_NEXT, parent);
+    set_word(tree, child, OB_HEAD, NIL);
+    set_word(tree, child, OB_TAIL, NIL);
+
+    if (word_at(tree, parent, OB_HEAD) == NIL)
+        set_word(tree, parent, OB_HEAD, child);
+    else
+        set_word(tree, word_at(tree, parent, OB_TAIL), OB_NEXT, child);
+
+    set_word(tree, parent, OB_TAIL, child);
+
+    return AES_E_OK;
+}
+
+/* objc_delete - take an object out of its parent's list of children */
+uint32_t AES_objc_delete()
+{
+    uint32_t tree = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d\n", obj);
+    }
+
+    if (!tree || obj <= 0)
+        return AES_ERROR;
+
+    return (unlink_from_parent(tree, obj) == NIL) ? AES_ERROR : AES_E_OK;
+}
+
+/*
+ * objc_offset - where an object is on the screen
+ *
+ * An object's own coordinates are relative to its parent, so finding where it
+ * actually is means adding up every parent above it. Applications use this
+ * constantly, to draw into a box or to work out what a click landed on.
+ */
+uint32_t AES_objc_offset()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t x = 0, y = 0;
+    void *host;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d\n", obj);
+    }
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    emuvdi_objc_offset(host, obj, &x, &y);
+
+    aes_tree_done();
+
+    aes_set_intout(1, x);
+    aes_set_intout(2, y);
+
+    FUNC_TRACE_ARGS {
+        printf("    at %d,%d\n", x, y);
+    }
+
+    return AES_E_OK;
+}
+
+/* objc_find - which object a point is in, looking no deeper than asked */
+uint32_t AES_objc_find()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t start = aes_intin(0);
+    int16_t depth = aes_intin(1);
+    int16_t x = aes_intin(2);
+    int16_t y = aes_intin(3);
+    void *host;
+    int16_t found;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    from %d, %d deep, at %d,%d\n", start, depth, x, y);
+    }
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    found = emuvdi_objc_find(host, start, depth, x, y);
+
+    aes_tree_done();
+
+    FUNC_TRACE_ARGS {
+        printf("    object %d\n", found);
+    }
+
+    return (uint32_t)(uint16_t)found;
+}
+
+/*
+ * objc_order - move an object up or down among its brothers and sisters
+ *
+ * Which matters because the order is the drawing order: the last child is
+ * drawn last and so appears on top. Nought puts it first and -1 last, which is
+ * what an application uses to bring something to the front.
+ *
+ * Done here rather than by the library for the same reason as adding and
+ * deleting: it changes which object points at which, and putting that back
+ * through the marshaller would mean writing back the shape of a tree, which is
+ * the one thing the copy is not allowed to decide.
+ */
+uint32_t AES_objc_order()
+{
+    uint32_t tree = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t position = aes_intin(1);
+    int16_t parent, before, i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d to position %d\n", obj, position);
+    }
+
+    if (!tree || obj <= 0)
+        return AES_ERROR;
+
+    parent = unlink_from_parent(tree, obj);
+    if (parent == NIL)
+        return AES_ERROR;
+
+    /* Last, which is what -1 means and what an empty list gives anyway */
+    if (position < 0 || word_at(tree, parent, OB_HEAD) == NIL)
+    {
+        set_word(tree, obj, OB_NEXT, parent);
+
+        if (word_at(tree, parent, OB_HEAD) == NIL)
+            set_word(tree, parent, OB_HEAD, obj);
+        else
+            set_word(tree, word_at(tree, parent, OB_TAIL), OB_NEXT, obj);
+
+        set_word(tree, parent, OB_TAIL, obj);
+
+        return AES_E_OK;
+    }
+
+    if (position == 0)
+    {
+        set_word(tree, obj, OB_NEXT, word_at(tree, parent, OB_HEAD));
+        set_word(tree, parent, OB_HEAD, obj);
+
+        return AES_E_OK;
+    }
+
+    /* After that many of them, or at the end if there are fewer */
+    before = word_at(tree, parent, OB_HEAD);
+    for (i = 1; i < position; i++)
+    {
+        int16_t next = word_at(tree, before, OB_NEXT);
+
+        if (next == NIL || next == parent)
+            break;
+
+        before = next;
+    }
+
+    set_word(tree, obj, OB_NEXT, word_at(tree, before, OB_NEXT));
+    set_word(tree, before, OB_NEXT, obj);
+
+    if (word_at(tree, parent, OB_TAIL) == before)
+        set_word(tree, parent, OB_TAIL, obj);
+
+    return AES_E_OK;
+}
+
+/* objc_change - set an object's state, and draw it that way if asked */
+uint32_t AES_objc_change()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t x = aes_intin(2);
+    int16_t y = aes_intin(3);
+    int16_t w = aes_intin(4);
+    int16_t h = aes_intin(5);
+    int16_t state = aes_intin(6);
+    int16_t draw = aes_intin(7);
+    void *host;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    object %d to state 0x%x, %s\n", obj, state,
+               draw ? "drawn" : "not drawn");
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    /* The clipping the caller asked for, which ob_change draws inside */
+    emuvdi_set_clip(x, y, w, h);
+
+    emuvdi_objc_change(host, obj, (uint16_t)state, draw);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    if (draw)
+        gem_present();
+
+    return AES_E_OK;
+}
