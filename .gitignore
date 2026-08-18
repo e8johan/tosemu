@@ -20,3 +20,4 @@ emuvdi/*.d
 demos/dialog
 demos/window
 demos/menu
+demos/fsel

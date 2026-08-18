@@ -112,3 +112,29 @@ nothing is chosen.
 
 The bar is a window of the desktop's like any other here, so it follows this
 program about rather than sitting at the top of a picture of an ST.
+
+
+fsel
+----
+
+The file selector, which is how a GEM application opens a file.
+
+One call does all of it. The AES puts up the box, lists the directory, lets you
+walk into folders and change drives, and answers with a path and a name. The
+application draws none of it and reads no directories: it hands over two
+buffers and reads them afterwards.
+
+Those buffers are why this shows the selector twice. The path goes in as well
+as coming out, so passing the same one again opens where the last one was left
+- walk into a folder in the first box and the second starts there. That is the
+whole of what "remembers the last directory" meant in 1988, and it is the
+application remembering rather than the AES.
+
+The second is fsel_exinput, the same thing with a line of the application's own
+words along the top, so that a program asking where to save something can say
+so instead of showing the box it showed for opening.
+
+The box is a window of the desktop's like the dialogs are. It has to be asked
+for separately from the way an application's own dialogs get one, because the
+selector reserves its screen from inside the AES rather than by calling
+form_dial - see the note in emuvdi/bridge.c.
