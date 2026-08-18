@@ -212,6 +212,14 @@ char *emuvdi_tedinfo_text(void *t)
     return ((TEDINFO *)t)->te_ptext;
 }
 
+/* EmuTOS's form library, aes/gemfmlib.c */
+WORD fm_do(OBJECT *tree, WORD start);
+
+int16_t emuvdi_form_do(void *tree, int16_t start)
+{
+    return fm_do(tree, start);
+}
+
 /* EmuTOS's object library, aes/gemoblib.c */
 void ob_draw(OBJECT *tree, WORD obj, WORD depth);
 

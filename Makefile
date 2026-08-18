@@ -27,7 +27,8 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/util/intmath.c \
               $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
               $(EMUTOS)/aes/gemgsxif.c \
-              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemrslib.c \
+              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemfmlib.c \
+              $(EMUTOS)/aes/gemfmalt.c $(EMUTOS)/aes/gemrslib.c \
               $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
               $(EMUTOS)/aes/mforms.c

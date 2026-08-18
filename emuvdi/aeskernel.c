@@ -40,6 +40,8 @@
 #include "aesdefs.h"
 #include "aesext.h"
 #include "gemlib.h"
+#include "lineavars.h"
+#include "aeskernel.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,7 +105,7 @@ WORD button;
  */
 WORD gl_mouse;
 WORD gl_prevmouse;
-void *gl_mowner;
+AESPD *gl_mowner;
 void *mouse_cursor;
 
 void set_mouse_to_arrow(void)
@@ -130,24 +132,127 @@ OBJECT *gl_mntree;
  * the piece that has to wait on the compositor, the daemon and a timer at
  * once, which is why it is the kernel and not a library.
  */
+/*
+ * The wait every GEM application lives in, and the one form_do loops over.
+ *
+ * The rectangles arrive as MOBLKs, which are a rectangle and a flag saying
+ * whether the wait is for the mouse going into it or coming out. They are
+ * flattened here rather than carried across the seam, because the far side
+ * has no reason to know what a MOBLK is.
+ */
+/*
+ * Written under the same condition as its declaration rather than copied out
+ * of it. The menu extension adds a third rectangle, and a definition that
+ * disagrees with the declaration about how many arguments there are does not
+ * fail to build: the call is simply assembled wrongly, and comes apart when it
+ * runs.
+ */
+#if CONF_WITH_MENU_EXTENSION
+WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, MOBLK *pmo3, LONG tmcount,
+              LONG buparm, WORD *pmomouse, WORD *rets)
+#else
 WORD ev_multi(WORD flags, MOBLK *pmo1, MOBLK *pmo2, LONG tmcount,
               LONG buparm, WORD *pmomouse, WORD *rets)
+#endif
 {
-    needs_kernel("evnt_multi");
+    WORD m1[4], m2[4];
+    WORD m1flags = 0, m2flags = 0;
+    WORD key = 0, mx = 0, my = 0, buttons = 0, kstate = 0;
+    WORD happened;
 
-    return 0;
+    m1[0] = m1[1] = m1[2] = m1[3] = 0;
+    m2[0] = m2[1] = m2[2] = m2[3] = 0;
+
+    if (pmo1)
+    {
+        m1[0] = pmo1->m_gr.g_x;
+        m1[1] = pmo1->m_gr.g_y;
+        m1[2] = pmo1->m_gr.g_w;
+        m1[3] = pmo1->m_gr.g_h;
+        m1flags = pmo1->m_out;
+    }
+
+    if (pmo2)
+    {
+        m2[0] = pmo2->m_gr.g_x;
+        m2[1] = pmo2->m_gr.g_y;
+        m2[2] = pmo2->m_gr.g_w;
+        m2[3] = pmo2->m_gr.g_h;
+        m2flags = pmo2->m_out;
+    }
+
+    happened = host_event_wait(flags, (flags & MU_TIMER) ? tmcount : -1,
+                               pmomouse, m1, m1flags, m2, m2flags,
+                               &key, &mx, &my, &buttons, &kstate);
+
+    rets[0] = mx;
+    rets[1] = my;
+    rets[2] = buttons;
+    rets[3] = kstate;
+    rets[4] = key;
+    rets[5] = buttons ? 1 : 0;      /* how many clicks, which is not counted */
+
+    return happened;
 }
 
 WORD ev_button(WORD bflgclks, WORD bmask, WORD bstate, WORD *rets)
 {
-    needs_kernel("evnt_button");
-
-    return 0;
+    /* Waiting for the buttons alone, which is evnt_multi with one thing in
+     * the mask */
+#if CONF_WITH_MENU_EXTENSION
+    return ev_multi(MU_BUTTON, 0, 0, 0, 0L, 0L, 0, rets);
+#else
+    return ev_multi(MU_BUTTON, 0, 0, 0L, 0L, 0, rets);
+#endif
 }
 
 void dsptch(void)
 {
     needs_kernel("the scheduler");
+}
+
+/* The control manager *****************************************************/
+
+/*
+ * Who owns the mouse and the area outside the windows.
+ *
+ * On a real machine these hand a shared screen back and forth between the
+ * applications sharing it. There is one application, so it owns everything
+ * whenever it asks, and the handing back and forth is nothing to do.
+ *
+ * They stop being nothing when the daemon exists: that is what makes the
+ * screen shared, and these are how it is shared.
+ */
+void ct_chgown(AESPD *mpd, GRECT *pr)
+{
+    (void)mpd;
+    (void)pr;
+}
+
+void ct_mouse(WORD grabit)
+{
+    gl_ctmown = grabit ? TRUE : FALSE;
+}
+
+void get_ctrl(GRECT *pt)
+{
+    /* The area the control manager has, which is all of it */
+    pt->g_x = 0;
+    pt->g_y = 0;
+    pt->g_w = V_REZ_HZ;
+    pt->g_h = V_REZ_VT;
+}
+
+void get_mown(AESPD **pmown)
+{
+    *pmown = gl_mowner;
+}
+
+/* The fork queue, which is how the AES defers work out of an interrupt. There
+ * are no interrupts here, so nothing is ever deferred and the queue is always
+ * empty. */
+void fq(void)
+{
 }
 
 /* Windows and the shell **************************************************/
@@ -159,9 +264,33 @@ void w_getsize(WORD which, WORD w_handle, GRECT *pt)
     pt->g_x = pt->g_y = pt->g_w = pt->g_h = 0;
 }
 
+/*
+ * Taking and returning the right to draw outside one's own windows, which is
+ * what form_do does around a dialog. It is a lock held against the other
+ * applications, and there is one application, so taking it always succeeds.
+ *
+ * It stops being nothing the moment the daemon exists - see AES_wind_update,
+ * which says the same thing at the other end.
+ */
 void wm_update(WORD beg_update)
 {
-    needs_kernel("wind_update");
+    (void)beg_update;
+}
+
+/*
+ * Painting the desktop behind everything, and telling a window it has been
+ * uncovered. Both are the window manager's, which is not written yet.
+ */
+void w_drawdesk(GRECT *pc)
+{
+    needs_kernel("drawing the desktop");
+    (void)pc;
+}
+
+void w_update(WORD bottom, GRECT *pt, WORD top, BOOL moved)
+{
+    needs_kernel("redrawing what a window uncovered");
+    (void)bottom; (void)pt; (void)top; (void)moved;
 }
 
 WORD sh_find(char *pspec)

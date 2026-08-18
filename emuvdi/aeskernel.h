@@ -21,6 +21,8 @@
 #ifndef AESKERNEL_H
 #define AESKERNEL_H
 
+#include <stdint.h>
+
 /*
  * The seam between EmuTOS's AES library files and the AES kernel.
  *
@@ -48,5 +50,28 @@
  * ahead of it.
  */
 WORD host_call_userdef(USERBLK *ub, PARMBLK *pb);
+
+/*
+ * Waiting, which is the AES kernel's alone to do. The library files reach it
+ * through ev_multi, and ev_multi reaches this: tosemu owns the event queue,
+ * the timer and the connection to the compositor, none of which belong on this
+ * side of the seam.
+ *
+ * The flags are the MU_ ones, the timeout is in milliseconds or negative to
+ * wait for as long as it takes, and the answer is which of the flags happened.
+ * The two rectangles are for the mouse entering or leaving one, and the flag
+ * beside each says which of the two is being waited for.
+ */
+/*
+ * Written out in fixed widths rather than in EmuTOS's names, because the two
+ * sides of this do not agree about them: a LONG is eight bytes on this side
+ * and four on the other, so declaring one here and defining it there puts the
+ * arguments in different places and the call comes apart.
+ */
+int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
+                        const int16_t *m1, int16_t m1flags,
+                        const int16_t *m2, int16_t m2flags,
+                        int16_t *key, int16_t *mx, int16_t *my,
+                        int16_t *buttons, int16_t *kstate);
 
 #endif /* AESKERNEL_H */

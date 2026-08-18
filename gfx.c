@@ -166,9 +166,46 @@ static void key_post(uint16_t key)
     w.keys[w.key_count++] = key;
 }
 
+/*
+ * Keys asked for on the command line, for when nothing is going to be typed.
+ *
+ * A dialog cannot be tested without something pressing a button in it, and a
+ * test suite has nobody to do the pressing. TOSEMU_KEYS is a run of characters
+ * to hand over as though they had been, and \r stands for Return, which is
+ * what dismisses a dialog by its default button.
+ */
+static void keys_from_environment(void)
+{
+    static int done;
+    const char *keys = getenv("TOSEMU_KEYS");
+    int i;
+
+    if (done || !keys)
+        return;
+
+    done = 1;
+
+    for (i = 0; keys[i]; i++)
+    {
+        char c = keys[i];
+        uint16_t scan = 0;
+
+        if (c == '\\' && keys[i+1] == 'r')
+        {
+            c = '\r';
+            scan = 0x1c;    /* Return, which a dialog looks at */
+            i++;
+        }
+
+        key_post((uint16_t)((scan << 8) | (unsigned char)c));
+    }
+}
+
 int gfx_key_take(uint16_t *key)
 {
     int i;
+
+    keys_from_environment();
 
     if (w.key_count == 0)
         return 0;

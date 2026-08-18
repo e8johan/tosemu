@@ -33,6 +33,40 @@
 #include "gem_p.h"
 #include "emuvdi/emuvdi.h"
 
+/*
+ * form_do - run a dialog until something ends it
+ *
+ * The tree goes across, the AES loops over the waiting an application would do
+ * for itself, and what comes back is which object ended it. The tree comes
+ * back too: the button that was pressed is SELECTED in it, and an edited field
+ * holds what was typed.
+ */
+uint32_t AES_form_do()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t start = aes_intin(0);
+    void *host;
+    int16_t ended;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    tree: 0x%x, editing from %d\n", address, start);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    ended = emuvdi_form_do(host, start);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    return (uint32_t)ended;
+}
+
 uint32_t AES_objc_draw()
 {
     uint32_t address = aes_addrin(0);

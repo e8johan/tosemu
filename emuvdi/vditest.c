@@ -110,6 +110,24 @@ static void show(const char *what)
     printf("+\n");
 }
 
+/*
+ * The AES kernel's waiting, which the object library is linked against and
+ * this never reaches: nothing here waits for anything. It is here because the
+ * linker wants it, and it says so rather than returning something that could
+ * be mistaken for an event.
+ */
+int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
+                        const int16_t *m1, int16_t m1flags,
+                        const int16_t *m2, int16_t m2flags,
+                        int16_t *key, int16_t *mx, int16_t *my,
+                        int16_t *buttons, int16_t *kstate)
+{
+    fprintf(stderr, "vditest: something waited for an event, and this test has "
+            "no way to deliver one\n");
+
+    return 0;
+}
+
 /* The parameter arrays a VDI call arrives in. Drawing text goes through the
  * real entry point rather than through a helper, so it needs them. */
 static WORD contrl[16], intin[128], ptsin[16], intout[128], ptsout[16];

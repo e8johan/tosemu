@@ -59,7 +59,10 @@ check: all
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
-	$(TOSEMU) test-c-gem > out; ! grep -q '^not ok' out
+	# A dialog needs something to press a button in it, and a test has
+	# nobody to do it, so the Return that picks the default button is given
+	# on the command line
+	TOSEMU_KEYS='\r' $(TOSEMU) test-c-gem > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-vdi > out; ! grep -q '^not ok' out
 	# A GEM call that is not implemented stops the emulator, so the count at

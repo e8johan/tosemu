@@ -106,6 +106,7 @@ void aes_tree_done();
 /* Object functions, aesobjc.c */
 
 uint32_t AES_objc_draw();
+uint32_t AES_form_do();
 
 /* Window functions, aeswind.c */
 

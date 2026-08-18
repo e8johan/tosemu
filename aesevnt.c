@@ -236,6 +236,33 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
     }
 }
 
+/*
+ * What the AES library files reach when they wait.
+ *
+ * form_do is a loop over evnt_multi, and evnt_multi in EmuTOS's library
+ * reaches ev_multi, which reaches this. Everything a wait needs - the queue,
+ * the timer, the compositor - is on this side of the seam, so this is where it
+ * ends up rather than somewhere in emuvdi.
+ */
+int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
+                        const int16_t *m1, int16_t m1flags,
+                        const int16_t *m2, int16_t m2flags,
+                        int16_t *key, int16_t *mx, int16_t *my,
+                        int16_t *buttons, int16_t *kstate)
+{
+    uint16_t k = 0;
+    int16_t happened;
+
+    happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags, &k);
+
+    *key = (int16_t)k;
+
+    gfx_mouse(mx, my, buttons);
+    *kstate = (int16_t)gfx_kstate();
+
+    return happened;
+}
+
 /* evnt_timer **************************************************************/
 
 uint32_t AES_evnt_timer()

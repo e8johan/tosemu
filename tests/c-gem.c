@@ -384,6 +384,17 @@ int main(int argc, char **argv)
             check(found, 1, "the button inside it is drawn too");
         }
 
+        /*
+         * form_do, which runs the dialog until something ends it. Nothing is
+         * going to click a button in a test, so TOSEMU_KEYS hands it a Return,
+         * which is what picks the default button.
+         */
+        dlg[2].ob_flags = 0x0027;           /* selectable, default, exit, last */
+        addrin[0] = (long)dlg;
+        intin[0] = 0;                       /* no editable field to start in */
+        check(call_aes(50, 1, 1, 1, 0), 2, "form_do ends on the default button");
+        check(dlg[2].ob_state & 1, 1, "and the tree comes back with it selected");
+
         v_clsvwk(vwk);
         call_aes(19, 0, 1, 0, 0);           /* appl_exit */
     }

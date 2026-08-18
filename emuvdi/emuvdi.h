@@ -154,6 +154,13 @@ void emuvdi_tedinfo_set(void *ted, char *text, char *tmplt, char *valid,
                         const int16_t *words, int word_count);
 char *emuvdi_tedinfo_text(void *ted);
 
+/*
+ * Runs a dialog: draws it, waits, and answers with the object that ended it.
+ * This is EmuTOS's form library, which is a loop over the same waiting an
+ * application does for itself.
+ */
+int16_t emuvdi_form_do(void *tree, int16_t start);
+
 void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
                       int16_t x, int16_t y, int16_t w, int16_t h);
 
