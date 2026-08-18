@@ -51,6 +51,7 @@
 #include <sys/syscall.h>
 
 #include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
 #include "xdg-shell-client-protocol.h"
 
 #include "surface.h"
@@ -77,10 +78,341 @@ static struct {
     struct surface *screen;
     int width, height;      /* In compositor pixels, so already scaled */
 
+    struct wl_seat *seat;
+    struct wl_keyboard *keyboard;
+    struct wl_pointer *pointer;
+
+    struct xkb_context *xkb;
+    struct xkb_keymap *keymap;
+    struct xkb_state *xkb_state;
+
+    /* Keys waiting to be read, oldest first */
+    uint16_t keys[32];
+    int key_count;
+
+    int16_t mouse_x, mouse_y;   /* In surface pixels, not window ones */
+    int16_t buttons;
+    int buttons_changed;
+
     int configured;
     int closed;
     int showing;
 } w;
+
+/* Input *******************************************************************/
+
+/*
+ * The scan codes for the keys that are not characters.
+ *
+ * An application reads the high byte of a key for these, and the low byte for
+ * anything it can print. Only the ones a GEM program actually looks at are
+ * here: the arrows for moving about, the function keys, and the editing keys.
+ * http://toshyp.atari.org/en/003007.html
+ */
+static uint16_t scancode_for(xkb_keysym_t sym)
+{
+    switch (sym)
+    {
+        case XKB_KEY_Escape:    return 0x01;
+        case XKB_KEY_BackSpace: return 0x0e;
+        case XKB_KEY_Tab:       return 0x0f;
+        case XKB_KEY_Return:    return 0x1c;
+        case XKB_KEY_KP_Enter:  return 0x72;
+        case XKB_KEY_Delete:    return 0x53;
+        case XKB_KEY_Insert:    return 0x52;
+        case XKB_KEY_Home:      return 0x47;
+        case XKB_KEY_Up:        return 0x48;
+        case XKB_KEY_Left:      return 0x4b;
+        case XKB_KEY_Right:     return 0x4d;
+        case XKB_KEY_Down:      return 0x50;
+        case XKB_KEY_F1:        return 0x3b;
+        case XKB_KEY_F2:        return 0x3c;
+        case XKB_KEY_F3:        return 0x3d;
+        case XKB_KEY_F4:        return 0x3e;
+        case XKB_KEY_F5:        return 0x3f;
+        case XKB_KEY_F6:        return 0x40;
+        case XKB_KEY_F7:        return 0x41;
+        case XKB_KEY_F8:        return 0x42;
+        case XKB_KEY_F9:        return 0x43;
+        case XKB_KEY_F10:       return 0x44;
+        /* An ST has Undo and Help where a modern keyboard has neither, so the
+         * two least missed keys stand in for them */
+        case XKB_KEY_End:       return 0x61;    /* Undo */
+        case XKB_KEY_Page_Down: return 0x62;    /* Help */
+        default:                return 0;
+    }
+}
+
+static void key_post(uint16_t key)
+{
+    if (w.key_count >= (int)(sizeof w.keys / sizeof w.keys[0]))
+        return;     /* Typing faster than the application reads */
+
+    w.keys[w.key_count++] = key;
+}
+
+int gfx_key_take(uint16_t *key)
+{
+    int i;
+
+    if (w.key_count == 0)
+        return 0;
+
+    *key = w.keys[0];
+
+    for (i = 1; i < w.key_count; i++)
+        w.keys[i-1] = w.keys[i];
+    w.key_count--;
+
+    return 1;
+}
+
+void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
+{
+    *x = w.mouse_x;
+    *y = w.mouse_y;
+    *buttons = w.buttons;
+}
+
+uint16_t gfx_kstate()
+{
+    uint16_t state = 0;
+
+    if (!w.xkb_state)
+        return 0;
+
+    /* The bits GEM uses: right shift, left shift, control, alt */
+    if (xkb_state_mod_name_is_active(w.xkb_state, XKB_MOD_NAME_SHIFT,
+                                     XKB_STATE_MODS_EFFECTIVE) > 0)
+        state |= 0x0003;
+    if (xkb_state_mod_name_is_active(w.xkb_state, XKB_MOD_NAME_CTRL,
+                                     XKB_STATE_MODS_EFFECTIVE) > 0)
+        state |= 0x0004;
+    if (xkb_state_mod_name_is_active(w.xkb_state, XKB_MOD_NAME_ALT,
+                                     XKB_STATE_MODS_EFFECTIVE) > 0)
+        state |= 0x0008;
+
+    return state;
+}
+
+int gfx_buttons_changed()
+{
+    int changed = w.buttons_changed;
+
+    w.buttons_changed = 0;
+
+    return changed;
+}
+
+/* Keyboard ****************************************************************/
+
+static void kb_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
+                      int32_t fd, uint32_t size)
+{
+    char *text;
+
+    (void)data; (void)kb;
+
+    if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+    {
+        close(fd);
+        return;
+    }
+
+    text = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (text != MAP_FAILED)
+    {
+        if (w.keymap)
+            xkb_keymap_unref(w.keymap);
+        if (w.xkb_state)
+            xkb_state_unref(w.xkb_state);
+
+        w.keymap = xkb_keymap_new_from_string(w.xkb, text,
+                                              XKB_KEYMAP_FORMAT_TEXT_V1,
+                                              XKB_KEYMAP_COMPILE_NO_FLAGS);
+        w.xkb_state = w.keymap ? xkb_state_new(w.keymap) : 0;
+
+        munmap(text, size);
+    }
+
+    close(fd);
+}
+
+static void kb_enter(void *data, struct wl_keyboard *kb, uint32_t serial,
+                     struct wl_surface *s, struct wl_array *keys)
+{
+    (void)data; (void)kb; (void)serial; (void)s; (void)keys;
+}
+
+static void kb_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
+                     struct wl_surface *s)
+{
+    (void)data; (void)kb; (void)serial; (void)s;
+}
+
+static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
+                   uint32_t time, uint32_t key, uint32_t state)
+{
+    xkb_keycode_t code = key + 8;   /* Wayland counts from a different place */
+    xkb_keysym_t sym;
+    uint16_t scan, ch = 0;
+    char utf8[8];
+
+    (void)data; (void)kb; (void)serial; (void)time;
+
+    if (state != WL_KEYBOARD_KEY_STATE_PRESSED || !w.xkb_state)
+        return;
+
+    sym = xkb_state_key_get_one_sym(w.xkb_state, code);
+    scan = scancode_for(sym);
+
+    /* Anything that types a single byte types it. GEM predates any of the
+     * ways of saying more than one. */
+    if (xkb_state_key_get_utf8(w.xkb_state, code, utf8, sizeof utf8) == 1)
+        ch = (unsigned char)utf8[0];
+
+    if (scan == 0 && ch == 0)
+        return;     /* A key GEM has no way of describing */
+
+    key_post((uint16_t)((scan << 8) | ch));
+}
+
+static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
+                         uint32_t depressed, uint32_t latched, uint32_t locked,
+                         uint32_t group)
+{
+    (void)data; (void)kb; (void)serial;
+
+    if (w.xkb_state)
+        xkb_state_update_mask(w.xkb_state, depressed, latched, locked,
+                              0, 0, group);
+}
+
+static void kb_repeat(void *data, struct wl_keyboard *kb, int32_t rate,
+                      int32_t delay)
+{
+    (void)data; (void)kb; (void)rate; (void)delay;
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+    kb_keymap, kb_enter, kb_leave, kb_key, kb_modifiers, kb_repeat
+};
+
+/* Pointer *****************************************************************/
+
+static void pt_enter(void *data, struct wl_pointer *p, uint32_t serial,
+                     struct wl_surface *s, wl_fixed_t x, wl_fixed_t y)
+{
+    (void)data; (void)p; (void)serial; (void)s;
+
+    w.mouse_x = (int16_t)(wl_fixed_to_int(x) / SCALE);
+    w.mouse_y = (int16_t)(wl_fixed_to_int(y) / SCALE);
+}
+
+static void pt_leave(void *data, struct wl_pointer *p, uint32_t serial,
+                     struct wl_surface *s)
+{
+    (void)data; (void)p; (void)serial; (void)s;
+}
+
+static void pt_motion(void *data, struct wl_pointer *p, uint32_t time,
+                      wl_fixed_t x, wl_fixed_t y)
+{
+    (void)data; (void)p; (void)time;
+
+    /* Out of the window's pixels and back into the screen's */
+    w.mouse_x = (int16_t)(wl_fixed_to_int(x) / SCALE);
+    w.mouse_y = (int16_t)(wl_fixed_to_int(y) / SCALE);
+}
+
+static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
+                      uint32_t time, uint32_t button, uint32_t state)
+{
+    int16_t bit;
+
+    (void)data; (void)p; (void)serial; (void)time;
+
+    /* GEM numbers them from the left, and has two */
+    switch (button)
+    {
+        case 0x110: bit = 1; break;     /* BTN_LEFT */
+        case 0x111: bit = 2; break;     /* BTN_RIGHT */
+        default: return;
+    }
+
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+        w.buttons |= bit;
+    else
+        w.buttons &= ~bit;
+
+    w.buttons_changed = 1;
+}
+
+static void pt_axis(void *data, struct wl_pointer *p, uint32_t time,
+                    uint32_t axis, wl_fixed_t value)
+{
+    (void)data; (void)p; (void)time; (void)axis; (void)value;
+}
+
+/*
+ * Everything a version 5 pointer can say that GEM has no use for. They have to
+ * be here rather than left null: the version bound decides which of these the
+ * compositor may call, and calling a null one is not a missing feature but a
+ * crash.
+ */
+static void pt_frame(void *data, struct wl_pointer *p)
+{
+    (void)data; (void)p;
+}
+
+static void pt_axis_source(void *data, struct wl_pointer *p, uint32_t source)
+{
+    (void)data; (void)p; (void)source;
+}
+
+static void pt_axis_stop(void *data, struct wl_pointer *p, uint32_t time,
+                         uint32_t axis)
+{
+    (void)data; (void)p; (void)time; (void)axis;
+}
+
+static void pt_axis_discrete(void *data, struct wl_pointer *p, uint32_t axis,
+                             int32_t discrete)
+{
+    (void)data; (void)p; (void)axis; (void)discrete;
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+    pt_enter, pt_leave, pt_motion, pt_button, pt_axis,
+    pt_frame, pt_axis_source, pt_axis_stop, pt_axis_discrete
+};
+
+static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)
+{
+    (void)data;
+
+    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !w.keyboard)
+    {
+        w.keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(w.keyboard, &keyboard_listener, 0);
+    }
+
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !w.pointer)
+    {
+        w.pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(w.pointer, &pointer_listener, 0);
+    }
+}
+
+static void seat_name(void *data, struct wl_seat *seat, const char *name)
+{
+    (void)data; (void)seat; (void)name;
+}
+
+static const struct wl_seat_listener seat_listener = {
+    seat_capabilities,
+    seat_name
+};
 
 /* Wayland asks to be told the connection is still wanted */
 static void wm_base_ping(void *data, struct xdg_wm_base *base, uint32_t serial)
@@ -145,6 +477,11 @@ static void registry_global(void *data, struct wl_registry *registry,
         w.shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     else if (!strcmp(interface, xdg_wm_base_interface.name))
         w.wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+    else if (!strcmp(interface, wl_seat_interface.name))
+    {
+        w.seat = wl_registry_bind(registry, name, &wl_seat_interface, 5);
+        wl_seat_add_listener(w.seat, &seat_listener, 0);
+    }
 }
 
 static void registry_remove(void *data, struct wl_registry *r, uint32_t name)
@@ -227,6 +564,8 @@ int gfx_open(struct surface *screen)
 
     xdg_wm_base_add_listener(w.wm_base, &wm_base_listener, 0);
 
+    w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+
     w.surface = wl_compositor_create_surface(w.compositor);
     w.xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, w.surface);
     xdg_surface_add_listener(w.xdg_surface, &xdg_surface_listener, 0);
@@ -253,6 +592,12 @@ int gfx_open(struct surface *screen)
 
 void gfx_close()
 {
+    if (w.xkb_state)
+        xkb_state_unref(w.xkb_state);
+    if (w.keymap)
+        xkb_keymap_unref(w.keymap);
+    if (w.xkb)
+        xkb_context_unref(w.xkb);
     if (w.pixels)
         munmap(w.pixels, w.bytes);
     if (w.buffer)

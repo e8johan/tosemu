@@ -58,4 +58,34 @@ void gfx_flush();
  */
 void gfx_present();
 
+/* Input ********************************************************************/
+
+/*
+ * The keyboard and the mouse, as GEM wants them.
+ *
+ * A key is one word: the IKBD scan code in the high byte and the character in
+ * the low one. An application reads the low byte for text and the high byte
+ * for the keys that are not characters, which is why both travel together.
+ *
+ * The mouse is in surface pixels rather than window ones. The window is a
+ * whole number of times larger, and dividing that back out here is what keeps
+ * the rest of the emulator from ever having to know it was scaled.
+ */
+
+/* Takes the oldest key waiting, or reports 0 if none is */
+int gfx_key_take(uint16_t *key);
+
+/* Where the pointer is and which buttons are down, now */
+void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);
+
+/* Which of shift, control and alt are held, in the bits GEM uses */
+uint16_t gfx_kstate();
+
+/*
+ * Whether a button has gone up or down since this was last asked. The AES
+ * waits for a change rather than for a state, so the change is what it needs
+ * to be told about.
+ */
+int gfx_buttons_changed();
+
 #endif /* GFX_H */

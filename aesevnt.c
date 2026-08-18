@@ -132,7 +132,20 @@ static long now_ms()
  * timeout of zero is a GEM idiom meaning "wait for ever" when MU_TIMER is
  * asked for, and the caller has already turned that into -1.
  */
-static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
+/* Whether the pointer is inside a rectangle, or outside it, which is the two
+ * things a mouse rectangle event can be waiting for */
+static int in_rectangle(int16_t x, int16_t y, const int16_t *r, int16_t leaving)
+{
+    int inside = x >= r[0] && y >= r[1]
+              && x < r[0] + r[2] && y < r[1] + r[3];
+
+    return leaving ? !inside : inside;
+}
+
+static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
+                        const int16_t *m1, int16_t m1flags,
+                        const int16_t *m2, int16_t m2flags,
+                        uint16_t *key)
 {
     long deadline = (timeout < 0) ? -1 : now_ms() + timeout;
 
@@ -152,6 +165,27 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
 
         if ((wanted & MU_MESAG) && message_take(message))
             return MU_MESAG;
+
+        if ((wanted & MU_KEYBD) && gfx_key_take(key))
+            return MU_KEYBD;
+
+        if (wanted & MU_BUTTON)
+        {
+            if (gfx_buttons_changed())
+                return MU_BUTTON;
+        }
+
+        if (wanted & (MU_M1|MU_M2))
+        {
+            int16_t mx, my, buttons;
+
+            gfx_mouse(&mx, &my, &buttons);
+
+            if ((wanted & MU_M1) && in_rectangle(mx, my, m1, m1flags))
+                return MU_M1;
+            if ((wanted & MU_M2) && in_rectangle(mx, my, m2, m2flags))
+                return MU_M2;
+        }
 
         /*
          * The compositor's connection, which has to be listened to whether or
@@ -185,14 +219,13 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
         if (nfds == 0 && left < 0)
         {
             /*
-             * Waiting for ever for something that cannot arrive. Saying so is
-             * better than hanging: the application has asked for an event from
-             * a device nothing is reading, and no amount of waiting will
-             * produce one.
+             * Waiting for ever with nothing that could end the wait. Without a
+             * window there is no keyboard and no mouse, so an application
+             * asking for either would hang, and a hang says nothing about why.
              */
             halt_execution();
-            printf("AES: an application is waiting for an event that nothing "
-                   "can deliver yet\n");
+            printf("AES: an application is waiting for the keyboard or the "
+                   "mouse, and there is no window for either to arrive at\n");
             return 0;
         }
 
@@ -218,7 +251,7 @@ uint32_t AES_evnt_timer()
     /* Zero is not a wait at all, it is a way of asking whether anything else
      * is pending, and there is nothing else to be pending yet */
     if (ms > 0)
-        wait_for(MU_TIMER, ms, 0);
+        wait_for(MU_TIMER, ms, 0, 0, 0, 0, 0, 0);
     else
         gem_present();
 
@@ -243,7 +276,7 @@ uint32_t AES_evnt_mesag()
 
     FUNC_TRACE_ENTER
 
-    if (wait_for(MU_MESAG, -1, message) != MU_MESAG)
+    if (wait_for(MU_MESAG, -1, message, 0, 0, 0, 0, 0) != MU_MESAG)
         return AES_ERROR;
 
     message_to_application(buffer, message);
@@ -262,23 +295,14 @@ uint32_t AES_evnt_multi()
     uint32_t buffer = aes_addrin(0);
     int16_t message[MESSAGE_WORDS];
     int16_t happened;
+    int16_t m1[4], m2[4], m1flags, m2flags;
+    int16_t mx, my, buttons;
+    uint16_t key = 0;
     long timeout;
+    int i;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    wanted: 0x%x, timer: %ld ms\n", wanted, ms);
-    }
-
-    /*
-     * An application asking for a keypress or the mouse is asking for
-     * something no part of this is reading yet. Waiting would be waiting for
-     * ever, so it is told which piece is missing instead.
-     */
-    if (wanted & MU_INPUT)
-    {
-        halt_execution();
-        printf("AES evnt_multi was asked for keyboard or mouse events, which "
-               "need the compositor\n");
-        return 0;
     }
 
     /* A timer of zero milliseconds means no timer at all rather than one that
@@ -288,22 +312,31 @@ uint32_t AES_evnt_multi()
     else
         timeout = ms;
 
-    happened = wait_for(wanted, timeout, message);
+    /* The two rectangles, which MU_M1 and MU_M2 wait for the pointer to enter
+     * or to leave. The flag before each says which of the two. */
+    m1flags = aes_intin(4);
+    for (i = 0; i < 4; i++)
+        m1[i] = aes_intin(5 + i);
+    m2flags = aes_intin(9);
+    for (i = 0; i < 4; i++)
+        m2[i] = aes_intin(10 + i);
+
+    happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags,
+                        &key);
 
     if (happened == MU_MESAG)
         message_to_application(buffer, message);
 
-    /*
-     * Where the mouse was and what was held down when it happened. None of it
-     * moves yet, so it is all zero, but the application is told the same
-     * number of things either way.
-     */
-    aes_set_intout(1, 0);   /* mouse x */
-    aes_set_intout(2, 0);   /* mouse y */
-    aes_set_intout(3, 0);   /* buttons */
-    aes_set_intout(4, 0);   /* shift, control and alt */
-    aes_set_intout(5, 0);   /* the key */
-    aes_set_intout(6, 0);   /* how many clicks */
+    /* Where the mouse was and what was held down when it happened, which an
+     * application reads whatever it was waiting for */
+    gfx_mouse(&mx, &my, &buttons);
+
+    aes_set_intout(1, mx);
+    aes_set_intout(2, my);
+    aes_set_intout(3, buttons);
+    aes_set_intout(4, (int16_t)gfx_kstate());
+    aes_set_intout(5, (int16_t)key);
+    aes_set_intout(6, 1);   /* how many clicks, which is not counted yet */
 
     return happened;
 }
