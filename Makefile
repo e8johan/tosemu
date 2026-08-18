@@ -107,7 +107,8 @@ EMUTOSLDFLAGS = -no-pie
 
 all: bin/tosemu
 
-.PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check emuvdi-check
+.PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
+        emuvdi-check demos
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -121,6 +122,12 @@ $(EMUTOS)/%.c:
 
 tests:
 	$(MAKE) -C tests/
+
+# Programs meant to be looked at rather than checked. They need a compositor
+# to be worth running: with one there is a window, and without one the screen
+# is only in memory.
+demos: bin/tosemu
+	$(MAKE) -C demos/
 
 # Test cases assembled by tosemu itself, using Devpac's GEN.TTP. These need a
 # Devpac 3.10 installation, see tests/devpac/Makefile.
@@ -223,5 +230,6 @@ clean:
 	$(RM) bin/*
 	$(RM) -d gen/ bin/
 	$(MAKE) -C tests/ clean
+	$(MAKE) -C demos/ clean
 	$(MAKE) -C tests/devpac clean
 	$(MAKE) -C tests/lattice clean

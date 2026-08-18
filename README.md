@@ -62,6 +62,10 @@ opposite way round from most things. Drawing colour 0 text in replace mode
 fills the cell with white and draws the glyph in white too, and the result is
 a solid block rather than a letter.
 
+`make demos` builds the programs in `demos/`, which are GEM applications meant
+to be looked at rather than checked - `./bin/tosemu demos/dialog` puts a dialog
+on the screen with buttons that can be clicked. See `demos/README`.
+
 The `make clean` target produces a clean source tree.
 
 

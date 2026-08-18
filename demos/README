@@ -1,0 +1,40 @@
+demos - programs to look at
+===========================
+
+These are GEM applications, cross compiled for the emulated machine with the
+m68k-atari-mint tools, in the ordinary way an application is written. Nothing
+in them knows it is not running on an ST.
+
+They are here to be looked at rather than checked. The tests in tests/ say
+whether something is right; these say what it looks like, which is a question
+only a person can answer.
+
+    make demos
+    ./bin/tosemu demos/dialog
+
+With a compositor there is a window and the mouse and keyboard work. Without
+one the screen is only in memory, which is not very interesting, though
+TOSEMU_SCREENSHOT will still write out what was drawn:
+
+    TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu demos/dialog
+
+and TOSEMU_KEYS will press something, for when there is nobody to:
+
+    TOSEMU_KEYS='\r' ./bin/tosemu demos/dialog
+
+
+dialog
+------
+
+A box, a question and two buttons. It draws the tree with objc_draw and then
+hands it to form_do, which is the AES running the dialog: it waits, works out
+what was clicked or typed, redraws the button that was pressed, and answers
+with which object ended it.
+
+Click OK or Cancel, or press Return for OK - it is the default button, which
+is why the AES draws it with a heavier border. Either way the program prints
+which one it was and exits.
+
+The tree is built in C rather than loaded from a resource file. A real
+application would carry a .RSC and call rsrc_load, which needs a TOS path
+resolved the way GEMDOS resolves one, and that is not written yet.
