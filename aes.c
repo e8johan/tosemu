@@ -111,7 +111,6 @@ uint32_t aes_global()
  * says what an application was trying to do rather than only that it failed.
  */
 #define AES_appl_read       NULL
-#define AES_appl_find       NULL
 #define AES_appl_tplay      NULL
 #define AES_appl_trecord    NULL
 #define AES_appl_bvset      NULL

@@ -30,6 +30,8 @@
 
 #include "aes_p.h"
 
+#include "aesclient.h"
+#include "aesproto.h"
 #include "gem_p.h"
 #include "tossystem.h"
 #include "emuvdi/emuvdi.h"
@@ -98,24 +100,29 @@ uint32_t AES_appl_init()
         emuvdi_aes_init();
 
         /*
-         * Nought, because it is the first application there is.
+         * Who this application is, which the daemon says when there is one and
+         * is nought when there is not.
          *
-         * The AES numbers them as it starts them, from nothing upwards, and on
-         * a machine running one program at a time that program is the first
-         * and only one. Handing out one instead looks harmless and is not: a
-         * GEM program written for such a machine tests the answer by asking
-         * whether it is nought, and one that gets anything else decides the
-         * AES would not have it and stops before it has drawn a thing.
-         *
-         * When there is a desktop of our own it will be this one, and the
-         * applications it starts will be numbered after it - which is the same
-         * rule, applied to a machine with more in it.
+         * The AES numbers them as it starts them, from nothing upwards, so on
+         * a machine running one program at a time that program is nought
+         * either way. That is not a detail: a GEM program written for such a
+         * machine tests whether appl_init answered nought and stops if it did
+         * not, so answering one would have it give up before drawing anything.
          */
-        ap_id = 0;
+        ap_id = aes_client_hello(tos_program_name());
+
+        if (ap_id < 0)
+        {
+            /* The daemon would not have it, which only happens when there are
+             * already as many applications as it will hold */
+            printf("AES appl_init: the AES is full\n");
+            return AES_ERROR;
+        }
     }
 
     m68k_write_memory_16(g + AES_GLOBAL_VERSION, AES_VERSION);
-    m68k_write_memory_16(g + AES_GLOBAL_COUNT, AES_APPS);
+    m68k_write_memory_16(g + AES_GLOBAL_COUNT,
+                         (uint16_t)aes_client_apps());
     m68k_write_memory_16(g + AES_GLOBAL_ID, (uint16_t)ap_id);
     m68k_write_memory_32(g + AES_GLOBAL_PRIVATE, 0);
     m68k_write_memory_32(g + AES_GLOBAL_PTREE, 0);
@@ -152,13 +159,10 @@ uint32_t AES_appl_write()
         printf("    to: %d, length: %d\n", to, length);
     }
 
-    if (ap_id < 0 || to != ap_id)
+    if (ap_id < 0)
     {
-        /* There is nobody else to send to yet, and saying so is better than
-         * dropping it silently */
         halt_execution();
-        printf("AES appl_write to application %d, and only %d is running\n",
-               to, ap_id);
+        printf("AES appl_write before appl_init\n");
         return AES_ERROR;
     }
 
@@ -175,7 +179,71 @@ uint32_t AES_appl_write()
     for (i = 0; i < 8; i++)
         message[i] = (int16_t)m68k_read_memory_16(buffer + 2*i);
 
-    return aes_message_post(message) ? AES_E_OK : AES_ERROR;
+    /*
+     * To itself or to somebody else.
+     *
+     * An application posting to itself is not a curiosity: it is how one drives
+     * its own redraws, and how the AES tells it a menu was picked or that it
+     * is to quit. Those go straight into the queue it is waiting on, and no
+     * daemon is involved even when there is one - a message from an
+     * application to itself has nothing to arbitrate.
+     */
+    if (to == ap_id)
+        return aes_message_post(message) ? AES_E_OK : AES_ERROR;
+
+    if (!aes_client_send(to, message))
+    {
+        /*
+         * Nobody there. GEM answers nought rather than stopping, because an
+         * application that has gone away between one message and the next is
+         * an ordinary thing to happen and the sender is expected to cope.
+         */
+        FUNC_TRACE_ARGS {
+            printf("    nobody is application %d\n", to);
+        }
+
+        return AES_ERROR;
+    }
+
+    return AES_E_OK;
+}
+
+/*
+ * appl_find - which application answers to a name
+ *
+ * Eight characters padded with spaces, and -1 when none does. An application
+ * looking for another by name is how two of them arrange to talk without
+ * either having started the other.
+ */
+uint32_t AES_appl_find()
+{
+    uint32_t address = aes_addrin(0);
+    char name[AESD_NAME_LEN + 1];
+    int16_t found;
+    int i;
+
+    for (i = 0; i < AESD_NAME_LEN; i++)
+        name[i] = (char)m68k_read_memory_8(address + i);
+    name[AESD_NAME_LEN] = 0;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    name: [%s]\n", name);
+    }
+
+    found = aes_client_find(name);
+
+    FUNC_TRACE_ARGS {
+        printf("    application %d\n", found);
+    }
+
+    /* Not an error to report: not being there is an answer */
+    return (uint32_t)(uint16_t)found;
+}
+
+/* And the other end of appl_init, which lets the daemon forget about us */
+void aes_appl_finished()
+{
+    aes_client_close();
 }
 
 uint32_t AES_appl_exit()

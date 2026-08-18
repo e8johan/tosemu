@@ -123,6 +123,10 @@ void exec_tos_basepage(uint32_t basepage);
  *
  * Returns 0, or -1 when the binary could not be mapped.
  */
+/* What this application is called: the program's name, in capitals, eight
+ * characters padded with spaces, which is the form GEM uses */
+const char *tos_program_name(void);
+
 int exec_tos_binary(const char *host_path, const char *cmdlin,
                     char *env, uint32_t env_len);
 

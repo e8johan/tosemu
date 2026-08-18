@@ -89,6 +89,8 @@ void aes_appl_reset();
 uint32_t AES_appl_init();
 uint32_t AES_appl_write();
 uint32_t AES_appl_exit();
+uint32_t AES_appl_find();
+void aes_appl_finished();
 
 /* Event functions, aesevnt.c */
 

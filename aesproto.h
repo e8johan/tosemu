@@ -1,0 +1,107 @@
+/*
+ * TOSEMU - an emulated environment for TOS applications
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
+
+#ifndef AESPROTO_H
+#define AESPROTO_H
+
+#include <stdint.h>
+
+/*
+ * What the emulator says to the daemon, and the daemon back.
+ *
+ * The AES was one program with every application inside it, sharing its
+ * variables. Here each application is a process of its own, so the things they
+ * shared have to be somewhere both can reach - which application is which,
+ * whose turn it is, and messages one sends another. That somewhere is the
+ * daemon, and this is everything they say about it.
+ *
+ * Drawing is not here and never will be. A VDI call is a function call into
+ * this process that writes into memory this process owns; putting a socket in
+ * that path would make every line drawn a round trip. The daemon arbitrates
+ * what is shared and is never in a drawing path.
+ *
+ * One structure for every message rather than a length and a body, because
+ * every message is small and a fixed size cannot be got wrong. Both ends are
+ * the same build on the same machine, so the words are in host order and there
+ * is nothing to swap: this is not a wire format, it is two processes of one
+ * program talking.
+ */
+
+#define AESD_NAME_LEN (8)
+
+enum {
+    /*
+     * A new application. It says what it is called - eight characters padded
+     * with spaces, which is what GEM calls a name - and is told which
+     * application it is and what the screen it is sharing looks like.
+     */
+    AESD_HELLO = 1,
+    AESD_WELCOME,
+
+    /* Asking which application answers to a name, and being told, or told -1
+     * when none does */
+    AESD_FIND,
+    AESD_FOUND,
+
+    /* A message for another application, and one arriving for this one. The
+     * eight words are GEM's, and the daemon does not look inside them. */
+    AESD_SEND,
+    AESD_DELIVER,
+};
+
+struct aesd_packet {
+    int16_t kind;
+
+    /* Whose it is: the application being told about, asked after, or sent to */
+    int16_t ap_id;
+
+    /*
+     * The screen every application shares.
+     *
+     * It is the daemon's because it has to be one screen: applications lay
+     * their windows out in it and are told where the others put theirs, and
+     * two that disagree about how large it is disagree about everything. It is
+     * sent when an application arrives rather than asked for, because there is
+     * nothing it can usefully do before it knows.
+     */
+    int16_t screen_width;
+    int16_t screen_height;
+    int16_t screen_planes;
+
+    /* How many applications can be running at once, which GEM reports in the
+     * global array and some applications believe */
+    int16_t apps;
+
+    char name[AESD_NAME_LEN];
+
+    int16_t message[8];
+};
+
+/*
+ * Where to find the daemon.
+ *
+ * In the runtime directory, because that is where a socket belonging to one
+ * person logged in once belongs, and it is cleaned up when they log out.
+ * TOSEMU_AESD names another, which is what lets a test run its own daemon
+ * without touching the one the person is using.
+ */
+#define AESD_SOCKET_NAME "tosaesd"
+
+#endif /* AESPROTO_H */

@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesobjc.c aesrsrc.c aestree.c vdi.c surface.c \
+              gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesobjc.c aesrsrc.c aestree.c vdi.c surface.c \
               gfx.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -109,7 +109,7 @@ EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
 # points at something mapped, so it draws rubbish rather than crashing.
 EMUTOSLDFLAGS = -no-pie
 
-all: bin/tosemu
+all: bin/tosemu bin/tosaesd
 
 .PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check demos
@@ -173,6 +173,12 @@ emuvdi/%.o: emuvdi/%.c Makefile
 bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
+# The daemon several emulators have in common. It links none of the emulator:
+# nothing it does involves a 68000, and everything it knows about is in
+# aesproto.h.
+bin/tosaesd: aesd.o
+	$(LD) $(LDFLAGS) $^ -o $@
+
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
 # is being checked, not anything an application can reach yet.
@@ -233,7 +239,7 @@ bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: bin/tosemu
+check: bin/tosemu bin/tosaesd
 	$(MAKE) -C tests check
 
 devpac-check: bin/tosemu

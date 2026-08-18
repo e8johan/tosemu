@@ -70,6 +70,22 @@ Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.
 
+`bin/tosaesd` is the daemon several emulator processes have in common. It is
+not needed to run one program: an application on its own has nobody to agree
+with, so tosemu answers for a machine with one application in it and runs
+exactly as it does without one. What the daemon adds is the part that cannot be
+answered inside a single process - which application is which, what the screen
+they share looks like, and messages one sends another - so `appl_find` and
+`appl_write` to somebody else start working the moment it is there. It puts its
+socket in `$XDG_RUNTIME_DIR`, and `TOSEMU_AESD` says somewhere else, which is
+how the test suite runs its own without disturbing a session.
+
+The screen is the daemon's when there is one, and that is not for convenience:
+it has to be one screen, because applications lay their windows out in it and
+are told where the others put theirs, so two that disagree about its size
+disagree about everything. Which size it is belongs there too, being what a
+machine's graphics mode is - one setting for everything running on it.
+
 Note that GEM has colour 0 as white and colour 1 as black, which is the
 opposite way round from most things. Drawing colour 0 text in replace mode
 fills the cell with white and draws the glyph in white too, and the result is

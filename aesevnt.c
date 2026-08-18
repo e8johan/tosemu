@@ -46,6 +46,7 @@
 #include <time.h>
 
 #include "gem_p.h"
+#include "aesclient.h"
 #include "gfx.h"
 #include "tossystem.h"
 #include "m68k.h"
@@ -208,10 +209,11 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
     for (;;)
     {
-        struct pollfd fds[1];
+        struct pollfd fds[2];
         int nfds = 0;
         long left;
-        int wayland;
+        int wayland, daemon;
+        int wayland_slot = -1, daemon_slot = -1;
 
         /*
          * The menu bar, before the application hears about anything.
@@ -360,7 +362,23 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         if (wayland >= 0)
         {
             gfx_flush();
+            wayland_slot = nfds;
             fds[nfds].fd = wayland;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
+
+        /*
+         * And the daemon, which has to be listened to whether or not the
+         * application asked for a message: another application can send one at
+         * any time, and one that arrives while nobody is reading would sit in
+         * the socket until something else woke us.
+         */
+        daemon = aes_client_fd();
+        if (daemon >= 0)
+        {
+            daemon_slot = nfds;
+            fds[nfds].fd = daemon;
             fds[nfds].events = POLLIN;
             nfds++;
         }
@@ -404,8 +422,11 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
         poll(fds, nfds, (left < 0) ? -1 : (int)left);
 
-        if (wayland >= 0 && (fds[0].revents & POLLIN))
+        if (wayland_slot >= 0 && (fds[wayland_slot].revents & POLLIN))
             gfx_dispatch();
+
+        if (daemon_slot >= 0 && (fds[daemon_slot].revents & POLLIN))
+            aes_client_pump();
     }
 }
 

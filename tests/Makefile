@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd
 
 CC=m68k-atari-mint-gcc
 
@@ -25,6 +25,9 @@ test-c-gem: c-gem.c
 	$(CC) $< -lgem -o $@
 
 test-c-vdi: c-vdi.c
+	$(CC) $< -lgem -o $@
+
+test-c-aesd: c-aesd.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -70,7 +73,26 @@ check: all
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42
-	$(RM) out out2
+	#
+	# Two applications and the daemon between them, which is the part that
+	# cannot be tested with one process: with one, the identifier is always
+	# nought, appl_find always answers -1, and a message posted comes back
+	# to the sender. The daemon gets a socket of its own so that a test run
+	# does not disturb a session somebody is using.
+	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd & \
+	  echo $$! > aesd.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU) test-c-aesd > out & \
+	  echo $$! > waiter.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU) test-c-aesd 'TEST-C-A' > out2; \
+	  wait `cat waiter.pid`; \
+	  kill `cat aesd.pid`
+	! grep -q '^not ok' out
+	! grep -q '^not ok' out2
+	grep -q '^1\.\.' out
+	grep -q '^1\.\.' out2
+	$(RM) out out2 aesd.pid waiter.pid aesd.socket
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

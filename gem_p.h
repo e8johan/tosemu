@@ -50,6 +50,9 @@
 
 /* Readies GEM the first time either half is asked for anything. Returns 0
  * after saying why not, having halted. */
+/* The screen this build makes when there is no daemon to say otherwise */
+void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes);
+
 int gem_start();
 
 /*

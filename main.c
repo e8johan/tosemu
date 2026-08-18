@@ -65,6 +65,37 @@ void cpu_instr_callback()
     }
 }
 
+/*
+ * What this application is called, which is the name of the program with the
+ * directory and the extension taken off, in capitals and eight characters
+ * long. That is what GEM calls an application and what appl_find looks one up
+ * by, so it is worked out from the same thing GEM worked it out from.
+ */
+static char program_name[9] = "        ";
+
+static void remember_program_name(const char *path)
+{
+    const char *base = strrchr(path, '/');
+    int i;
+
+    base = base ? base + 1 : path;
+
+    for (i = 0; i < 8; i++)
+    {
+        char c = base[i];
+
+        if (c == 0 || c == '.')
+            break;
+
+        program_name[i] = (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+    }
+}
+
+const char *tos_program_name(void)
+{
+    return program_name;
+}
+
 int main(int argc, char **argv)
 {
     void *binary_data;
@@ -90,6 +121,8 @@ int main(int argc, char **argv)
         verbose = -1;
         argb++;
     }
+
+    remember_program_name(argv[argb]);
 
     binary_data = map_tos_binary(argv[argb], &binary_size);
     if (binary_data == NULL)

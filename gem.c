@@ -40,6 +40,7 @@
 #include "gem_p.h"
 #include "tossystem.h"
 #include "surface.h"
+#include "aesclient.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
@@ -81,16 +82,37 @@ static int started;
  * a window reaches the VDI first, and one that opens a window reaches the AES
  * first, so neither can be the one to set the other up.
  */
+void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
+{
+    *width = SCREEN_WIDTH;
+    *height = SCREEN_HEIGHT;
+    *planes = SCREEN_PLANES;
+}
+
 int gem_start()
 {
+    int16_t width, height, planes;
+
     if (started)
         return 1;
 
-    screen = surface_create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_PLANES);
+    /*
+     * How large the screen is, which the daemon says when there is one.
+     *
+     * It has to be one screen for everything running: applications lay their
+     * windows out in it and are told where the others put theirs, so two that
+     * disagree about its size disagree about everything. With nobody to ask,
+     * it is what this build was made with.
+     */
+    aes_client_screen(&width, &height, &planes);
+
+    screen = surface_create((uint16_t)width, (uint16_t)height,
+                            (uint16_t)planes);
     if (!screen)
     {
         halt_execution();
-        printf("GEM: no room for a %dx%d screen\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+        printf("GEM: no room for a %dx%d screen of %d planes\n",
+               width, height, planes);
         return 0;
     }
 
