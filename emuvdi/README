@@ -184,8 +184,9 @@ block at the control array and execute a trap, and that one instruction is the
 whole path between the two halves of GEM. Here both are host code, so it is a
 call, and nothing is copied because there is nothing to copy between.
 
-Four files are copied and edited, which is the whole override list. Three of
-the four are the same bug in different places: EmuTOS says a LONG is a signed
+Five files are copied and edited, which is the whole override list. Four of
+them are EmuTOS code that has to be told something about this machine; three of
+those four are the same bug in different places: EmuTOS says a LONG is a signed
 32 bit word and writes it as long, which is four bytes on a 68000 and eight
 here. Anything that then treats a LONG as a fixed number of bytes, or reaches
 into one by position, finds the wrong thing.
@@ -194,6 +195,13 @@ An OBJECT is 24 bytes in the machine and 32 in this program for the same
 reason, which is why aestree.c does not copy a tree as a block: it reads the
 fields at the machine's offsets and hands them to emuvdi.h to be put wherever
 this side keeps them. Nothing outside emuvdi/ knows either layout.
+
+gemfmalt.c: an alert on an ST is drawn over whatever was on the screen, with
+the AES remembering the pixels underneath and putting them back afterwards.
+Here it is given a window of its own instead, the same way a dialog is through
+form_dial, so that the desktop treats the two alike - both dialogs of the
+window they belong to, both modal, and both movable while the program that put
+them up is waiting. Nothing needs remembering, because nothing is covered.
 
 gemoblib.c: call_usercode in it is fifteen lines of assembly that jsr to a
 routine the application supplied, and here that routine is 68000 code in the

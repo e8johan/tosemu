@@ -79,6 +79,11 @@ struct window {
     int used;
     int configured;
 
+    /* Which surface it shows part of. The screen shows the screen; a dialog
+     * shows one of its own, so that what it draws does not also appear in the
+     * window behind it. */
+    struct surface *shows;
+
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
@@ -681,11 +686,13 @@ static int window_buffer(struct window *win)
 }
 
 static int window_create(struct window *win, const char *title,
+                         struct surface *shows,
                          int16_t sx, int16_t sy, int16_t sw, int16_t sh,
                          struct window *parent)
 {
     memset(win, 0, sizeof *win);
 
+    win->shows = shows;
     win->sx = sx;
     win->sy = sy;
     win->sw = sw;
@@ -792,7 +799,7 @@ int gfx_open(struct surface *screen)
 
     w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
-    if (!window_create(&w.windows[MAIN], "TOS", 0, 0,
+    if (!window_create(&w.windows[MAIN], "TOS", screen, 0, 0,
                        (int16_t)surface_width(screen),
                        (int16_t)surface_height(screen), 0))
     {
@@ -830,17 +837,19 @@ int gfx_showing()
     return w.showing && !w.closed;
 }
 
-void gfx_dialog_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
+void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
 {
     if (!gfx_showing())
         return;
 
     gfx_dialog_close();
 
-    if (sw <= 0 || sh <= 0)
+    if (sw <= 0 || sh <= 0 || !shows)
         return;
 
-    if (!window_create(&w.windows[DIALOG], "", x, y, sw, sh, &w.windows[MAIN]))
+    if (!window_create(&w.windows[DIALOG], "", shows, x, y, sw, sh,
+                       &w.windows[MAIN]))
         window_destroy(&w.windows[DIALOG]);
 }
 
@@ -890,7 +899,7 @@ static void window_present(struct window *win)
         for (x = 0; x < win->sw; x++)
         {
             uint32_t argb = emuvdi_palette_argb(
-                surface_pixel(w.screen, (uint16_t)(win->sx + x),
+                surface_pixel(win->shows, (uint16_t)(win->sx + x),
                               (uint16_t)(win->sy + y)));
 
             for (sy = 0; sy < SCALE; sy++)

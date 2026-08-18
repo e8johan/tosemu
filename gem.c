@@ -56,6 +56,22 @@
 #define SCREEN_PLANES (4)
 
 static struct surface *screen;
+
+/*
+ * Where a dialog draws.
+ *
+ * A dialog gets a surface of its own rather than a rectangle of the screen's,
+ * so that what it draws does not also appear in the window behind it. It is
+ * the same size as the screen, which means an application goes on drawing at
+ * the coordinates it chose and the drawing lands where it expects; only which
+ * memory it lands in has changed.
+ *
+ * It starts as a copy of the screen, so that any part of the dialog's window
+ * the dialog itself does not cover shows what was behind it rather than
+ * nothing.
+ */
+static struct surface *dialog;
+
 static int started;
 
 /*
@@ -103,6 +119,44 @@ int gem_start()
  * terminal, or from a test, or by whoever is reading this without a desktop
  * in front of them.
  */
+/*
+ * Reserves the screen for a dialog, and gives it back.
+ *
+ * This is what form_dial does on an ST, where the AES remembers what is under
+ * the dialog and puts it back afterwards. Here nothing is covered - the screen
+ * is still there, in its own window and its own memory - so what the two do
+ * instead is put the dialog in a window of its own and take it away again.
+ */
+void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    if (!started || width <= 0 || height <= 0)
+        return;
+
+    gem_dialog_end();
+
+    dialog = surface_create(surface_width(screen), surface_height(screen),
+                            surface_planes(screen));
+    if (!dialog)
+        return;
+
+    surface_copy(dialog, screen);
+    surface_select(dialog);
+
+    gfx_dialog_open(dialog, x, y, width, height);
+}
+
+void gem_dialog_end()
+{
+    if (!dialog)
+        return;
+
+    gfx_dialog_close();
+
+    surface_select(screen);
+    surface_free(dialog);
+    dialog = 0;
+}
+
 void gem_present()
 {
     const char *shot;
@@ -112,7 +166,11 @@ void gem_present()
 
     shot = getenv("TOSEMU_SCREENSHOT");
     if (shot)
-        surface_write_ppm(screen, shot);
+    {
+        /* Whichever is being drawn into. A dialog's surface starts as a copy
+         * of the screen, so it is the whole picture rather than half of it. */
+        surface_write_ppm(dialog ? dialog : screen, shot);
+    }
 
     gfx_present();
 }
@@ -142,6 +200,7 @@ void gem_reset()
     aes_reset();
     vdi_reset();
 
+    gem_dialog_end();
     gfx_close();
 
     surface_free(screen);

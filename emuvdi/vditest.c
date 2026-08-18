@@ -111,6 +111,18 @@ static void show(const char *what)
 }
 
 /*
+ * Putting a dialog in a window of its own, which is the emulator's to do and
+ * this has no windows to do it with. Here for the linker, like the wait below.
+ */
+void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+}
+
+void host_dialog_end(void)
+{
+}
+
+/*
  * The AES kernel's waiting, which the object library is linked against and
  * this never reaches: nothing here waits for anything. It is here because the
  * linker wants it, and it says so rather than returning something that could

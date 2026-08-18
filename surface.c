@@ -117,6 +117,19 @@ uint16_t surface_planes(const struct surface *s)
     return s->planes;
 }
 
+void surface_copy(struct surface *dst, const struct surface *src)
+{
+    size_t words;
+
+    if (dst->width != src->width || dst->height != src->height
+        || dst->planes != src->planes)
+        return;
+
+    words = (size_t)dst->words_per_line * dst->height;
+
+    memcpy(dst->data, src->data, words * sizeof *dst->data);
+}
+
 int surface_write_ppm(const struct surface *s, const char *path)
 {
     FILE *f = fopen(path, "wb");

@@ -58,7 +58,8 @@ int gfx_showing();
  * rectangle happens to be shown, so dragging the window about changes nothing
  * the application can observe.
  */
-void gfx_dialog_open(int16_t x, int16_t y, int16_t w, int16_t h);
+void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
+                     int16_t w, int16_t h);
 void gfx_dialog_close();
 
 /*

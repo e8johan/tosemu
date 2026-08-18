@@ -68,6 +68,14 @@ WORD host_call_userdef(USERBLK *ub, PARMBLK *pb);
  * and four on the other, so declaring one here and defining it there puts the
  * arguments in different places and the call comes apart.
  */
+/*
+ * Reserving the screen a dialog sits on, and giving it back. form_dial does
+ * this for an application's dialogs; the alert in gemfmalt.c does it for the
+ * AES's own, so that the two behave alike.
+ */
+void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
+void host_dialog_end(void);
+
 int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,

@@ -52,6 +52,14 @@
  * after saying why not, having halted. */
 int gem_start();
 
+/*
+ * Reserves the screen for a dialog and gives it back. A dialog draws into a
+ * surface of its own and is shown in a window of its own, which is why what it
+ * draws does not also appear in the window behind it.
+ */
+void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
+void gem_dialog_end();
+
 /* Puts what has been drawn where it can be seen: a window if there is a
  * compositor, and a file if TOSEMU_SCREENSHOT asked for one */
 void gem_present();

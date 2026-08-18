@@ -32,7 +32,6 @@
 
 #include "gem_p.h"
 #include "emuvdi/emuvdi.h"
-#include "gfx.h"
 #include "tossystem.h"
 #include "m68k.h"
 
@@ -101,6 +100,21 @@ uint32_t AES_objc_draw()
     aes_tree_done();
 
     return AES_E_OK;
+}
+
+/*
+ * What the alert in emuvdi/gemfmalt.c reaches when it puts its window up and
+ * takes it away. The same two things form_dial does, so that an alert and a
+ * dialog behave alike.
+ */
+void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    gem_dialog_begin(x, y, width, height);
+}
+
+void host_dialog_end(void)
+{
+    gem_dialog_end();
 }
 
 /* form_alert **************************************************************/
@@ -185,11 +199,11 @@ uint32_t AES_form_dial()
     switch (what)
     {
         case FMD_START:
-            gfx_dialog_open(x, y, width, height);
+            gem_dialog_begin(x, y, width, height);
             break;
 
         case FMD_FINISH:
-            gfx_dialog_close();
+            gem_dialog_end();
             break;
 
         case FMD_GROW:

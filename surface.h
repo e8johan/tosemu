@@ -75,6 +75,13 @@ uint16_t surface_planes(const struct surface *s);
 uint16_t surface_pixel(const struct surface *s, uint16_t x, uint16_t y);
 
 /*
+ * Copies one surface over another of the same shape. A dialog starts as what
+ * was on the screen behind it, so that the parts of its window either side of
+ * the dialog itself show what they would have shown.
+ */
+void surface_copy(struct surface *dst, const struct surface *src);
+
+/*
  * Writes the surface out as a portable pixmap, for looking at what was drawn
  * without a compositor in the way. The colours come from the palette, so what
  * lands in the file is what would land on a screen.
