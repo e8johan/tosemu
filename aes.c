@@ -140,7 +140,6 @@ uint32_t aes_global()
 #define AES_objc_edit       NULL
 #define AES_objc_change     NULL
 #define AES_objc_sysvar     NULL
-#define AES_form_alert      NULL
 #define AES_form_error      NULL
 #define AES_form_center     NULL
 #define AES_form_keybd      NULL

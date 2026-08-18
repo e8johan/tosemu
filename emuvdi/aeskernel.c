@@ -108,14 +108,18 @@ WORD gl_prevmouse;
 AESPD *gl_mowner;
 void *mouse_cursor;
 
+/*
+ * The shape of the pointer, which on an ST the AES draws itself and here the
+ * compositor owns. Changing it will one day be something said to the
+ * compositor rather than something drawn; until then an arrow is what it
+ * already is, and an hourglass is a nicety nothing depends on.
+ */
 void set_mouse_to_arrow(void)
 {
-    needs_kernel("set_mouse_to_arrow");
 }
 
 void set_mouse_to_hourglass(void)
 {
-    needs_kernel("set_mouse_to_hourglass");
 }
 
 /* Windows ****************************************************************/

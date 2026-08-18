@@ -395,6 +395,19 @@ int main(int argc, char **argv)
         check(call_aes(50, 1, 1, 1, 0), 2, "form_do ends on the default button");
         check(dlg[2].ob_state & 1, 1, "and the tree comes back with it selected");
 
+        /*
+         * An alert, which is a dialog the AES builds itself out of a string.
+         * It comes from the AES's own resource rather than from the
+         * application, so this is also what says that resource was set up.
+         */
+        {
+            static char alert[] = "[1][Something went wrong][OK|Cancel]";
+
+            intin[0] = 1;                   /* OK is the default */
+            addrin[0] = (long)alert;
+            check(call_aes(52, 1, 1, 1, 0), 1, "form_alert ends on OK");
+        }
+
         v_clsvwk(vwk);
         call_aes(19, 0, 1, 0, 0);           /* appl_exit */
     }

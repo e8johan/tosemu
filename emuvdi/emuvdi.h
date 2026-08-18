@@ -161,6 +161,17 @@ char *emuvdi_tedinfo_text(void *ted);
  */
 int16_t emuvdi_form_do(void *tree, int16_t start);
 
+/*
+ * Puts up an alert - the box with an icon, a line or three of text and up to
+ * three buttons - and answers with which button was pressed, counting from
+ * one. The string is the packed form an application writes it in, like
+ * "[1][This went wrong][OK|Cancel]".
+ *
+ * Unlike a dialog this saves what is underneath and puts it back, rather than
+ * reserving the screen with form_dial, so it draws onto the screen itself.
+ */
+int16_t emuvdi_form_alert(int16_t default_button, char *text);
+
 void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
                       int16_t x, int16_t y, int16_t w, int16_t h);
 

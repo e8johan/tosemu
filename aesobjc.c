@@ -34,6 +34,7 @@
 #include "emuvdi/emuvdi.h"
 #include "gfx.h"
 #include "tossystem.h"
+#include "m68k.h"
 
 /*
  * form_do - run a dialog until something ends it
@@ -100,6 +101,45 @@ uint32_t AES_objc_draw()
     aes_tree_done();
 
     return AES_E_OK;
+}
+
+/* form_alert **************************************************************/
+
+/*
+ * form_alert - the box with an icon, some text and up to three buttons
+ *
+ * The whole alert is one string, packed the way an application writes it:
+ * "[1][Something went wrong][OK|Cancel]". The AES takes it apart, builds a
+ * tree out of it, centres it and runs it, and answers with which button was
+ * pressed counting from one.
+ *
+ * The string is in the machine, so it comes across first. Unlike form_dial
+ * this does not reserve the screen: an alert saves what is under it and puts
+ * it back afterwards, which is a raster copy in each direction.
+ */
+uint32_t AES_form_alert()
+{
+    int16_t defbut = aes_intin(0);
+    uint32_t address = aes_addrin(0);
+    char text[512];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    default button %d, text at 0x%x\n", defbut, address);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    for (i = 0; i < (int)sizeof text - 1; i++)
+    {
+        text[i] = (char)m68k_read_memory_8(address + i);
+        if (text[i] == 0)
+            break;
+    }
+    text[i] = 0;
+
+    return (uint32_t)emuvdi_form_alert(defbut, text);
 }
 
 /* form_dial ***************************************************************/

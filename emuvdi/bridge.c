@@ -71,9 +71,24 @@ void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
     host_surface_select(base, width, height, planes);
 }
 
+/* The AES's own resource, aes/gem_rsc.c */
+void gem_rsc_init(void);
+void gem_rsc_fixit(void);
+
 void emuvdi_aes_init()
 {
     gsx_init();
+
+    /*
+     * The AES's own dialogs - its alerts, its file selector, the boxes it puts
+     * up when something goes wrong. They are compiled in rather than loaded,
+     * but they still have to be copied into memory that can be written and
+     * have their coordinates worked out for the character size the screen
+     * turned out to have, which is what these two do. Without them form_alert
+     * has a tree of null pointers to parse into.
+     */
+    gem_rsc_init();
+    gem_rsc_fixit();
 }
 
 void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
@@ -210,6 +225,14 @@ void emuvdi_tedinfo_set(void *t, char *text, char *tmplt, char *valid,
 char *emuvdi_tedinfo_text(void *t)
 {
     return ((TEDINFO *)t)->te_ptext;
+}
+
+/* EmuTOS's alert library, aes/gemfmalt.c */
+WORD fm_alert(WORD defbut, char *palstr);
+
+int16_t emuvdi_form_alert(int16_t default_button, char *text)
+{
+    return fm_alert(default_button, text);
 }
 
 /* EmuTOS's form library, aes/gemfmlib.c */
