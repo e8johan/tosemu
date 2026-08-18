@@ -117,6 +117,36 @@ uint16_t surface_planes(const struct surface *s)
     return s->planes;
 }
 
+int surface_write_ppm(const struct surface *s, const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    uint16_t x, y;
+
+    if (!f)
+        return 0;
+
+    fprintf(f, "P6\n%d %d\n255\n", s->width, s->height);
+
+    for (y = 0; y < s->height; y++)
+    {
+        for (x = 0; x < s->width; x++)
+        {
+            uint32_t argb = emuvdi_palette_argb(surface_pixel(s, x, y));
+            unsigned char rgb[3];
+
+            rgb[0] = (argb >> 16) & 0xff;
+            rgb[1] = (argb >> 8) & 0xff;
+            rgb[2] = argb & 0xff;
+
+            fwrite(rgb, 1, 3, f);
+        }
+    }
+
+    fclose(f);
+
+    return 1;
+}
+
 uint16_t surface_pixel(const struct surface *s, uint16_t x, uint16_t y)
 {
     const uint16_t *word;

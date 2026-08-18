@@ -141,7 +141,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message)
      * application draws and then waits, over and over, so this is where a
      * picture is finished as far as anyone watching is concerned.
      */
-    gfx_present();
+    gem_present();
 
     for (;;)
     {
@@ -220,7 +220,7 @@ uint32_t AES_evnt_timer()
     if (ms > 0)
         wait_for(MU_TIMER, ms, 0);
     else
-        gfx_present();
+        gem_present();
 
     return AES_E_OK;
 }

@@ -52,6 +52,10 @@
  * after saying why not, having halted. */
 int gem_start();
 
+/* Puts what has been drawn where it can be seen: a window if there is a
+ * compositor, and a file if TOSEMU_SCREENSHOT asked for one */
+void gem_present();
+
 /* The two halves, called from gem_trap */
 void aes_trap();
 void vdi_trap();

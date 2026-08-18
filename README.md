@@ -53,6 +53,15 @@ square rather than being smoothed into a modern one. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
+Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
+portable pixmap every time an application waits, which is how to look at what
+was drawn from a terminal, or from a test, or without a desktop at all.
+
+Note that GEM has colour 0 as white and colour 1 as black, which is the
+opposite way round from most things. Drawing colour 0 text in replace mode
+fills the cell with white and draws the glyph in white too, and the result is
+a solid block rather than a letter.
+
 The `make clean` target produces a clean source tree.
 
 

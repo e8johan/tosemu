@@ -131,14 +131,35 @@ int main(int argc, char **argv)
     check(pixel(150, 105), 0, "a clipped bar drew nothing outside it");
     vs_clip(handle, 0, pxy);
 
-    /* Text, which reaches the fonts and the blit written for this */
+    /*
+     * Text, which reaches the fonts and the blit written for this.
+     *
+     * Colour 1 is black and colour 0 is white, which is the way round GEM has
+     * it and the opposite of what is easy to assume. Drawing colour 0 text in
+     * replace mode would fill the cell with colour 0 and draw the glyph in
+     * colour 0 as well, which is a solid white block rather than a letter.
+     *
+     * So a cell has to be checked for both: some of it drawn and some of it
+     * not. Asking only whether anything was drawn passes on a solid block,
+     * which is how a letter that was never a letter went unnoticed.
+     */
     vswr_mode(handle, MD_REPLACE);
     vst_color(handle, 1);
     v_gtext(handle, 10, 150, "A");
-    for (i = 0; i < 16; i++)
-        if (pixel(10 + i % 8, 143 + i / 8))
-            break;
-    check(i < 16, 1, "v_gtext put something in the cell it was given");
+    {
+        short set = 0, clear = 0;
+        short cx, cy;
+
+        for (cy = 143; cy <= 150; cy++)
+            for (cx = 10; cx < 18; cx++)
+                if (pixel(cx, cy))
+                    set++;
+                else
+                    clear++;
+
+        check(set > 0, 1, "v_gtext drew some of the cell it was given");
+        check(clear > 0, 1, "and left the rest of it alone, so it is a glyph");
+    }
 
     /*
      * A raster copy, which is the one place a bitmap crosses between the

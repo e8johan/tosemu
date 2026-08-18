@@ -35,6 +35,7 @@
 #include "gem.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "gem_p.h"
 #include "tossystem.h"
@@ -91,6 +92,29 @@ int gem_start()
     started = 1;
 
     return 1;
+}
+
+/*
+ * Puts what has been drawn where it can be seen.
+ *
+ * Two ways of seeing it, and they are independent: a window, when there is a
+ * compositor, and a file, when somebody asked for one. The file is not a
+ * lesser version of the window - it is how the screen is looked at from a
+ * terminal, or from a test, or by whoever is reading this without a desktop
+ * in front of them.
+ */
+void gem_present()
+{
+    const char *shot;
+
+    if (!started)
+        return;
+
+    shot = getenv("TOSEMU_SCREENSHOT");
+    if (shot)
+        surface_write_ppm(screen, shot);
+
+    gfx_present();
 }
 
 void gem_trap()
