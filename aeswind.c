@@ -203,6 +203,22 @@ static void window_on_show(int16_t kind, int16_t *x, int16_t *y,
     *h -= hbox;
 }
 
+/* Draws a window's frame where it is now, with the sliders where they are
+ * now. Everything that moves one or changes the other comes through here, so
+ * that what is on the screen and what the window says are never two answers. */
+static void draw_frame(struct window *win)
+{
+    int16_t x = win->x, y = win->y, w = win->w, h = win->h;
+
+    if (!win->open)
+        return;
+
+    window_on_show(win->kind, &x, &y, &w, &h);
+
+    aes_frame_draw(win->kind, x, y, w, h,
+                   win->hslide, win->hslsize, win->vslide, win->vslsize);
+}
+
 static void border_to_work(int16_t kind, int16_t *x, int16_t *y,
                            int16_t *w, int16_t *h)
 {
@@ -339,6 +355,10 @@ uint32_t AES_wind_open()
      * goes in, frame and all, because that frame is GEM's and the application
      * put it there - what the desktop adds around the outside is its own.
      */
+    /* The frame first, so that there is something in the window the moment it
+     * appears rather than a flash of whatever was there before */
+    draw_frame(win);
+
     {
         int16_t sx = win->x, sy = win->y, sw = win->w, sh = win->h;
 
@@ -622,6 +642,8 @@ uint32_t AES_wind_set()
             win->w = aes_intin(4);
             win->h = aes_intin(5);
 
+            draw_frame(win);
+
             {
                 int16_t sx = win->x, sy = win->y, sw = win->w, sh = win->h;
 
@@ -630,20 +652,26 @@ uint32_t AES_wind_set()
             }
             break;
 
+        /* The four that move a slider or change how large it is. Each one
+         * changes what the frame looks like, so each one redraws it. */
         case WF_HSLIDE:
             win->hslide = aes_intin(2);
+            draw_frame(win);
             break;
 
         case WF_VSLIDE:
             win->vslide = aes_intin(2);
+            draw_frame(win);
             break;
 
         case WF_HSLSIZE:
             win->hslsize = aes_intin(2);
+            draw_frame(win);
             break;
 
         case WF_VSLSIZE:
             win->vslsize = aes_intin(2);
+            draw_frame(win);
             break;
 
         case WF_TOP:

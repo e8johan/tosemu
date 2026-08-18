@@ -72,6 +72,12 @@ void aes_set_addrout(int index, uint32_t value);
  * array and is written by appl_init alone */
 uint32_t aes_global();
 
+/* The frame round a window, aesframe.c */
+
+void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
+                    int16_t hslide, int16_t hslsize,
+                    int16_t vslide, int16_t vslsize);
+
 /* The scrap, aesscrp.c */
 
 uint32_t AES_scrp_read();

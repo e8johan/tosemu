@@ -77,19 +77,17 @@
   Atari character set with CRLF between lines, and the desktop's is UTF-8 with
   LF, and the two do not agree about anything above 127. SCRAP.IMG against
   image/png is a second conversion and a larger one; text first.
-- A GEM window's frame is not drawn. The desktop's frame stands in for the
-  title bar, which is right - it drags the window, closes it and says what it
-  is called, and drawing a second title bar inside the first is the picture of
-  another computer that having real windows was meant to avoid. What is left
-  undrawn is the rest: the information line, the sliders and their arrows, and
-  the size box. Nothing on the desktop does those jobs, so a window that asked
-  for sliders has room reserved for them and nothing in it, and no way to
-  scroll.
+- A window's frame is drawn but not worked. The sliders, arrows and size box
+  appear and the elevators sit where the application says, but clicking one
+  does nothing: the AES sees a press in the frame and has nowhere to send it.
+  Each gadget has a message - WM_ARROWED for an arrow, WM_HSLID and WM_VSLID
+  for dragging an elevator, WM_SIZED for the size box - and sending them means
+  working out which gadget a point is in, which is walking the same tree
+  aesframe.c builds. It should be built once and kept rather than built to
+  draw and thrown away, so that finding a gadget and drawing one agree by
+  construction.
 
-  EmuTOS builds the frame as an object tree in gemwmlib.c and draws it with
-  ob_draw, which would be the cheap way in, but the tree is built from its own
-  WINDOW table and window list - the kernel state aeswind.c keeps itself. Using
-  it means keeping both in step, which is more than drawing four gadgets is
-  worth. Drawing them against the VDI directly is the smaller piece of work and
-  is what should happen, taking the geometry from border_to_work, which already
-  knows where each part of the frame goes.
+- A window's information line is not drawn. It is one more object in the tree
+  aesframe.c builds, and the only reason it is not there is that it is
+  G_BOXTEXT and so needs a TEDINFO across the seam, where every other gadget
+  needs only a colour word.
