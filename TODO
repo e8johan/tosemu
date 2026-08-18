@@ -91,3 +91,12 @@
   aesframe.c builds, and the only reason it is not there is that it is
   G_BOXTEXT and so needs a TEDINFO across the seam, where every other gadget
   needs only a colour word.
+- The boxes an application drags about follow the mouse correctly but can only
+  be seen where a window is showing the screen they are drawn into. A rubber
+  band pulled out inside a window works; one pulled across the desktop is
+  followed correctly and seen by nobody, and the same goes for graf_movebox,
+  growbox and shrinkbox, which animate between two places that are usually not
+  both inside a window. This is the same gap dialogs had before form_dial gave
+  them windows of their own, and it closes the same way: a surface for the
+  drag that lives as long as the drag does, marked so the desktop leaves it
+  alone. It is the overlay surface in the plan.

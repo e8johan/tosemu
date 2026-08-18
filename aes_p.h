@@ -170,5 +170,13 @@ uint32_t AES_wind_update();
 
 uint32_t AES_graf_handle();
 uint32_t AES_graf_mouse();
+uint32_t AES_graf_rubberbox();
+uint32_t AES_graf_dragbox();
+uint32_t AES_graf_movebox();
+uint32_t AES_graf_growbox();
+uint32_t AES_graf_shrinkbox();
+uint32_t AES_graf_watchbox();
+uint32_t AES_graf_slidebox();
+uint32_t AES_graf_mkstate();
 
 #endif /* AES_P_H */

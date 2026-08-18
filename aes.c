@@ -138,14 +138,6 @@ uint32_t aes_global()
 #define AES_form_error      NULL
 #define AES_form_keybd      NULL
 #define AES_form_button     NULL
-#define AES_graf_rubberbox  NULL
-#define AES_graf_dragbox    NULL
-#define AES_graf_movebox    NULL
-#define AES_graf_growbox    NULL
-#define AES_graf_shrinkbox  NULL
-#define AES_graf_watchbox   NULL
-#define AES_graf_slidebox   NULL
-#define AES_graf_mkstate    NULL
 #define AES_fsel_input      NULL
 #define AES_fsel_exinput    NULL
 #define AES_wind_find       NULL

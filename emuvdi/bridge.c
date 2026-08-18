@@ -379,3 +379,95 @@ int emuvdi_implements(int16_t opcode)
 
     return 0;
 }
+
+
+/* EmuTOS's graphics library, aes/gemgrlib.c *******************************/
+
+void gr_rubbox(WORD xorigin, WORD yorigin, WORD wmin, WORD hmin,
+               WORD *pwend, WORD *phend);
+void gr_dragbox(WORD w, WORD h, WORD sx, WORD sy, GRECT *pc,
+                WORD *pdx, WORD *pdy);
+void gr_movebox(WORD w, WORD h, WORD srcx, WORD srcy, WORD dstx, WORD dsty);
+void gr_growbox(GRECT *po, GRECT *pt);
+void gr_shrinkbox(GRECT *po, GRECT *pt);
+WORD gr_watchbox(OBJECT *tree, WORD obj, WORD instate, WORD outstate);
+WORD gr_slidebox(OBJECT *tree, WORD parent, WORD obj, WORD isvert);
+
+/*
+ * The boxes an application drags about.
+ *
+ * All of them follow the mouse and draw an outline that is exclusive-ored on
+ * and off again, which is how a drag was shown on a machine that could not
+ * afford to redraw anything. The drawing goes into the screen the AES keeps,
+ * so it is visible wherever that screen is being shown - inside a window - and
+ * not where it is not. A rubber band pulled out inside a window is the case
+ * that matters and is the case that works.
+ */
+void emuvdi_graf_rubberbox(int16_t x, int16_t y, int16_t wmin, int16_t hmin,
+                           int16_t *w, int16_t *h)
+{
+    WORD ww = 0, hh = 0;
+
+    gr_rubbox(x, y, wmin, hmin, &ww, &hh);
+
+    *w = ww;
+    *h = hh;
+}
+
+void emuvdi_graf_dragbox(int16_t w, int16_t h, int16_t x, int16_t y,
+                         int16_t bx, int16_t by, int16_t bw, int16_t bh,
+                         int16_t *ex, int16_t *ey)
+{
+    GRECT bound;
+    WORD dx = 0, dy = 0;
+
+    bound.g_x = bx;
+    bound.g_y = by;
+    bound.g_w = bw;
+    bound.g_h = bh;
+
+    gr_dragbox(w, h, x, y, &bound, &dx, &dy);
+
+    *ex = dx;
+    *ey = dy;
+}
+
+void emuvdi_graf_movebox(int16_t w, int16_t h, int16_t sx, int16_t sy,
+                         int16_t dx, int16_t dy)
+{
+    gr_movebox(w, h, sx, sy, dx, dy);
+}
+
+void emuvdi_graf_growbox(int16_t sx, int16_t sy, int16_t sw, int16_t sh,
+                         int16_t fx, int16_t fy, int16_t fw, int16_t fh)
+{
+    GRECT from, to;
+
+    from.g_x = sx; from.g_y = sy; from.g_w = sw; from.g_h = sh;
+    to.g_x = fx; to.g_y = fy; to.g_w = fw; to.g_h = fh;
+
+    gr_growbox(&from, &to);
+}
+
+void emuvdi_graf_shrinkbox(int16_t fx, int16_t fy, int16_t fw, int16_t fh,
+                           int16_t sx, int16_t sy, int16_t sw, int16_t sh)
+{
+    GRECT from, to;
+
+    from.g_x = fx; from.g_y = fy; from.g_w = fw; from.g_h = fh;
+    to.g_x = sx; to.g_y = sy; to.g_w = sw; to.g_h = sh;
+
+    gr_shrinkbox(&from, &to);
+}
+
+int16_t emuvdi_graf_watchbox(void *tree, int16_t obj,
+                             int16_t instate, int16_t outstate)
+{
+    return gr_watchbox(tree, obj, instate, outstate);
+}
+
+int16_t emuvdi_graf_slidebox(void *tree, int16_t parent, int16_t obj,
+                             int16_t vertical)
+{
+    return gr_slidebox(tree, parent, obj, vertical);
+}

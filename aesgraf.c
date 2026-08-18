@@ -37,6 +37,8 @@
 #include "aes_p.h"
 
 #include "emuvdi/emuvdi.h"
+#include "gem_p.h"
+#include "gfx.h"
 
 uint32_t AES_graf_handle()
 {
@@ -128,6 +130,212 @@ uint32_t AES_graf_mouse()
              */
             shape = wanted;
             break;
+    }
+
+    return AES_E_OK;
+}
+
+
+/* The boxes an application drags about *************************************/
+
+/*
+ * All of these follow the mouse and draw an outline exclusive-ored on and off
+ * again, which is how a drag was shown on a machine that could not afford to
+ * redraw anything behind it. They are EmuTOS's, unchanged, because what they
+ * do is arithmetic and drawing and neither has anything to do with there being
+ * a compositor.
+ *
+ * Where the outline can be seen is another matter. It is drawn into the screen
+ * the AES keeps, and that screen is only shown where a window is showing it -
+ * so a rubber band pulled out inside a window works, and one pulled across the
+ * desktop is followed correctly and seen by nobody. That is the same gap the
+ * dialogs had before form_dial gave them windows, and it closes the same way.
+ */
+
+uint32_t AES_graf_rubberbox()
+{
+    int16_t x = aes_intin(0);
+    int16_t y = aes_intin(1);
+    int16_t wmin = aes_intin(2);
+    int16_t hmin = aes_intin(3);
+    int16_t w = 0, h = 0;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    from %d,%d, at least %dx%d\n", x, y, wmin, hmin);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    emuvdi_graf_rubberbox(x, y, wmin, hmin, &w, &h);
+
+    aes_set_intout(1, w);
+    aes_set_intout(2, h);
+
+    return AES_E_OK;
+}
+
+uint32_t AES_graf_dragbox()
+{
+    int16_t w = aes_intin(0);
+    int16_t h = aes_intin(1);
+    int16_t x = aes_intin(2);
+    int16_t y = aes_intin(3);
+    int16_t bx = aes_intin(4);
+    int16_t by = aes_intin(5);
+    int16_t bw = aes_intin(6);
+    int16_t bh = aes_intin(7);
+    int16_t ex = 0, ey = 0;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %dx%d from %d,%d inside %d,%d %dx%d\n",
+               w, h, x, y, bx, by, bw, bh);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    emuvdi_graf_dragbox(w, h, x, y, bx, by, bw, bh, &ex, &ey);
+
+    aes_set_intout(1, ex);
+    aes_set_intout(2, ey);
+
+    return AES_E_OK;
+}
+
+uint32_t AES_graf_movebox()
+{
+    FUNC_TRACE_ENTER
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    emuvdi_graf_movebox(aes_intin(0), aes_intin(1), aes_intin(2),
+                        aes_intin(3), aes_intin(4), aes_intin(5));
+
+    return AES_E_OK;
+}
+
+uint32_t AES_graf_growbox()
+{
+    FUNC_TRACE_ENTER
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    emuvdi_graf_growbox(aes_intin(0), aes_intin(1), aes_intin(2), aes_intin(3),
+                        aes_intin(4), aes_intin(5), aes_intin(6), aes_intin(7));
+
+    return AES_E_OK;
+}
+
+uint32_t AES_graf_shrinkbox()
+{
+    FUNC_TRACE_ENTER
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    emuvdi_graf_shrinkbox(aes_intin(0), aes_intin(1), aes_intin(2),
+                          aes_intin(3), aes_intin(4), aes_intin(5),
+                          aes_intin(6), aes_intin(7));
+
+    return AES_E_OK;
+}
+
+/*
+ * Watching a box until the mouse leaves it or the button comes up, which is
+ * how an application finds out that one of its own buttons was pressed rather
+ * than merely pointed at. form_do is a loop over this one.
+ */
+uint32_t AES_graf_watchbox()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t obj = aes_intin(0);
+    int16_t instate = aes_intin(1);
+    int16_t outstate = aes_intin(2);
+    void *host;
+    int16_t inside;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    tree 0x%x, object %d\n", address, obj);
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    inside = emuvdi_graf_watchbox(host, obj, instate, outstate);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    return (uint32_t)(uint16_t)inside;
+}
+
+/* Dragging a slider inside its bar, and answering where it ended up in
+ * thousandths of the way along */
+uint32_t AES_graf_slidebox()
+{
+    uint32_t address = aes_addrin(0);
+    int16_t parent = aes_intin(0);
+    int16_t obj = aes_intin(1);
+    int16_t vertical = aes_intin(2);
+    void *host;
+    int16_t where;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    tree 0x%x, %d inside %d, %s\n", address, obj, parent,
+               vertical ? "up and down" : "across");
+    }
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    host = aes_tree_in(address);
+    if (!host)
+        return AES_ERROR;
+
+    where = emuvdi_graf_slidebox(host, parent, obj, vertical);
+
+    aes_tree_out();
+    aes_tree_done();
+
+    gem_present();
+
+    return (uint32_t)(uint16_t)where;
+}
+
+/*
+ * graf_mkstate - where the mouse is and what is held down, right now
+ *
+ * Asked rather than waited for, which is the whole point of it: an application
+ * that is drawing wants to know where the pointer got to without stopping to
+ * wait for it to go somewhere.
+ */
+uint32_t AES_graf_mkstate()
+{
+    int16_t x = 0, y = 0, buttons = 0;
+
+    FUNC_TRACE_ENTER
+
+    if (!gem_start())
+        return AES_ERROR;
+
+    gfx_mouse(&x, &y, &buttons);
+
+    aes_set_intout(1, x);
+    aes_set_intout(2, y);
+    aes_set_intout(3, buttons);
+    aes_set_intout(4, (int16_t)gfx_kstate());
+
+    FUNC_TRACE_ARGS {
+        printf("    %d,%d buttons %d\n", x, y, buttons);
     }
 
     return AES_E_OK;

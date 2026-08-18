@@ -521,6 +521,19 @@ int main(int argc, char **argv)
         }
 
         /*
+         * Where the mouse is, asked rather than waited for. The test suite
+         * puts it somewhere with TOSEMU_CLICKS, so this is also what says
+         * that injected input and the AES agree about where it went.
+         */
+        {
+            short mx = -1, my = -1, mb = -1, ks = -1;
+
+            check(graf_mkstate(&mx, &my, &mb, &ks), 1,
+                  "graf_mkstate answers");
+            check(mx >= 0 && my >= 0, 1, "with a position on the screen");
+        }
+
+        /*
          * A resource file.
          *
          * Written here rather than checked in, because what is being tested is

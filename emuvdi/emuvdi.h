@@ -181,6 +181,23 @@ void emuvdi_menu_active(int16_t *x, int16_t *y, int16_t *w, int16_t *h);
 int16_t emuvdi_menu_change(void *tree, int16_t object, uint16_t bit,
                            int16_t set, int16_t draw, int16_t only_if_enabled);
 
+/* The boxes an application drags about, aes/gemgrlib.c */
+void emuvdi_graf_rubberbox(int16_t x, int16_t y, int16_t wmin, int16_t hmin,
+                           int16_t *w, int16_t *h);
+void emuvdi_graf_dragbox(int16_t w, int16_t h, int16_t x, int16_t y,
+                         int16_t bx, int16_t by, int16_t bw, int16_t bh,
+                         int16_t *ex, int16_t *ey);
+void emuvdi_graf_movebox(int16_t w, int16_t h, int16_t sx, int16_t sy,
+                         int16_t dx, int16_t dy);
+void emuvdi_graf_growbox(int16_t sx, int16_t sy, int16_t sw, int16_t sh,
+                         int16_t fx, int16_t fy, int16_t fw, int16_t fh);
+void emuvdi_graf_shrinkbox(int16_t fx, int16_t fy, int16_t fw, int16_t fh,
+                           int16_t sx, int16_t sy, int16_t sw, int16_t sh);
+int16_t emuvdi_graf_watchbox(void *tree, int16_t obj,
+                             int16_t instate, int16_t outstate);
+int16_t emuvdi_graf_slidebox(void *tree, int16_t parent, int16_t obj,
+                             int16_t vertical);
+
 /*
  * Puts up an alert - the box with an icon, a line or three of text and up to
  * three buttons - and answers with which button was pressed, counting from
