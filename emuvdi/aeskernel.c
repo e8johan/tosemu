@@ -404,15 +404,27 @@ void wm_update(WORD beg_update)
  * Painting the desktop behind everything, and telling a window it has been
  * uncovered. Both are the window manager's, which is not written yet.
  */
+/*
+ * Painting the desktop, and painting what a window uncovered.
+ *
+ * Both are nothing to do here, and not because they are unfinished. They exist
+ * because every application drew into one screen: something that went away
+ * left a hole, and the AES filled it by painting the desktop back and then
+ * asking whoever was underneath to paint themselves again.
+ *
+ * Here a window is a window of the desktop's. What is behind one is whatever
+ * the person has behind it, which is theirs and not ours to paint, and a thing
+ * that goes away leaves no hole because it was never a hole in anything. The
+ * AES asks after every dialog closes and the answer each time is that there is
+ * nothing to put back.
+ */
 void w_drawdesk(GRECT *pc)
 {
-    needs_kernel("drawing the desktop");
     (void)pc;
 }
 
 void w_update(WORD bottom, GRECT *pt, WORD top, BOOL moved)
 {
-    needs_kernel("redrawing what a window uncovered");
     (void)bottom; (void)pt; (void)top; (void)moved;
 }
 

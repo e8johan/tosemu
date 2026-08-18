@@ -123,8 +123,6 @@ uint32_t aes_global()
 #define AES_menu_istart     NULL
 #define AES_menu_settings   NULL
 #define AES_objc_sysvar     NULL
-#define AES_fsel_input      NULL
-#define AES_fsel_exinput    NULL
 #define AES_rsrc_rcfix      NULL
 #define AES_shel_get        NULL
 #define AES_shel_put        NULL

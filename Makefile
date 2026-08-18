@@ -1,7 +1,7 @@
 # Source files for TOS emulator
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
-              gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
+              gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -25,9 +25,9 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/bios/fnt_st_8x16.c \
               $(EMUTOS)/bios/fnt_off_6x6.c $(EMUTOS)/bios/fnt_off_8x8.c \
               $(EMUTOS)/util/intmath.c \
-              $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
+              $(EMUTOS)/util/miscutil.c $(EMUTOS)/util/rectfunc.c $(EMUTOS)/util/optimize.c \
               $(EMUTOS)/aes/gemgsxif.c \
-              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemfmlib.c \
+              $(EMUTOS)/aes/gemobed.c $(EMUTOS)/aes/gemfslib.c $(EMUTOS)/aes/gemfmlib.c \
               $(EMUTOS)/aes/gemrslib.c \
               $(EMUTOS)/aes/gemgraf.c $(EMUTOS)/aes/gemgrlib.c \
               $(EMUTOS)/aes/gemwrect.c $(EMUTOS)/aes/gem_rsc.c \
@@ -45,7 +45,7 @@ WAYLANDHEADERS = gen/xdg-shell-client-protocol.h \
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 

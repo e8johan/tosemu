@@ -449,3 +449,13 @@ void host_surface_select(void *base, UWORD width, UWORD height, UWORD planes)
     /* ST_LOW is four planes, ST_MEDIUM two, ST_HIGH one */
     host_rez = (planes >= 4) ? 0 : ((planes == 2) ? 1 : 2);
 }
+
+/*
+ * Which drives exist, one bit each from A.
+ *
+ * The file selector shows a row of them to choose between, so it has to be
+ * told. It is a variable rather than a call because that is what EmuTOS reads,
+ * and it is filled in when the AES starts from the drives tosemu is actually
+ * presenting rather than from a guess about which those are.
+ */
+LONG drvbits;

@@ -31,6 +31,9 @@
 #ifndef GEMDOS_H
 #define GEMDOS_H
 
+/* DTA, which is where a directory walk puts what it found */
+#include "bdosdefs.h"
+
 void *dos_alloc_anyram(LONG nbytes);
 WORD dos_free(void *maddr);
 
@@ -44,5 +47,17 @@ LONG dos_open(char *pname, WORD access);
 WORD dos_close(WORD handle);
 LONG dos_read(WORD handle, LONG cnt, void *pbuffer);
 LONG dos_lseek(WORD handle, WORD smode, LONG sofst);
+
+/*
+ * Walking a directory, which the file selector does and nothing else in the
+ * AES does. These are GEMDOS's calls answered against the host filesystem -
+ * see hostfs.c for why they are not tosemu's own.
+ */
+void dos_sdta(DTA *where);
+DTA *dos_gdta(void);
+LONG dos_sfirst(char *pattern, WORD attributes);
+LONG dos_snext(void);
+WORD dos_gdrv(void);
+LONG dos_avail_anyram(void);
 
 #endif /* GEMDOS_H */

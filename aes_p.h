@@ -78,6 +78,11 @@ void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
                     int16_t hslide, int16_t hslsize,
                     int16_t vslide, int16_t vslsize);
 
+/* The file selector, aesfsel.c */
+
+uint32_t AES_fsel_input();
+uint32_t AES_fsel_exinput();
+
 /* The scrap, aesscrp.c */
 
 uint32_t AES_scrp_read();

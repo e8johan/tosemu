@@ -126,6 +126,27 @@ void host_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
 }
 
+/*
+ * tosemu's own, which this test does not link: it builds the port against the
+ * host and nothing else, so the two places the port reaches back into the
+ * emulator are answered here. A directory that cannot be found and a machine
+ * with no drives are the truthful answers for a program with no filesystem.
+ */
+int32_t tos_path_to_host(const char *tos_path, char *host_path)
+{
+    (void)tos_path;
+
+    if (host_path)
+        host_path[0] = 0;
+
+    return -34;         /* EPTHNF */
+}
+
+uint32_t drive_map(void)
+{
+    return 0;
+}
+
 void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
     (void)x; (void)y; (void)width; (void)height;

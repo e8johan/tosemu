@@ -45,6 +45,13 @@
 #include "struct.h"
 #include "gemlib.h"
 #include "gemgsxif.h"
+#include "gemobed.h"
+#include "gem_rsc.h"
+#include "aeskernel.h"
+#include "tosvars.h"
+
+/* tosemu's own, for which drives there are */
+#include "../drives.h"
 #include "gsxdefs.h"
 
 #include <string.h>
@@ -106,6 +113,10 @@ void emuvdi_aes_init()
      * been taken away.
      */
     gsx_malloc();
+
+    /* Which drives the file selector will offer, taken from the ones tosemu
+     * is presenting rather than assumed */
+    drvbits = (LONG)drive_map();
 }
 
 void emuvdi_graf_handle(int16_t *handle, int16_t *wchar, int16_t *hchar,
@@ -563,6 +574,57 @@ int16_t emuvdi_objc_edit(void *tree, int16_t obj, int16_t key,
     answer = ob_edit(tree, obj, key, &i, what);
 
     *index = i;
+
+    return answer;
+}
+
+
+/* EmuTOS's file selector, aes/gemfslib.c **********************************/
+
+WORD fs_input(char *pipath, char *pisel, WORD *pbutton, char *pilabel);
+void fs_start(void);
+
+/*
+ * Putting the file selector up.
+ *
+ * The path and the name go in and come back changed, because that is how the
+ * call answers: the application hands over the buffers it will read afterwards
+ * and the AES fills them in. The button says whether anything was chosen at
+ * all, which is a different question from whether the call worked.
+ */
+int16_t emuvdi_fsel_input(char *path, char *name, int16_t *button,
+                          char *label)
+{
+    WORD chosen = 0;
+    WORD answer;
+
+    /* Its own dialog has to be laid out for the character size the screen
+     * turned out to have, the same as any other tree out of the AES resource */
+    fs_start();
+
+    /*
+     * And a window to put it in.
+     *
+     * The selector calls fm_dial itself rather than going out through the trap
+     * and back, so the promotion an application's own dialogs get from
+     * form_dial does not happen to this one - it would draw into the screen
+     * the AES keeps and be seen by nobody. Its rectangle is worked out the
+     * same way it works its own out, which is the tree centred on the screen.
+     */
+    {
+        OBJECT *tree = rs_trees[FSELECTR];
+        GRECT where;
+
+        ob_center(tree, &where);
+
+        host_dialog_begin(where.g_x, where.g_y, where.g_w, where.g_h);
+    }
+
+    answer = fs_input(path, name, &chosen, label);
+
+    host_dialog_end();
+
+    *button = chosen;
 
     return answer;
 }

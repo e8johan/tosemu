@@ -216,6 +216,9 @@ int16_t emuvdi_form_error(int16_t which);
 int16_t emuvdi_objc_edit(void *tree, int16_t obj, int16_t key,
                          int16_t *index, int16_t what);
 
+int16_t emuvdi_fsel_input(char *path, char *name, int16_t *button,
+                          char *label);
+
 void emuvdi_set_clip(int16_t x, int16_t y, int16_t w, int16_t h);
 void emuvdi_objc_offset(void *tree, int16_t obj, int16_t *x, int16_t *y);
 int16_t emuvdi_objc_find(void *tree, int16_t start, int16_t depth,
