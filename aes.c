@@ -111,7 +111,6 @@ uint32_t aes_global()
  * says what an application was trying to do rather than only that it failed.
  */
 #define AES_appl_read       NULL
-#define AES_appl_write      NULL
 #define AES_appl_find       NULL
 #define AES_appl_tplay      NULL
 #define AES_appl_trecord    NULL
@@ -122,9 +121,6 @@ uint32_t aes_global()
 #define AES_evnt_keybd      NULL
 #define AES_evnt_button     NULL
 #define AES_evnt_mouse      NULL
-#define AES_evnt_mesag      NULL
-#define AES_evnt_timer      NULL
-#define AES_evnt_multi      NULL
 #define AES_evnt_dclick     NULL
 #define AES_menu_bar        NULL
 #define AES_menu_icheck     NULL

@@ -31,6 +31,7 @@
 #include "aes_p.h"
 
 #include "gem_p.h"
+#include "tossystem.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -42,6 +43,7 @@ static int16_t ap_id = -1;
 void aes_appl_reset()
 {
     ap_id = -1;
+    aes_evnt_reset();
 }
 
 /*
@@ -108,6 +110,54 @@ uint32_t AES_appl_init()
     }
 
     return ap_id;
+}
+
+/*
+ * appl_write - send a message to an application
+ *
+ * The identifier says which, and with one application running it can only be
+ * this one. That is not as useless as it sounds: an application posts messages
+ * to itself to drive its own redraws, and the AES posts to it for everything
+ * from a menu selection to being told to quit. Routing between applications is
+ * what the daemon will add, and that changes where a message goes rather than
+ * what a message is.
+ */
+uint32_t AES_appl_write()
+{
+    int16_t to = aes_intin(0);
+    int16_t length = aes_intin(1);
+    uint32_t buffer = aes_addrin(0);
+    int16_t message[8];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    to: %d, length: %d\n", to, length);
+    }
+
+    if (ap_id < 0 || to != ap_id)
+    {
+        /* There is nobody else to send to yet, and saying so is better than
+         * dropping it silently */
+        halt_execution();
+        printf("AES appl_write to application %d, and only %d is running\n",
+               to, ap_id);
+        return AES_ERROR;
+    }
+
+    /* A message is always eight words. A length saying otherwise is an
+     * application built for an AES that had longer ones, which this is not. */
+    if (length != (int16_t)sizeof message)
+    {
+        halt_execution();
+        printf("AES appl_write of %d bytes, and a message is %d\n",
+               length, (int)sizeof message);
+        return AES_ERROR;
+    }
+
+    for (i = 0; i < 8; i++)
+        message[i] = (int16_t)m68k_read_memory_16(buffer + 2*i);
+
+    return aes_message_post(message) ? AES_E_OK : AES_ERROR;
 }
 
 uint32_t AES_appl_exit()

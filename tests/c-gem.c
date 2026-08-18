@@ -167,6 +167,66 @@ int main(int argc, char **argv)
         check(appl_exit(), 1, "appl_exit after closing the workstation");
     }
 
+    /*
+     * Waiting. An application spends nearly all its life in evnt_multi, and
+     * the two sources that exist so far are the timer and its own messages.
+     *
+     * These go through the parameter block rather than the bindings, because
+     * evnt_multi takes twenty three arguments and the bindings disagree about
+     * how many, which is a question about gemlib rather than about the AES.
+     */
+    {
+        static short msg[8], got[8];
+        short which;
+
+        id = call_aes(10, 0, 1, 0, 0);      /* appl_init */
+
+        /* A message to itself, which is how an application drives its own
+         * redraws, and how the AES will reach it once there is more of one */
+        for (i = 0; i < 8; i++)
+            msg[i] = (short)(100 + i);
+
+        intin[0] = id;                      /* to */
+        intin[1] = 16;                      /* a message is eight words */
+        addrin[0] = (long)msg;
+        check(call_aes(12, 2, 1, 1, 0), 1, "appl_write takes a message");
+
+        for (i = 0; i < 8; i++)
+            got[i] = 0;
+        addrin[0] = (long)got;
+        check(call_aes(23, 0, 1, 1, 0), 1, "evnt_mesag gives one back");
+        check(got[0], 100, "and it is the message that was sent");
+        check(got[7], 107, "all eight words of it");
+
+        /* evnt_multi with a message already waiting, so what comes back is
+         * the message and not the timer */
+        intin[0] = id;
+        intin[1] = 16;
+        addrin[0] = (long)msg;
+        call_aes(12, 2, 1, 1, 0);
+
+        for (i = 0; i < 16; i++)
+            intin[i] = 0;
+        intin[0] = MU_MESAG|MU_TIMER;
+        intin[14] = 1000;                   /* a second, which it will not use */
+        addrin[0] = (long)got;
+        which = call_aes(25, 16, 7, 1, 0);
+        check(which & MU_MESAG, MU_MESAG, "evnt_multi reports the message");
+        check(which & MU_TIMER, 0, "and not the timer it did not wait for");
+
+        /* And with nothing waiting, the timer is what happens */
+        for (i = 0; i < 16; i++)
+            intin[i] = 0;
+        intin[0] = MU_MESAG|MU_TIMER;
+        intin[14] = 50;                     /* short enough for a test */
+        addrin[0] = (long)got;
+        which = call_aes(25, 16, 7, 1, 0);
+        check(which & MU_TIMER, MU_TIMER, "evnt_multi times out when nothing comes");
+        check(which & MU_MESAG, 0, "with no message to report");
+
+        call_aes(19, 0, 1, 0, 0);           /* appl_exit */
+    }
+
     /* The VDI has its own parameter block, a different shape from the AES one.
      * v_updwk is a call with nothing to do rather than one that is missing, so
      * it has to come back rather than stop the emulator. */

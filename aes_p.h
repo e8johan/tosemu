@@ -77,7 +77,20 @@ uint32_t aes_global();
 void aes_appl_reset();
 
 uint32_t AES_appl_init();
+uint32_t AES_appl_write();
 uint32_t AES_appl_exit();
+
+/* Event functions, aesevnt.c */
+
+void aes_evnt_reset();
+
+/* Puts a message where the application waiting on evnt_mesag will find it.
+ * Returns 0 when the queue is full. */
+int aes_message_post(const int16_t *message);
+
+uint32_t AES_evnt_timer();
+uint32_t AES_evnt_mesag();
+uint32_t AES_evnt_multi();
 
 /* Graphics functions, aesgraf.c */
 
