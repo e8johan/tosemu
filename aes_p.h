@@ -92,6 +92,19 @@ uint32_t AES_evnt_timer();
 uint32_t AES_evnt_mesag();
 uint32_t AES_evnt_multi();
 
+/* Window functions, aeswind.c */
+
+void aes_wind_reset();
+
+uint32_t AES_wind_create();
+uint32_t AES_wind_open();
+uint32_t AES_wind_close();
+uint32_t AES_wind_delete();
+uint32_t AES_wind_get();
+uint32_t AES_wind_set();
+uint32_t AES_wind_calc();
+uint32_t AES_wind_update();
+
 /* Graphics functions, aesgraf.c */
 
 uint32_t AES_graf_handle();

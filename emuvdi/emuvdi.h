@@ -104,6 +104,10 @@ void emuvdi_control_set_pointer(int16_t *control, int index, void *p);
  */
 uint32_t emuvdi_palette_argb(int index);
 
+/* How large the screen the AES lays windows out on is */
+int16_t emuvdi_screen_width();
+int16_t emuvdi_screen_height();
+
 /*
  * Whether the VDI has a function for this opcode. Everything it does not is
  * either a call no driver ever implemented or one of the GDOS extensions,

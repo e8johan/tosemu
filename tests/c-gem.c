@@ -227,6 +227,76 @@ int main(int argc, char **argv)
         call_aes(19, 0, 1, 0, 0);           /* appl_exit */
     }
 
+    /*
+     * Windows. The AES owns where one is and what is drawn around it, and the
+     * application owns what is inside; wind_calc is how the two are converted
+     * between, and getting that wrong is how a program draws over its own
+     * title bar.
+     */
+    {
+        short handle, wx, wy, ww, wh;
+
+        id = call_aes(10, 0, 1, 0, 0);      /* appl_init */
+
+        /* How large the desktop is, which is what an application asks before
+         * deciding where to put anything */
+        intin[0] = 0;                       /* the desktop */
+        intin[1] = 4;                       /* WF_WORKXYWH */
+        call_aes(104, 6, 5, 0, 0);
+        check(intout[3] > 0 && intout[4] > 0, 1, "wind_get sizes the desktop");
+
+        /* A window with a title, a closer and a mover */
+        intin[0] = 0x0001|0x0002|0x0008;
+        intin[1] = 0; intin[2] = 0; intin[3] = 320; intin[4] = 200;
+        handle = call_aes(100, 5, 1, 0, 0); /* wind_create */
+        check(handle > 0, 1, "wind_create gives a handle");
+
+        intin[0] = handle;
+        intin[1] = 20; intin[2] = 20; intin[3] = 200; intin[4] = 100;
+        check(call_aes(101, 5, 1, 0, 0), 1, "wind_open opens it");
+
+        /* The whole of it is what it was opened with */
+        intin[0] = handle; intin[1] = 5;    /* WF_CURRXYWH */
+        call_aes(104, 6, 5, 0, 0);
+        check(intout[1], 20, "wind_get gives back where it was put");
+        check(intout[3], 200, "and how wide it was made");
+
+        /* The part to draw in is smaller, by the title bar */
+        intin[0] = handle; intin[1] = 4;    /* WF_WORKXYWH */
+        call_aes(104, 6, 5, 0, 0);
+        wx = intout[1]; wy = intout[2]; ww = intout[3]; wh = intout[4];
+        check(wy > 20, 1, "the work area starts below the title bar");
+        check(wh < 100, 1, "and is shorter than the window by as much");
+        check(wx, 20, "with nothing taken off the left");
+        check(ww, 200, "or the right, there being no slider");
+
+        /* wind_calc has to agree with wind_get, in both directions */
+        intin[0] = 1;                       /* border to work */
+        intin[1] = 0x0001|0x0002|0x0008;
+        intin[2] = 20; intin[3] = 20; intin[4] = 200; intin[5] = 100;
+        call_aes(108, 6, 5, 0, 0);
+        check(intout[2], wy, "wind_calc agrees about where the work area is");
+        check(intout[4], wh, "and about how tall");
+
+        intin[0] = 0;                       /* work to border */
+        intin[1] = 0x0001|0x0002|0x0008;
+        intin[2] = wx; intin[3] = wy; intin[4] = ww; intin[5] = wh;
+        call_aes(108, 6, 5, 0, 0);
+        check(intout[2], 20, "and converts back to where the window is");
+        check(intout[4], 100, "and how tall it is");
+
+        /* Closing is not deleting: a closed window can be opened again */
+        intin[0] = handle;
+        check(call_aes(102, 1, 1, 0, 0), 1, "wind_close closes it");
+        intin[0] = handle;
+        check(call_aes(103, 1, 1, 0, 0), 1, "wind_delete lets it go");
+
+        intin[0] = handle;
+        check(call_aes(104, 6, 5, 0, 0), 0, "and then it is not a window");
+
+        call_aes(19, 0, 1, 0, 0);           /* appl_exit */
+    }
+
     /* The VDI has its own parameter block, a different shape from the AES one.
      * v_updwk is a call with nothing to do rather than one that is missing, so
      * it has to come back rather than stop the emulator. */

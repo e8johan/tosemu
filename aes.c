@@ -161,15 +161,7 @@ uint32_t aes_global()
 #define AES_scrp_write      NULL
 #define AES_fsel_input      NULL
 #define AES_fsel_exinput    NULL
-#define AES_wind_create     NULL
-#define AES_wind_open       NULL
-#define AES_wind_close      NULL
-#define AES_wind_delete     NULL
-#define AES_wind_get        NULL
-#define AES_wind_set        NULL
 #define AES_wind_find       NULL
-#define AES_wind_update     NULL
-#define AES_wind_calc       NULL
 #define AES_wind_new        NULL
 #define AES_rsrc_load       NULL
 #define AES_rsrc_free       NULL

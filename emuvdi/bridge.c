@@ -122,6 +122,16 @@ void emuvdi_control_set_pointer(int16_t *control, int index, void *p)
     *(uint32_t *)&control[index] = (uint32_t)(uintptr_t)p;
 }
 
+int16_t emuvdi_screen_width()
+{
+    return V_REZ_HZ;
+}
+
+int16_t emuvdi_screen_height()
+{
+    return V_REZ_VT;
+}
+
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
