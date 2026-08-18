@@ -77,3 +77,19 @@
   Atari character set with CRLF between lines, and the desktop's is UTF-8 with
   LF, and the two do not agree about anything above 127. SCRAP.IMG against
   image/png is a second conversion and a larger one; text first.
+- A GEM window's frame is not drawn. The desktop's frame stands in for the
+  title bar, which is right - it drags the window, closes it and says what it
+  is called, and drawing a second title bar inside the first is the picture of
+  another computer that having real windows was meant to avoid. What is left
+  undrawn is the rest: the information line, the sliders and their arrows, and
+  the size box. Nothing on the desktop does those jobs, so a window that asked
+  for sliders has room reserved for them and nothing in it, and no way to
+  scroll.
+
+  EmuTOS builds the frame as an object tree in gemwmlib.c and draws it with
+  ob_draw, which would be the cheap way in, but the tree is built from its own
+  WINDOW table and window list - the kernel state aeswind.c keeps itself. Using
+  it means keeping both in step, which is more than drawing four gadgets is
+  worth. Drawing them against the VDI directly is the smaller piece of work and
+  is what should happen, taking the geometry from border_to_work, which already
+  knows where each part of the frame goes.

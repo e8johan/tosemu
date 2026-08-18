@@ -166,6 +166,43 @@ static struct window *window_at(int16_t handle)
  * work area, which is how a GEM application draws on the desktop without a
  * frame around it.
  */
+/*
+ * The part of a window the desktop shows.
+ *
+ * Not the whole of it. A GEM window carries its own frame - a title bar to
+ * drag it by, a close box, sliders - and the desktop this one is shown on
+ * carries a frame of its own round the outside. Showing both means a title bar
+ * inside a title bar, which is exactly the picture of another computer that
+ * having real windows was meant to avoid.
+ *
+ * So the title bar is left out and the desktop's stands in for it: it drags
+ * the window, it closes it, and it says what the window is called, which are
+ * the three things GEM's did. Everything else in the frame stays, because
+ * nothing on the desktop does those jobs - an information line says what the
+ * application wants it to say, and sliders scroll a document rather than a
+ * window.
+ *
+ * Nothing here changes what the application sees. It asked for a window of a
+ * certain size at a certain place in the screen the AES keeps, and that is
+ * what it has; this is only which rectangle of that screen is put in front of
+ * somebody.
+ */
+static void window_on_show(int16_t kind, int16_t *x, int16_t *y,
+                           int16_t *w, int16_t *h)
+{
+    int16_t handle, wchar, hchar, wbox, hbox;
+
+    (void)x;
+
+    if (!(kind & W_TITLE))
+        return;
+
+    emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
+
+    *y += hbox;
+    *h -= hbox;
+}
+
 static void border_to_work(int16_t kind, int16_t *x, int16_t *y,
                            int16_t *w, int16_t *h)
 {
@@ -302,7 +339,12 @@ uint32_t AES_wind_open()
      * goes in, frame and all, because that frame is GEM's and the application
      * put it there - what the desktop adds around the outside is its own.
      */
-    gfx_window_open(aes_intin(0), win->title, win->x, win->y, win->w, win->h);
+    {
+        int16_t sx = win->x, sy = win->y, sw = win->w, sh = win->h;
+
+        window_on_show(win->kind, &sx, &sy, &sw, &sh);
+        gfx_window_open(aes_intin(0), win->title, sx, sy, sw, sh);
+    }
 
     /*
      * And tell the application to paint it.
@@ -580,7 +622,12 @@ uint32_t AES_wind_set()
             win->w = aes_intin(4);
             win->h = aes_intin(5);
 
-            gfx_window_move(handle, win->x, win->y, win->w, win->h);
+            {
+                int16_t sx = win->x, sy = win->y, sw = win->w, sh = win->h;
+
+                window_on_show(win->kind, &sx, &sy, &sw, &sh);
+                gfx_window_move(handle, sx, sy, sw, sh);
+            }
             break;
 
         case WF_HSLIDE:
