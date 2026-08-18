@@ -142,10 +142,18 @@ static uint16_t scancode_for(xkb_keysym_t sym)
         case XKB_KEY_F8:        return 0x42;
         case XKB_KEY_F9:        return 0x43;
         case XKB_KEY_F10:       return 0x44;
-        /* An ST has Undo and Help where a modern keyboard has neither, so the
-         * two least missed keys stand in for them */
-        case XKB_KEY_End:       return 0x61;    /* Undo */
-        case XKB_KEY_Page_Down: return 0x62;    /* Help */
+        /*
+         * An ST has Undo and Help, and a modern keyboard has neither. Print
+         * Screen and Scroll Lock stand in for them: both are within reach and
+         * neither means anything to a GEM application otherwise.
+         *
+         * A compositor may well want Print Screen for itself, in which case it
+         * never arrives here and Undo has to be reached some other way. That
+         * is the compositor's to decide, not ours.
+         */
+        case XKB_KEY_Print:
+        case XKB_KEY_Sys_Req:     return 0x61;  /* Undo */
+        case XKB_KEY_Scroll_Lock: return 0x62;  /* Help */
         default:                return 0;
     }
 }
@@ -273,15 +281,21 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
     sym = xkb_state_key_get_one_sym(w.xkb_state, code);
 
     /*
-     * The number the compositor gave, when it is one the ST would have given
-     * too. A GEM application reads this half to tell keys apart: a menu
-     * shortcut is a scan code, not a letter, so leaving it empty makes every
+     * What the key means first, where it is second.
+     *
+     * The positional rule is right for the main block and wrong for anything
+     * standing in for a key an ST had and this keyboard does not. Scroll Lock
+     * is the case that decides the order: it sits at 0x46, inside the block,
+     * so asking where it is would answer before anyone asked what it was for.
+     *
+     * A GEM application reads this half to tell keys apart. A menu shortcut is
+     * a scan code rather than a letter, so leaving it empty makes every
      * shortcut in every application unreachable.
      */
-    if (key >= 1 && key < 0x54)
+    scan = scancode_for(sym);
+
+    if (scan == 0 && key >= 1 && key < 0x54)
         scan = (uint16_t)key;
-    else
-        scan = scancode_for(sym);
 
     /* Anything that types a single byte types it. GEM predates any of the
      * ways of saying more than one. */
