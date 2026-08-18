@@ -651,13 +651,20 @@ uint32_t AES_wind_update()
 
     /*
      * Taking and giving back the right to draw outside one's own windows, and
-     * the right to the mouse while doing it. Both are locks held against the
-     * other applications, and there is one application, so taking one always
-     * succeeds and giving it back is nothing to do.
+     * the right to the mouse while doing it. Both were locks held against the
+     * other applications, and taking one always succeeds here.
      *
-     * It stops being nothing the moment the daemon exists: the lock is
-     * genuinely shared then, and it is what stops two applications drawing
-     * over each other's menus.
+     * The daemon did not change that, which is worth saying because it was
+     * expected to. The lock existed because every application drew into one
+     * screen: two of them painting outside their windows at once painted over
+     * each other. Here each application has a screen of its own and what
+     * reaches the desktop are its windows, so there is nothing for the lock to
+     * protect - two applications cannot reach each other'"'"'s pixels to spoil
+     * them. Building a lock across a socket for that would be ceremony.
+     *
+     * It becomes real again when windows of different applications overlap and
+     * have to be composed from one surface rather than shown side by side. See
+     * the TODO.
      */
     return AES_E_OK;
 }

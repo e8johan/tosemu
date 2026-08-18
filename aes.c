@@ -146,15 +146,11 @@ uint32_t aes_global()
 #define AES_graf_watchbox   NULL
 #define AES_graf_slidebox   NULL
 #define AES_graf_mkstate    NULL
-#define AES_scrp_read       NULL
-#define AES_scrp_write      NULL
 #define AES_fsel_input      NULL
 #define AES_fsel_exinput    NULL
 #define AES_wind_find       NULL
 #define AES_wind_new        NULL
 #define AES_rsrc_rcfix      NULL
-#define AES_shel_read       NULL
-#define AES_shel_write      NULL
 #define AES_shel_get        NULL
 #define AES_shel_put        NULL
 #define AES_shel_find       NULL

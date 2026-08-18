@@ -78,6 +78,20 @@ int main(int argc, char **argv)
         check(message[1] > 0, 1, "and says which application sent it");
         check(message[3], 0x1234, "with the words it was sent with intact");
 
+        /*
+         * The scrap, which the other one said where to find before it sent
+         * the message. It is the daemon holding one fact both ends have to
+         * have the same answer for, so reading it here is the whole test.
+         */
+        {
+            char where[128];
+
+            memset(where, 0, sizeof where);
+            check(scrp_read(where), 1, "scrp_read answers once there is a scrap");
+            check(strcmp(where, "C:\\SCRAP\\"), 0,
+                  "and it is where the other application put it");
+        }
+
         printf("1..%d\n", n);
     }
     else
@@ -102,6 +116,20 @@ int main(int argc, char **argv)
         message[0] = TOKEN;
         message[1] = id;
         message[3] = 0x1234;
+
+        /* Where the scrap is, which the other one reads back */
+        check(scrp_write("C:\\SCRAP\\"), 1, "scrp_write says where the scrap is");
+
+        /*
+         * Starting another program. test-Pterm0 stops as soon as it starts,
+         * which is what makes it safe to start from a test - what is being
+         * checked is that the AES took the request and found the program,
+         * not what the program then did.
+         */
+        check(shel_write(1, 1, 1, "test-Pterm0", ""), 1,
+              "shel_write starts a program");
+        check(shel_write(1, 1, 1, "NOSUCH.PRG", ""), 0,
+              "and answers nought for one that is not there");
 
         check(appl_write(other, 16, message), 1, "appl_write took it");
 

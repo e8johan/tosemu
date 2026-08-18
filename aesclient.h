@@ -21,6 +21,7 @@
 #ifndef AESCLIENT_H
 #define AESCLIENT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /*
@@ -36,6 +37,10 @@
 /* Connects, if there is one to connect to. Says whether there is. */
 int aes_client_open(void);
 void aes_client_close(void);
+
+/* Lets go of a connection this process inherited by being forked, without
+ * telling the daemon that the application it belongs to has gone */
+void aes_client_forget(void);
 
 /* Whether a daemon is answering */
 int aes_client_connected(void);
@@ -59,6 +64,14 @@ int16_t aes_client_find(const char *name);
 /* Sends eight words to another application. Answers 0 when there is nobody to
  * send to, which is what appl_write reports as a failure. */
 int aes_client_send(int16_t to, const int16_t *message);
+
+/*
+ * Where the scrap is: the directory two applications both write their cut and
+ * pasted files into. The only part they have to agree about is which directory,
+ * so it is the only part that crosses the seam.
+ */
+void aes_client_scrap_get(char *path, size_t size);
+void aes_client_scrap_set(const char *path);
 
 /*
  * The connection, for the event loop to wait on beside the compositor and its

@@ -77,6 +77,15 @@ static struct {
     char name[AESD_NAME_LEN];
 } apps[MAX_APPS];
 
+/*
+ * Where the scrap is.
+ *
+ * Empty until somebody says, which is what GEM does too: scrp_read before any
+ * scrp_write answers with nothing, and an application that gets nothing knows
+ * there is nothing to paste.
+ */
+static char scrap_path[128];
+
 static int listening = -1;
 static char socket_path[108];
 static int talkative;
@@ -224,6 +233,31 @@ static void app_send(int slot, const struct aesd_packet *in)
     memcpy(out.message, in->message, sizeof out.message);
 
     send_to(apps[to].fd, &out);
+}
+
+static void app_scrap_get(int slot)
+{
+    struct aesd_packet out;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_SCRAP;
+    memcpy(out.path, scrap_path, sizeof out.path);
+
+    send_to(apps[slot].fd, &out);
+}
+
+static void app_scrap_set(int slot, const struct aesd_packet *in)
+{
+    (void)slot;
+
+    memcpy(scrap_path, in->path, sizeof scrap_path);
+    scrap_path[sizeof scrap_path - 1] = 0;
+
+    if (talkative)
+    {
+        printf("tosaesd: the scrap is in %s\n", scrap_path);
+        fflush(stdout);
+    }
 }
 
 static void tidy_up(void)
@@ -399,6 +433,14 @@ int main(int argc, char **argv)
 
                 case AESD_SEND:
                     app_send(slots[i], &in);
+                    break;
+
+                case AESD_SCRAP_GET:
+                    app_scrap_get(slots[i]);
+                    break;
+
+                case AESD_SCRAP_SET:
+                    app_scrap_set(slots[i], &in);
                     break;
 
                 default:

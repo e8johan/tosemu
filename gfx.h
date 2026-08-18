@@ -46,7 +46,11 @@ struct surface;
 /* Connects to the compositor, or reports 0 if there is nothing to connect to.
  * Opens no window: there is nothing to show until GEM opens something. */
 int gfx_open(struct surface *screen);
-void gfx_close();
+void gfx_close(void);
+
+/* Lets go of a connection this process inherited by being forked, without
+ * tearing down what belongs to the parent */
+void gfx_forget(void);
 
 /* Whether a window is up. Everything below does nothing when it is not. */
 int gfx_showing();

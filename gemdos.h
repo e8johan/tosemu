@@ -36,3 +36,7 @@ void gemdos_free();
 void gemdos_trap();
 
 #endif /* GEMDOS_H */
+
+/* Starts a program alongside this one, the way the AES's shel_write does. The
+ * two addresses are in the machine: a path, and a command line. */
+uint32_t tos_start_program(uint32_t prog, uint32_t tail);

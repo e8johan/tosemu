@@ -43,4 +43,11 @@
     6. Native screen resolution split by scaling factor, 24bpp (Best possible)
 - Add a configuration item (or command line option) to select the memory size 
   from what the various Atari models (ST, TT and Falcon) offered, and then the
-  maximum possible given the restrictions of the APIs.
+  maximum possible given the restrictions of the APIs.- wind_update takes no lock, and with a process per application there is
+  nothing yet for it to protect: each has a screen of its own and what reaches
+  the desktop are its windows, so two applications cannot reach each other's
+  pixels. It was a lock because every application drew into one screen. It
+  becomes one again when windows belonging to different applications overlap
+  and have to be composed from a single surface rather than shown side by
+  side - which is the same piece of work as the surface router, and neither is
+  needed until then.

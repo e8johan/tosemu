@@ -173,6 +173,26 @@ void aes_client_close(void)
     daemon_gone();
 }
 
+/*
+ * Lets go of a connection that arrived by being forked.
+ *
+ * The daemon knows this application by the socket it said hello on, and a child
+ * of fork has a copy of that socket rather than one of its own. Two processes
+ * reading it would take turns getting half the messages each, and closing it
+ * properly would tell the daemon the parent had gone. So it is dropped without
+ * a word: the child says hello itself when it gets that far, and is a different
+ * application from then on.
+ */
+void aes_client_forget(void)
+{
+    if (d.fd >= 0)
+        close(d.fd);
+
+    memset(&d, 0, sizeof d);
+    d.fd = -1;
+    d.apps = 1;
+}
+
 int aes_client_connected(void)
 {
     return d.fd >= 0;
@@ -292,6 +312,74 @@ int aes_client_send(int16_t to, const int16_t *message)
     }
 
     return 1;
+}
+
+/*
+ * Where the scrap is, and saying where it is now.
+ *
+ * Kept here when there is no daemon rather than refused, because one
+ * application cutting something out and pasting it back into itself is a thing
+ * people do, and it works by the same two calls.
+ */
+static char scrap[128];
+
+void aes_client_scrap_get(char *path, size_t size)
+{
+    struct aesd_packet p;
+
+    if (d.fd < 0)
+    {
+        snprintf(path, size, "%s", scrap);
+        return;
+    }
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_SCRAP_GET;
+
+    if (!packet_write(&p))
+    {
+        daemon_gone();
+        snprintf(path, size, "%s", scrap);
+        return;
+    }
+
+    for (;;)
+    {
+        if (!packet_read(&p))
+        {
+            daemon_gone();
+            snprintf(path, size, "%s", scrap);
+            return;
+        }
+
+        if (p.kind == AESD_SCRAP)
+        {
+            p.path[sizeof p.path - 1] = 0;
+            snprintf(path, size, "%s", p.path);
+            return;
+        }
+
+        /* A message that arrived while we were asking */
+        if (p.kind == AESD_DELIVER)
+            aes_message_post(p.message);
+    }
+}
+
+void aes_client_scrap_set(const char *path)
+{
+    struct aesd_packet p;
+
+    snprintf(scrap, sizeof scrap, "%s", path ? path : "");
+
+    if (d.fd < 0)
+        return;
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_SCRAP_SET;
+    snprintf(p.path, sizeof p.path, "%s", scrap);
+
+    if (!packet_write(&p))
+        daemon_gone();
 }
 
 void aes_client_pump(void)

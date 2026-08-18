@@ -40,6 +40,7 @@
 #include "gem_p.h"
 #include "tossystem.h"
 #include "surface.h"
+#include "aes_p.h"
 #include "aesclient.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
@@ -177,6 +178,33 @@ void gem_dialog_end()
     surface_select(screen);
     surface_free(dialog);
     dialog = 0;
+}
+
+/*
+ * What a child of fork has to do before it is a program of its own.
+ *
+ * It has a copy of everything this one had: a connection to the compositor
+ * showing the parent's windows, a socket the daemon knows the parent by, and a
+ * screen with the parent's drawing in it. None of it is the child's and none of
+ * it may be used, so it is all let go of. The child builds its own when it
+ * calls appl_init, exactly as it would have if it had been started on its own.
+ */
+void gem_forget(void)
+{
+    gfx_forget();
+    aes_client_forget();
+
+    if (screen)
+        surface_free(screen);
+    screen = 0;
+
+    if (dialog)
+        surface_free(dialog);
+    dialog = 0;
+
+    started = 0;
+
+    aes_appl_reset();
 }
 
 void gem_present()

@@ -55,6 +55,10 @@ void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes);
 
 int gem_start();
 
+/* Lets go of everything a child of fork inherited and should not use: the
+ * compositor's connection, the daemon's socket, and the parent's screen */
+void gem_forget(void);
+
 /*
  * Reserves the screen for a dialog and gives it back. A dialog draws into a
  * surface of its own and is shown in a window of its own, which is why what it

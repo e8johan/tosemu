@@ -38,6 +38,7 @@
  */
 
 #include "gemdosproc_p.h"
+#include "gem_p.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -264,6 +265,20 @@ static pid_t start_child(int *codefd)
     {
         close(fds[0]);
         exit_code_fd = fds[1];
+
+        /*
+         * A child has a copy of everything the parent had open, and two of the
+         * things it copied are shared: the connection showing the parent's
+         * windows, and the socket the daemon knows the parent by. Reading
+         * either from two processes gets each of them half the messages, and
+         * closing either properly would take something away from the parent.
+         *
+         * So they are let go of rather than closed, before the child is
+         * anything at all. What it opens afterwards is its own, and it is a
+         * different application from then on.
+         */
+        gem_forget();
+
         return 0;
     }
 
@@ -696,4 +711,38 @@ uint32_t GEMDOS_Pexec()
         return pexec_async(host, cmdlin, env, env_len, 0, 0);
 
     return pexec_loadgo(host, cmdlin, env, env_len);
+}
+
+
+/*
+ * Starting a program alongside this one, which is what the AES's shel_write
+ * does.
+ *
+ * It is Pexec's asynchronous mode with the arguments coming from somewhere
+ * else: the AES hands over a path and a command line the same way GEMDOS does,
+ * and what has to happen to them is the same. Putting it here rather than in
+ * the AES is what keeps one copy of it - resolving a TOS path, building a
+ * command line field, and forking a child that lets go of what it inherited are
+ * all things this file already knows how to do.
+ */
+uint32_t tos_start_program(uint32_t prog, uint32_t tail)
+{
+    char host[PATH_MAX+1];
+    char cmdlin[TOS_CMDLIN_SIZE];
+    char *env;
+    uint32_t env_len;
+    int32_t err;
+
+    memset(host, 0, sizeof host);
+    err = get_program(host, prog);
+    if (err)
+        return (uint32_t)err;
+
+    get_cmdlin(cmdlin, tail);
+
+    env = child_environment(ENV_NONE, &env_len);
+    if (env == NULL)
+        return GEMDOS_ENSMEM;
+
+    return pexec_async(host, cmdlin, env, env_len, 0, 0);
 }

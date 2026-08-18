@@ -1196,6 +1196,28 @@ static void window_destroy(struct window *win)
     memset(win, 0, sizeof *win);
 }
 
+/*
+ * Lets go of a connection that arrived by being forked, rather than closing
+ * one this process opened.
+ *
+ * A child of fork has a copy of every file descriptor and a copy of the
+ * library's idea of what is on the other end of them - the same window, the
+ * same buffers, the same object identifiers. It must not tear any of that down,
+ * because the objects belong to the parent and destroying them there would take
+ * the parent's window away. Nor may it use them: two processes taking turns to
+ * read one connection get half a message each.
+ *
+ * So the descriptor is closed and everything else forgotten. What the child
+ * opens afterwards, if it opens anything, is its own.
+ */
+void gfx_forget(void)
+{
+    if (w.display)
+        close(wl_display_get_fd(w.display));
+
+    memset(&w, 0, sizeof w);
+}
+
 int gfx_open(struct surface *screen)
 {
     memset(&w, 0, sizeof w);

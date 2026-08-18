@@ -64,6 +64,19 @@ enum {
      * eight words are GEM's, and the daemon does not look inside them. */
     AESD_SEND,
     AESD_DELIVER,
+
+    /*
+     * Where the scrap is, and saying where it is now.
+     *
+     * The scrap is how one GEM application cuts something out and another
+     * pastes it in, and it works by both of them writing files into the same
+     * directory. Which directory that is is the only part they have to agree
+     * about, so it is the only part that is here - the files themselves are
+     * files, and GEMDOS already knows how to write those.
+     */
+    AESD_SCRAP_GET,
+    AESD_SCRAP_SET,
+    AESD_SCRAP,
 };
 
 struct aesd_packet {
@@ -92,6 +105,10 @@ struct aesd_packet {
     char name[AESD_NAME_LEN];
 
     int16_t message[8];
+
+    /* A path, for the things that are named by one. TOS paths are short - a
+     * drive, and directories of eight and three - so this is generous. */
+    char path[128];
 };
 
 /*

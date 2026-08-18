@@ -72,6 +72,16 @@ void aes_set_addrout(int index, uint32_t value);
  * array and is written by appl_init alone */
 uint32_t aes_global();
 
+/* The scrap, aesscrp.c */
+
+uint32_t AES_scrp_read();
+uint32_t AES_scrp_write();
+
+/* The shell, aesshel.c */
+
+uint32_t AES_shel_write();
+uint32_t AES_shel_read();
+
 /* Resource files, aesrsrc.c */
 
 void aes_rsrc_reset();
