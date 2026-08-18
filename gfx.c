@@ -19,19 +19,20 @@
  */
 
 /*
- * The windows the emulated screen is shown in.
+ * GEM's windows, shown as windows of the desktop's.
  *
- * The AES draws everything into one flat screen, the way it always did. What
- * is shown are rectangles of that screen: one window for the screen itself,
- * and another for a dialog while one is up, so that a GEM dialog is a window
- * of the compositor's rather than a picture of one drawn inside a larger
- * window.
+ * The emulated screen is never shown. It is a coordinate space and a piece of
+ * memory: the AES lays windows out in it and everything is drawn into it, the
+ * way it always was, and an application cannot tell the difference. What is
+ * shown are the windows - a window of the desktop's for each window GEM opens,
+ * and one for each dialog - with the desktop itself showing through where an
+ * ST would have had a grey background.
  *
  * That split is invisible from the other side. An application asks for a
  * rectangle and draws in it; where the rectangle is being shown, and whether
  * the person watching has since dragged it somewhere else, is not something it
  * can observe or needs to. It is the same reason the AES keeps a coordinate
- * space of its own rather than asking the compositor where anything is - see
+ * space of its own rather than asking the desktop where anything is - see
  * aeswind.c - and it is what lets a modal dialog be dragged about while the
  * application inside it is blocked waiting for a button.
  *
@@ -67,18 +68,25 @@
 #include "surface.h"
 #include "emuvdi/emuvdi.h"
 
+/* Told to the AES when a window's frame is used to close it, so that the
+ * application is sent the message it would have got from its own close box */
+void host_window_closed(int16_t handle);
+
 /* How much larger than an ST pixel one on the screen is */
 #define SCALE (3)
 
 /*
- * A window, which shows one rectangle of the screen. There are two: the screen
- * itself, and a dialog when one is up. Everything about showing something is
- * the same for both, which is why it is a structure rather than a special
- * case.
+ * A window, which shows one rectangle of a surface. A GEM window is one of
+ * these and so is a dialog; everything about showing something is the same for
+ * both, which is why it is a structure rather than a special case.
  */
 struct window {
     int used;
     int configured;
+
+    /* The AES's handle for it, or 0 for the dialog, which the AES does not
+     * give a handle to */
+    int16_t handle;
 
     /* Which surface it shows part of. The screen shows the screen; a dialog
      * shows one of its own, so that what it draws does not also appear in the
@@ -102,9 +110,12 @@ struct window {
     int width, height;
 };
 
-#define MAIN    (0)
-#define DIALOG  (1)
-#define WINDOWS (2)
+/*
+ * Slot 0 is the dialog, because there is one of those at a time. The rest are
+ * GEM windows, which the AES allows eight of.
+ */
+#define DIALOG  (0)
+#define WINDOWS (9)
 
 static struct {
     struct wl_display *display;
@@ -696,8 +707,21 @@ static void toplevel_close(void *data, struct xdg_toplevel *t)
      * Return, and Return presses the default button. Closing a window is not
      * a way anyone should be able to agree to something.
      */
-    if (win == &w.windows[MAIN])
-        w.closed = 1;
+    /*
+     * There is no window here whose closing means the machine should stop -
+     * the screen is not shown, and every window belongs to the application.
+     *
+     * A GEM window's closer sends the message an application gets when its own
+     * close box is clicked, which is exactly what this is: the desktop's frame
+     * standing in for the one GEM would have drawn.
+     *
+     * A dialog is different. GEM has no way of saying a dialog was closed:
+     * there is no cancel key, and a dialog ends when one of its own buttons is
+     * pressed. Undo is sent, being the key GEM programs use for cancelling, so
+     * an application that listens for it gets what it expects.
+     */
+    if (win->handle > 0)
+        host_window_closed(win->handle);
     else
         key_post(0x6100);   /* Undo */
 }
@@ -779,6 +803,18 @@ static int window_buffer(struct window *win)
     close(fd);
 
     return win->buffer != 0;
+}
+
+/* Whichever GEM window is nearest the front, for a dialog to belong to */
+static struct window *window_topmost(void)
+{
+    int i;
+
+    for (i = 1; i < WINDOWS; i++)
+        if (w.windows[i].used)
+            return &w.windows[i];
+
+    return 0;
 }
 
 static int window_create(struct window *win, const char *title,
@@ -923,15 +959,10 @@ int gfx_open(struct surface *screen)
 
     w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
-    if (!window_create(&w.windows[MAIN], "TOS", screen, 0, 0,
-                       (int16_t)surface_width(screen),
-                       (int16_t)surface_height(screen), 0))
-    {
-        printf("GFX: no room for a window the size of the screen\n");
-        gfx_close();
-        return 0;
-    }
-
+    /*
+     * No window is opened here. There is nothing to show until GEM opens
+     * something, and the screen itself is never shown.
+     */
     w.showing = 1;
 
     return 1;
@@ -961,6 +992,69 @@ int gfx_showing()
     return w.showing && !w.closed;
 }
 
+void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
+{
+    if (!gfx_showing() || handle < 1 || handle >= WINDOWS)
+        return;
+
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    gfx_window_close(handle);
+
+    if (window_create(&w.windows[handle], title, w.screen, x, y, sw, sh, 0))
+        w.windows[handle].handle = handle;
+    else
+        window_destroy(&w.windows[handle]);
+}
+
+void gfx_window_move(int16_t handle, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
+{
+    struct window *win;
+
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    win = &w.windows[handle];
+    if (!win->used)
+        return;
+
+    /*
+     * Where a window is on the emulated screen is the AES's business and not
+     * the desktop's, so moving one there does not move the window here: the
+     * desktop decides where its windows sit, and moving one about is the
+     * person's to do. What does change is which part of the screen is shown,
+     * and how large the window has to be to show it.
+     */
+    if (sw == win->sw && sh == win->sh)
+    {
+        win->sx = x;
+        win->sy = y;
+        return;
+    }
+
+    /* A different size needs a different buffer, which is a new window */
+    gfx_window_open(handle, "", x, y, sw, sh);
+}
+
+void gfx_window_title(int16_t handle, const char *title)
+{
+    if (handle < 1 || handle >= WINDOWS || !w.windows[handle].used)
+        return;
+
+    xdg_toplevel_set_title(w.windows[handle].toplevel, title);
+}
+
+void gfx_window_close(int16_t handle)
+{
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    window_destroy(&w.windows[handle]);
+}
+
 void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
                      int16_t sw, int16_t sh)
 {
@@ -973,13 +1067,14 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
         return;
 
     /*
-     * A dialog is a window of the parent's rather than one of its own, so a
-     * desktop will usually keep it out of the task list on purpose - it is
-     * reached by way of the window it belongs to. It still needs a name, for
-     * the frame to put in its title bar.
+     * A dialog belongs to whichever window is in front, if there is one. That
+     * is what a desktop needs to know to keep it above that window and to keep
+     * that window out of reach while it is up - and it is why a dialog is
+     * usually kept out of the task list, being reached by way of the window it
+     * belongs to rather than on its own.
      */
     if (!window_create(&w.windows[DIALOG], "Dialog", shows, x, y, sw, sh,
-                       &w.windows[MAIN]))
+                       window_topmost()))
         window_destroy(&w.windows[DIALOG]);
 }
 

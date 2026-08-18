@@ -26,6 +26,27 @@ and release the left button:
     TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
 
 
+The emulated screen is never shown. It is a coordinate space and a piece of
+memory: GEM lays its windows out in it and draws into it the way it always did,
+and an application cannot tell the difference. What appears on the desktop are
+the windows themselves - one for each window GEM opens, one for each dialog -
+with the desktop's own background showing through where an ST would have had
+grey with an Atari logo on it.
+
+
+window
+------
+
+A window with a title, a close box and a line of text, and the loop every GEM
+application has: wait for a message, redraw when told to, and stop when the
+close box is used.
+
+The close box is the desktop's, standing in for the one GEM would have drawn.
+It does not close anything by itself - it sends the application the message it
+would have got from its own closer, and the application decides. That is what
+GEM does, and it is why an application can ask whether you meant it.
+
+
 dialog
 ------
 

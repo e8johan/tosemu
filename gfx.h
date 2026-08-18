@@ -26,21 +26,25 @@
 struct surface;
 
 /*
- * Showing the screen, and hearing about the keyboard and the mouse.
+ * Showing GEM's windows, and hearing about the keyboard and the mouse.
  *
- * What is shown is not the screen but rectangles of it. There is one for the
- * screen itself, and a dialog gets another, so that a GEM dialog is a window
- * of the compositor's rather than a picture of one drawn inside a bigger
- * window. The AES goes on drawing everything into one flat screen either way,
- * which is what lets an application be unaware of any of this.
+ * The emulated screen is never shown. It is a coordinate space and a piece of
+ * memory: the AES lays windows out in it and everything is drawn into it, the
+ * way it always was, and an application cannot tell the difference. What the
+ * person watching sees are the windows - each GEM window is a window of the
+ * desktop's, and so is each dialog - with the desktop itself showing through
+ * where an ST would have had a grey background with an Atari logo on it.
+ *
+ * That is the point of the whole exercise: a GEM application should be part of
+ * the desktop it is running on rather than a picture of another computer.
  *
  * There is no compositor in a test, and there does not need to be: everything
  * here answers that it is not showing anything, and the emulator runs exactly
  * as it did before with the screen only in memory.
  */
 
-/* Opens the window the screen is shown in, or reports 0 if there is no
- * compositor to open one on */
+/* Connects to the compositor, or reports 0 if there is nothing to connect to.
+ * Opens no window: there is nothing to show until GEM opens something. */
 int gfx_open(struct surface *screen);
 void gfx_close();
 
@@ -48,12 +52,27 @@ void gfx_close();
 int gfx_showing();
 
 /*
- * A dialog: a window of its own showing that rectangle of the screen, marked
- * modal and belonging to the main window, so that the compositor gives it the
- * treatment a dialog gets - kept above its parent, and the parent kept out of
- * reach while it is up.
+ * A GEM window, shown as a window of the desktop's.
  *
- * It stays movable. Nothing here knows or cares where the compositor puts it:
+ * The handle is the AES's, so that closing one closes the right window. What
+ * is shown is that rectangle of the screen - the whole window including the
+ * frame GEM draws round it, because that frame is part of what the application
+ * put there.
+ */
+void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
+                     int16_t w, int16_t h);
+void gfx_window_move(int16_t handle, int16_t x, int16_t y,
+                     int16_t w, int16_t h);
+void gfx_window_title(int16_t handle, const char *title);
+void gfx_window_close(int16_t handle);
+
+/*
+ * A dialog: a window of its own showing a rectangle of the surface a dialog
+ * draws into, marked modal and belonging to whichever GEM window is on top, so
+ * that the desktop gives it the treatment a dialog gets - kept above that
+ * window, and that window kept out of reach while it is up.
+ *
+ * It stays movable. Nothing here knows or cares where the desktop puts it:
  * what an application sees is the rectangle it asked for, wherever that
  * rectangle happens to be shown, so dragging the window about changes nothing
  * the application can observe.

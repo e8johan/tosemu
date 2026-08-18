@@ -5,7 +5,7 @@
 #   make demos
 #   ./bin/tosemu demos/dialog
 #
-DEMONAME=dialog
+DEMONAME=dialog window
 
 CC=m68k-atari-mint-gcc
 

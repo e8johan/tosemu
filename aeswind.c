@@ -40,6 +40,7 @@
 #include <string.h>
 
 #include "gem_p.h"
+#include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "tossystem.h"
 #include "m68k.h"
@@ -47,6 +48,9 @@
 /* How many windows one application can have. Real GEM had eight for everyone
  * together; this is per application until there is more than one. */
 #define WINDOWS (8)
+
+/* The message an application is sent when its close box is used */
+#define WM_CLOSED (22)
 
 /* What a window can have around it, which is what wind_create is told
  * http://toshyp.atari.org/en/008009.html */
@@ -107,6 +111,9 @@ struct window {
 
     uint32_t name;      /* The title and the information line, as addresses */
     uint32_t info;      /* in the machine, because that is where they live */
+
+    /* The title again, as text, for the frame the desktop puts round it */
+    char title[64];
 };
 
 static struct window windows[WINDOWS];
@@ -289,7 +296,36 @@ uint32_t AES_wind_open()
     win->open = 1;
     topped = aes_intin(0);
 
+    /*
+     * And a window of the desktop's to show it in. The whole of the window
+     * goes in, frame and all, because that frame is GEM's and the application
+     * put it there - what the desktop adds around the outside is its own.
+     */
+    gfx_window_open(aes_intin(0), win->title, win->x, win->y, win->w, win->h);
+
     return AES_E_OK;
+}
+
+/*
+ * The desktop's own close box, standing in for the one GEM draws.
+ *
+ * An application is sent exactly what it would have been sent had its own
+ * closer been clicked, because as far as it is concerned that is what
+ * happened. Nothing closes here: a GEM window is closed by the application
+ * asking for it, and an application is entitled to ask something first.
+ */
+void host_window_closed(int16_t handle)
+{
+    int16_t message[8];
+    int i;
+
+    for (i = 0; i < 8; i++)
+        message[i] = 0;
+
+    message[0] = WM_CLOSED;
+    message[3] = handle;
+
+    aes_message_post(message);
 }
 
 /* wind_close **************************************************************/
@@ -307,6 +343,8 @@ uint32_t AES_wind_close()
 
     if (topped == aes_intin(0))
         topped = 0;
+
+    gfx_window_close(aes_intin(0));
 
     return AES_E_OK;
 }
@@ -326,6 +364,8 @@ uint32_t AES_wind_delete()
 
     if (topped == aes_intin(0))
         topped = 0;
+
+    gfx_window_close(aes_intin(0));
 
     return AES_E_OK;
 }
@@ -474,11 +514,27 @@ uint32_t AES_wind_set()
     switch (what)
     {
         case WF_NAME:
+        {
+            int i;
+
             /* The title, which stays where the application put it: it owns
              * the string and may change it without telling anyone */
             win->name = ((uint32_t)(uint16_t)aes_intin(2) << 16)
                       | (uint16_t)aes_intin(3);
+
+            /* And a copy, because the frame the desktop draws needs the text
+             * rather than an address in a machine it cannot read */
+            for (i = 0; i < (int)sizeof win->title - 1; i++)
+            {
+                win->title[i] = (char)m68k_read_memory_8(win->name + i);
+                if (win->title[i] == 0)
+                    break;
+            }
+            win->title[i] = 0;
+
+            gfx_window_title(handle, win->title);
             break;
+        }
 
         case WF_INFO:
             win->info = ((uint32_t)(uint16_t)aes_intin(2) << 16)
@@ -495,6 +551,8 @@ uint32_t AES_wind_set()
             win->y = aes_intin(3);
             win->w = aes_intin(4);
             win->h = aes_intin(5);
+
+            gfx_window_move(handle, win->x, win->y, win->w, win->h);
             break;
 
         case WF_HSLIDE:

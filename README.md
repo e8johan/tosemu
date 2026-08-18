@@ -47,9 +47,13 @@ against what it should have drawn; unlike the other tests it builds for the
 host rather than for the emulated machine, because what it is checking is the
 port.
 
-When there is a compositor to open one on, a GEM program gets a window showing
-the emulated screen, scaled up by a whole number so that an ST pixel stays a
-square rather than being smoothed into a modern one. Set `TOSEMU_NO_WINDOW` to
+The emulated screen is never shown. It is a coordinate space and a piece of
+memory: GEM lays its windows out in it and draws into it the way it always did.
+What appears on the desktop are the windows themselves - one for each window a
+GEM application opens, and one for each dialog - scaled up by a whole number so
+that an ST pixel stays a square rather than being smoothed into a modern one.
+A GEM application is meant to be part of the desktop it runs on rather than a
+picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
