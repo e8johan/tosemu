@@ -50,6 +50,7 @@
 #define WINDOWS (8)
 
 /* The message an application is sent when its close box is used */
+#define WM_REDRAW (20)
 #define WM_CLOSED (22)
 
 /* What a window can have around it, which is what wind_create is told
@@ -302,6 +303,33 @@ uint32_t AES_wind_open()
      * put it there - what the desktop adds around the outside is its own.
      */
     gfx_window_open(aes_intin(0), win->title, win->x, win->y, win->w, win->h);
+
+    /*
+     * And tell the application to paint it.
+     *
+     * A window arrives empty. The AES draws the frame, because the frame is
+     * the AES's, and everything inside it belongs to the application - which
+     * finds out that there is something to paint the same way it finds out
+     * about every other time: a message saying which window and which part of
+     * it. An application that draws only when asked, which is most of them,
+     * shows nothing at all without this.
+     */
+    {
+        int16_t message[8];
+        int i;
+
+        for (i = 0; i < 8; i++)
+            message[i] = 0;
+
+        message[0] = WM_REDRAW;
+        message[3] = aes_intin(0);
+        message[4] = win->x;
+        message[5] = win->y;
+        message[6] = win->w;
+        message[7] = win->h;
+
+        aes_message_post(message);
+    }
 
     return AES_E_OK;
 }
@@ -633,3 +661,4 @@ uint32_t AES_wind_update()
      */
     return AES_E_OK;
 }
+

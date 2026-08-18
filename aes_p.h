@@ -150,5 +150,6 @@ uint32_t AES_wind_update();
 /* Graphics functions, aesgraf.c */
 
 uint32_t AES_graf_handle();
+uint32_t AES_graf_mouse();
 
 #endif /* AES_P_H */

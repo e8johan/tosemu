@@ -26,6 +26,12 @@
  * one against it with v_opnvwk rather than opening a physical workstation of
  * its own. That is the whole shape of drawing under GEM: the AES says where,
  * the VDI does the drawing.
+ *
+ * graf_mouse is the other half of that bargain and is nearly nothing here. On
+ * an ST the AES draws the pointer into the screen itself, so an application
+ * has to ask for it to be taken away before drawing under it and put back
+ * afterwards; here the desktop draws it, over a window rather than into one,
+ * and there is nothing to take away.
  */
 
 #include "aes_p.h"
@@ -57,4 +63,72 @@ uint32_t AES_graf_handle()
     }
 
     return handle;
+}
+
+/* The shapes graf_mouse knows about, http://toshyp.atari.org/en/008003.html */
+#define ARROW         (0)
+#define TEXT_CRSR     (1)
+#define BUSY_BEE      (2)
+#define POINT_HAND    (3)
+#define FLAT_HAND     (4)
+#define THIN_CROSS    (5)
+#define THICK_CROSS   (6)
+#define OUTLN_CROSS   (7)
+#define USER_DEF    (255)
+#define M_OFF       (256)
+#define M_ON        (257)
+
+/* Which one was last asked for, so that hiding and showing put back what was
+ * there rather than an arrow */
+static int16_t shape = ARROW;
+
+uint32_t AES_graf_mouse()
+{
+    int16_t wanted = aes_intin(0);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    shape: %d\n", wanted);
+    }
+
+    switch (wanted)
+    {
+        case M_OFF:
+        case M_ON:
+            /*
+             * Taking the pointer away and putting it back, which an
+             * application does around its own drawing so as not to draw over
+             * the arrow or leave a hole where it was.
+             *
+             * There is nothing to do. The pointer is the desktop's and is
+             * drawn over the window rather than into it, so drawing underneath
+             * it cannot disturb it - which is also why an application that
+             * forgets to put it back does not leave the screen without one.
+             */
+            break;
+
+        case USER_DEF:
+            /*
+             * A shape of the application's own, as a MFORM: two sixteen by
+             * sixteen bitmaps and the point in them that counts as where the
+             * pointer is. Nothing is done with it yet - saying so would mean
+             * turning it into a buffer the compositor understands and handing
+             * it over on the seat - so the pointer keeps whatever it had.
+             */
+            shape = USER_DEF;
+            break;
+
+        default:
+            if (wanted < ARROW || wanted > OUTLN_CROSS)
+                return AES_ERROR;
+
+            /*
+             * One of the eight the AES has always had. Each has a plain
+             * equivalent in the set every desktop offers, so this will one day
+             * be a name said to the compositor rather than a bitmap drawn.
+             */
+            shape = wanted;
+            break;
+    }
+
+    return AES_E_OK;
 }
