@@ -116,22 +116,22 @@ objc_draw, an object tree from EmuTOS's AES object library
  0 |                                                                |
  1 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
  2 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
- 3 | MMMMMMMMMMMMMMMMM                          MMMMMMMMMMMMMMMMM   |
- 4 | MMMMMMMMMMMMMMMMMM MM   MM                 MMMMMMMMMMMMMMMMM   |
- 5 | MMMMMMMMMMMMMMMMM  MMM MMM                 MMMMMMMMMMMMMMMMM   |
- 6 | MMMMMMMMMMMMMMMMM  MMMMMMM                 MMMMMMMMMMMMMMMMM   |
- 7 | MMMMMMMMMMMMMMMMM  MM M MM                 MMMMMMMMMMMMMMMMM   |
- 8 | MMMMMMMMMMMMMMMMM  MM   MM                 MMMMMMMMMMMMMMMMM   |
- 9 | MMMMMMMMMMMMMMMMM  MM   MM                 MMMMMMMMMMMMMMMMM   |
-10 | MMMMMMMMMMMMMMMMMM MM   MM       MMMMMMMMMMMMMMMMMMMMMMMMMMM   |
-11 | MMMMMMMMMMMMMMMMM                M    MMMM   MM  MM   MMMMMM   |
-12 | MMMMMMMMMMMMMMMMM                M   MM  MM  MM MM    MMMMMM   |
-13 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMMM     MMMMMM   |
-14 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMM      MMMMMM   |
-15 | MMMMMMMMMMMMMMMMM                M   MM  MM  MMMM     MMMMMM   |
-16 | MMMMMMMMMMMMMMMMM                M   MM  MM  MM MM    MMMMMM   |
-17 | MMMMMMMMMMMMMMMMM                M    MMMM   MM  MM   MMMMMM   |
-18 | MMMMMMMMMMMMMMMMM                M                    MMMMMM   |
+ 3 | MM                                                        MM   |
+ 4 | MM   MMMMM  MMMMMM MM   MM                                MM   |
+ 5 | MM  MM      MM     MMM MMM                                MM   |
+ 6 | MM  MM      MM     MMMMMMM                                MM   |
+ 7 | MM  MM MMM  MMMMM  MM M MM                                MM   |
+ 8 | MM  MM  MM  MM     MM   MM                                MM   |
+ 9 | MM  MM  MM  MM     MM   MM                                MM   |
+10 | MM   MMMMM  MMMMMM MM   MM       MMMMMMMMMMMMMMMMMMMMMM   MM   |
+11 | MM                               M    MMMM   MM  MM   M   MM   |
+12 | MM                               M   MM  MM  MM MM    M   MM   |
+13 | MM                               M   MM  MM  MMMM     M   MM   |
+14 | MM                               M   MM  MM  MMM      M   MM   |
+15 | MM                               M   MM  MM  MMMM     M   MM   |
+16 | MM                               M   MM  MM  MM MM    M   MM   |
+17 | MM                               M    MMMM   MM  MM   M   MM   |
+18 | MM                               M                    M   MM   |
 19 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM                    MMMMMM   |
 20 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
 21 |                                                                |

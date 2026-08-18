@@ -92,6 +92,21 @@ uint32_t AES_evnt_timer();
 uint32_t AES_evnt_mesag();
 uint32_t AES_evnt_multi();
 
+/* Object trees, aestree.c
+ *
+ * A tree lives in the machine's memory, where the AES cannot read it: the
+ * words are the other way round and the pointers in it are 68000 addresses.
+ * These bring one across and put back the parts the AES is allowed to have
+ * changed.
+ */
+void *aes_tree_in(uint32_t address);
+void aes_tree_out();
+void aes_tree_done();
+
+/* Object functions, aesobjc.c */
+
+uint32_t AES_objc_draw();
+
 /* Window functions, aeswind.c */
 
 void aes_wind_reset();

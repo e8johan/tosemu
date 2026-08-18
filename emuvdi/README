@@ -184,11 +184,27 @@ block at the control array and execute a trap, and that one instruction is the
 whole path between the two halves of GEM. Here both are host code, so it is a
 call, and nothing is copied because there is nothing to copy between.
 
-Two files are copied and edited, which is the whole override list.
+Four files are copied and edited, which is the whole override list. Three of
+the four are the same bug in different places: EmuTOS says a LONG is a signed
+32 bit word and writes it as long, which is four bytes on a 68000 and eight
+here. Anything that then treats a LONG as a fixed number of bytes, or reaches
+into one by position, finds the wrong thing.
+
+An OBJECT is 24 bytes in the machine and 32 in this program for the same
+reason, which is why aestree.c does not copy a tree as a block: it reads the
+fields at the machine's offsets and hands them to emuvdi.h to be put wherever
+this side keeps them. Nothing outside emuvdi/ knows either layout.
 
 gemoblib.c: call_usercode in it is fifteen lines of assembly that jsr to a
 routine the application supplied, and here that routine is 68000 code in the
 emulated machine.
+
+gemobjop.c: a box's border thickness is the second byte of its ob_spec, and
+EmuTOS takes it by pointing a char at the LONG and stepping one along. That
+finds it where a LONG is four bytes and the high one comes first. Here it is
+eight bytes and the low one comes first, so the step lands in the middle of the
+colour word and a two pixel border is drawn seventeen pixels thick. Shifting
+says which byte is wanted rather than where it sits, and is right either way.
 
 vdi_raster.c: a bitmap's address arrives in two words of the control array and
 is read back as *(MFDB **)&CONTRL[7]. On a 68000 that reads four bytes, the

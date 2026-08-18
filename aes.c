@@ -134,7 +134,6 @@ uint32_t aes_global()
 #define AES_menu_settings   NULL
 #define AES_objc_add        NULL
 #define AES_objc_delete     NULL
-#define AES_objc_draw       NULL
 #define AES_objc_find       NULL
 #define AES_objc_offset     NULL
 #define AES_objc_order      NULL

@@ -297,6 +297,97 @@ int main(int argc, char **argv)
         call_aes(19, 0, 1, 0, 0);           /* appl_exit */
     }
 
+    /*
+     * An object tree, drawn by the AES.
+     *
+     * The tree is in this program's memory, where the AES cannot read it: an
+     * OBJECT is 24 bytes here and a different size on the other side of the
+     * trap, its words are the other way round, and ob_spec holds addresses
+     * that mean nothing there. So it is copied across, and what is checked
+     * here is that what comes out the far end is the dialog that went in.
+     */
+    {
+        static OBJECT dlg[3];
+        short pel, ink, wchar, hchar, wbox, hbox, phys, vwk, j;
+        short work_in2[11], work_out2[57];
+
+        id = call_aes(10, 0, 1, 0, 0);      /* appl_init */
+
+        /* Somewhere to read the result back from */
+        phys = graf_handle(&wchar, &hchar, &wbox, &hbox);
+        for (j = 0; j < 10; j++)
+            work_in2[j] = 1;
+        work_in2[10] = 2;
+        vwk = phys;
+        v_opnvwk(work_in2, &vwk, work_out2);
+
+        dlg[0].ob_next = -1; dlg[0].ob_head = 1; dlg[0].ob_tail = 2;
+        dlg[0].ob_type = 20;                /* G_BOX */
+        dlg[0].ob_flags = 0; dlg[0].ob_state = 0;
+        dlg[0].ob_spec.index = 0x00021100L; /* two thick, black on white */
+        dlg[0].ob_x = 40; dlg[0].ob_y = 40;
+        dlg[0].ob_width = 120; dlg[0].ob_height = 60;
+
+        dlg[1].ob_next = 2; dlg[1].ob_head = -1; dlg[1].ob_tail = -1;
+        dlg[1].ob_type = 28;                /* G_STRING */
+        dlg[1].ob_flags = 0; dlg[1].ob_state = 0;
+        dlg[1].ob_spec.free_string = "Hi";
+        dlg[1].ob_x = 8; dlg[1].ob_y = 8;
+        dlg[1].ob_width = 16; dlg[1].ob_height = 8;
+
+        dlg[2].ob_next = 0; dlg[2].ob_head = -1; dlg[2].ob_tail = -1;
+        dlg[2].ob_type = 26;                /* G_BUTTON */
+        dlg[2].ob_flags = 0x0021;           /* SELECTABLE and last */
+        dlg[2].ob_state = 0;
+        dlg[2].ob_spec.free_string = "OK";
+        dlg[2].ob_x = 40; dlg[2].ob_y = 36;
+        dlg[2].ob_width = 40; dlg[2].ob_height = 16;
+
+        intin[0] = 0; intin[1] = 8;
+        intin[2] = 0; intin[3] = 0; intin[4] = 320; intin[5] = 200;
+        addrin[0] = (long)dlg;
+        check(call_aes(42, 6, 1, 1, 0), 1, "objc_draw draws a tree");
+
+        /*
+         * The border is two pixels of black at the box's edge, and the inside
+         * of it is clear. Both halves matter: a border drawn seventeen pixels
+         * thick also puts black at the edge, and only the second check tells
+         * the two apart.
+         */
+        v_get_pixel(vwk, 40, 40, &pel, &ink);
+        check(ink, 1, "the border is drawn at the box's edge");
+        v_get_pixel(vwk, 41, 41, &pel, &ink);
+        check(ink, 1, "and is two pixels thick");
+        v_get_pixel(vwk, 44, 44, &pel, &ink);
+        check(ink, 0, "with nothing painted inside it");
+
+        /*
+         * The button, which is a child and so is placed relative to the box.
+         * Its own border is drawn just inside its rectangle rather than on it,
+         * so what is checked is that something of it is there rather than
+         * exactly which pixel.
+         */
+        {
+            short found = 0, bx, by;
+
+            for (by = 76; by < 92 && !found; by++)
+                for (bx = 80; bx < 120; bx++)
+                {
+                    v_get_pixel(vwk, bx, by, &pel, &ink);
+                    if (ink)
+                    {
+                        found = 1;
+                        break;
+                    }
+                }
+
+            check(found, 1, "the button inside it is drawn too");
+        }
+
+        v_clsvwk(vwk);
+        call_aes(19, 0, 1, 0, 0);           /* appl_exit */
+    }
+
     /* The VDI has its own parameter block, a different shape from the AES one.
      * v_updwk is a call with nothing to do rather than one that is missing, so
      * it has to come back rather than stop the emulator. */

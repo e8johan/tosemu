@@ -46,6 +46,8 @@
 #include "gemlib.h"
 #include "gsxdefs.h"
 
+#include <string.h>
+
 #include "emuvdi.h"
 
 /* EmuTOS's dispatcher, vdi_main.c */
@@ -122,6 +124,7 @@ void emuvdi_control_set_pointer(int16_t *control, int index, void *p)
     *(uint32_t *)&control[index] = (uint32_t)(uintptr_t)p;
 }
 
+/* EmuTOS's object library, aes/gemoblib.c */
 int16_t emuvdi_screen_width()
 {
     return V_REZ_HZ;
@@ -130,6 +133,106 @@ int16_t emuvdi_screen_width()
 int16_t emuvdi_screen_height()
 {
     return V_REZ_VT;
+}
+
+/*
+ * Object trees, built here because this is the side that knows what an OBJECT
+ * looks like. It is 24 bytes in the machine and 32 in this program, for want
+ * of a LONG being the same width in both.
+ */
+void *emuvdi_tree_alloc(int count)
+{
+    OBJECT *tree = host_vdi_alloc((long)count * sizeof(OBJECT));
+
+    if (tree)
+        memset(tree, 0, (size_t)count * sizeof(OBJECT));
+
+    return tree;
+}
+
+void emuvdi_tree_free(void *tree)
+{
+    host_vdi_free(tree);
+}
+
+void emuvdi_tree_set(void *tree, int index, int16_t next, int16_t head,
+                     int16_t tail, uint16_t type, uint16_t flags,
+                     uint16_t state, void *spec, int16_t x, int16_t y,
+                     int16_t w, int16_t h)
+{
+    OBJECT *o = (OBJECT *)tree + index;
+
+    o->ob_next = next;
+    o->ob_head = head;
+    o->ob_tail = tail;
+    o->ob_type = type;
+    o->ob_flags = flags;
+    o->ob_state = state;
+    o->ob_spec = (LONG)(uintptr_t)spec;
+    o->ob_x = x;
+    o->ob_y = y;
+    o->ob_width = w;
+    o->ob_height = h;
+}
+
+uint16_t emuvdi_tree_state(void *tree, int index)
+{
+    return ((OBJECT *)tree + index)->ob_state;
+}
+
+void *emuvdi_tedinfo_alloc()
+{
+    TEDINFO *ted = host_vdi_alloc(sizeof(TEDINFO));
+
+    if (ted)
+        memset(ted, 0, sizeof(TEDINFO));
+
+    return ted;
+}
+
+void emuvdi_tedinfo_set(void *t, char *text, char *tmplt, char *valid,
+                        const int16_t *words, int word_count)
+{
+    TEDINFO *ted = t;
+    WORD *fields = &ted->te_font;
+    int i;
+
+    ted->te_ptext = text;
+    ted->te_ptmplt = tmplt;
+    ted->te_pvalid = valid;
+
+    /* The eight words after the three pointers, in the order they are
+     * declared, which is the order they arrive in from the machine */
+    for (i = 0; i < word_count && i < 8; i++)
+        fields[i] = words[i];
+}
+
+char *emuvdi_tedinfo_text(void *t)
+{
+    return ((TEDINFO *)t)->te_ptext;
+}
+
+/* EmuTOS's object library, aes/gemoblib.c */
+void ob_draw(OBJECT *tree, WORD obj, WORD depth);
+
+void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
+                      int16_t x, int16_t y, int16_t w, int16_t h)
+{
+    GRECT clip;
+
+    clip.g_x = x;
+    clip.g_y = y;
+    clip.g_w = w;
+    clip.g_h = h;
+
+    /*
+     * The clipping rectangle is the AES's own rather than an argument to the
+     * drawing: gsx_sclip sets it on the workstation the AES draws through, and
+     * everything after it obeys until it is set again.
+     */
+    gsx_sclip(&clip);
+
+    ob_draw(tree, start, depth);
 }
 
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
