@@ -96,7 +96,22 @@ uint32_t AES_appl_init()
     if (ap_id < 0)
     {
         emuvdi_aes_init();
-        ap_id = 1;
+
+        /*
+         * Nought, because it is the first application there is.
+         *
+         * The AES numbers them as it starts them, from nothing upwards, and on
+         * a machine running one program at a time that program is the first
+         * and only one. Handing out one instead looks harmless and is not: a
+         * GEM program written for such a machine tests the answer by asking
+         * whether it is nought, and one that gets anything else decides the
+         * AES would not have it and stops before it has drawn a thing.
+         *
+         * When there is a desktop of our own it will be this one, and the
+         * applications it starts will be numbered after it - which is the same
+         * rule, applied to a machine with more in it.
+         */
+        ap_id = 0;
     }
 
     m68k_write_memory_16(g + AES_GLOBAL_VERSION, AES_VERSION);

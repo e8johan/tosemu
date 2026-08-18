@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 
     /* 10 appl_init, by hand */
     id = call_aes(10, 0, 1, 0, 0);
-    check(id > 0, 1, "appl_init answers in intout with an identifier");
+    check(id, 0, "appl_init answers with nought, being the first application");
     check(global[0], WANT_VERSION, "appl_init reports the AES version");
     check(global[1], WANT_APPS, "appl_init reports how many applications fit");
     check(global[2], id, "appl_init puts the identifier in the global array");
@@ -114,13 +114,13 @@ int main(int argc, char **argv)
 
     /* 17 appl_yield - stubbed, because an application yielding when it is the
      * only one has already had its turn */
-    check(call_aes(10, 0, 1, 0, 0) > 0, 1, "appl_init again for appl_yield");
+    check(call_aes(10, 0, 1, 0, 0) >= 0, 1, "appl_init again for appl_yield");
     check(call_aes(17, 0, 1, 0, 0), 1, "appl_yield answers success");
     check(call_aes(19, 0, 1, 0, 0), 1, "appl_exit after appl_yield");
 
     /* And now the same thing the way an application does it */
     id = appl_init();
-    check(id > 0, 1, "appl_init through the binding gives an identifier");
+    check(id >= 0, 1, "appl_init through the binding gives an identifier");
     check(gl_ap_version, WANT_VERSION, "the binding sees the AES version");
     check(_AESapid, id, "the binding sees its own identifier");
     check(appl_exit(), 1, "appl_exit through the binding succeeds");
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
         short j;
 
         id = appl_init();
-        check(id > 0, 1, "appl_init before asking for a workstation");
+        check(id >= 0, 1, "appl_init before asking for a workstation");
 
         phys = graf_handle(&wchar, &hchar, &wbox, &hbox);
         check(phys > 0, 1, "graf_handle gives the AES's workstation");

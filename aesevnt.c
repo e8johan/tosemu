@@ -161,6 +161,12 @@ static int buttons_are(int16_t buttons, int16_t mask, int16_t state)
     return (buttons & mask) == (state & mask);
 }
 
+/*
+ * Whether the last wait was answered by how things were rather than by
+ * something happening. See the note at the top of wait_for.
+ */
+static int state_answered;
+
 static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,
@@ -176,6 +182,29 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
      * picture is finished as far as anyone watching is concerned.
      */
     gem_present();
+
+    /*
+     * The button state that answered the last question is stale now, so move
+     * on by one thing that happened before answering this one.
+     *
+     * A wait is answered by the state as it is, which is right, and the same
+     * state must not answer twice while newer information is waiting. Ask
+     * whether the button is down just after a press and the answer is yes;
+     * ask again and it is still yes, because the release that followed is
+     * sitting in the queue and answering from the state never reaches it. The
+     * AES asks in a loop and gets the same stale yes for ever.
+     *
+     * Only when the last answer came from the state rather than from a change,
+     * and only one, so that within a single wait the state is still considered
+     * before it moves on.
+     */
+    if (state_answered)
+    {
+        int16_t b, bx, by;
+
+        if (gfx_button_take(&b, &bx, &by))
+            state_answered = 0;
+    }
 
     for (;;)
     {
@@ -234,6 +263,8 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                     *mx = nx;
                 if (my)
                     *my = ny;
+
+                state_answered = 1;
 
                 return MU_BUTTON;
             }
@@ -299,7 +330,10 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * behind it, including where the pointer was going next.
              */
             if (gfx_button_take(&b, &bx, &by))
+            {
+                state_answered = 0;
                 continue;
+            }
         }
 
         /*

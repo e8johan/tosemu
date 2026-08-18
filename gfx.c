@@ -670,6 +670,41 @@ static struct window *window_of(struct wl_surface *surface)
  * know a window was involved at all - and it is why a dialog can be dragged
  * anywhere without the application noticing.
  */
+/*
+ * The pointer is not ours any more, because it left or because the window it
+ * was in has gone.
+ *
+ * Nothing is pressed any more, as far as we can tell. We only hear about the
+ * button while the pointer is ours, and pressing something that closes the
+ * window it was pressed in - a menu entry does that, and so does a dialog's
+ * OK button - sends the release to whatever the pointer is over afterwards,
+ * which is somebody else's window or the desktop. It never arrives, and a
+ * button held down for ever answers every wait for a press: the AES stops
+ * looking at where the pointer is and nothing responds again.
+ *
+ * So the button comes up. That is not a guess about what the person did - it
+ * is the honest answer, which is that we no longer know and will not pretend
+ * otherwise. If it really is still held, the enter that follows says so.
+ */
+static void pointer_gone(void)
+{
+    w.pointer_in = 0;
+
+    if (!w.buttons)
+        return;
+
+    w.buttons = 0;
+
+    if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
+    {
+        w.clicks[w.click_count].buttons = 0;
+        w.clicks[w.click_count].x = w.mouse_x;
+        w.clicks[w.click_count].y = w.mouse_y;
+        w.clicks[w.click_count].move = 0;
+        w.click_count++;
+    }
+}
+
 static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
 {
     if (!win)
@@ -708,36 +743,7 @@ static void pt_leave(void *data, struct wl_pointer *p, uint32_t serial,
     if (w.pointer_in != window_of(s))
         return;
 
-    w.pointer_in = 0;
-
-    /*
-     * And nothing is pressed any more, as far as we can tell.
-     *
-     * We only hear about the button while the pointer is ours. Press something
-     * that closes the window it was pressed in - a menu entry does exactly
-     * that - and the release goes to whatever the pointer is over afterwards,
-     * which is somebody else's window or the desktop. It never arrives, and a
-     * button held down for ever answers every wait for a press: the AES stops
-     * looking at where the pointer is and nothing responds again.
-     *
-     * So the button comes up when the pointer leaves. That is not a guess
-     * about what the person did - it is the honest answer, which is that we do
-     * not know and will not pretend otherwise. If it really is still held, the
-     * enter that follows says so.
-     */
-    if (w.buttons)
-    {
-        w.buttons = 0;
-
-        if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
-        {
-            w.clicks[w.click_count].buttons = 0;
-            w.clicks[w.click_count].x = w.mouse_x;
-            w.clicks[w.click_count].y = w.mouse_y;
-            w.clicks[w.click_count].move = 0;
-            w.click_count++;
-        }
-    }
+    pointer_gone();
 }
 
 static void pt_motion(void *data, struct wl_pointer *p, uint32_t time,
@@ -1164,8 +1170,11 @@ static void window_destroy(struct window *win)
     if (!win->used)
         return;
 
+    /* Taking a window away under the pointer is the pointer leaving it, and
+     * the compositor has no reason to say so: the window it would have named
+     * is the one that has gone. */
     if (w.pointer_in == win)
-        w.pointer_in = 0;
+        pointer_gone();
 
     if (win->pixels)
         munmap(win->pixels, win->bytes);
