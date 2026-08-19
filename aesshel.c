@@ -38,6 +38,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <limits.h>
+#include <unistd.h>
+
+#include "aesclient.h"
+#include "aesproto.h"
+#include "files.h"
 #include "gemdos.h"
 #include "tossystem.h"
 #include "m68k.h"
@@ -149,6 +155,302 @@ uint32_t AES_shel_read()
      * it from there */
     m68k_write_memory_8(tail, 0);
     m68k_write_memory_8(tail + 1, 0);
+
+    return AES_E_OK;
+}
+
+
+/* Finding a file, and the rest of what the shell is asked ******************/
+
+/* A TOS path is short, and so is everything else here */
+#define MAX_PATH (128)
+
+/* Where a program's basepage is, and where the environment's address sits
+ * inside one */
+#define TOS_BASEPAGE (0x800)
+
+/* Copies a string out of the machine, and back into it */
+static void string_in(uint32_t address, char *to, int size)
+{
+    int i;
+
+    to[0] = 0;
+
+    if (!address)
+        return;
+
+    for (i = 0; i < size - 1; i++)
+    {
+        to[i] = (char)m68k_read_memory_8(address + i);
+
+        if (to[i] == 0)
+            return;
+    }
+
+    to[size - 1] = 0;
+}
+
+static void string_out(uint32_t address, const char *from)
+{
+    int i;
+
+    if (!address)
+        return;
+
+    for (i = 0; from[i]; i++)
+        m68k_write_memory_8(address + i, (uint8_t)from[i]);
+
+    m68k_write_memory_8(address + i, 0);
+}
+
+/* Whether a TOS path names something that is there */
+static int it_is_there(const char *tos_path)
+{
+    char host[PATH_MAX + 1];
+
+    if (tos_path_to_host(tos_path, host) != 0)
+        return 0;
+
+    return access(host, F_OK) == 0;
+}
+
+/*
+ * shel_find - where a file is
+ *
+ * An application hands over a name and gets back a path to it, which is how a
+ * GEM program finds its own resource file without knowing where it was started
+ * from. GEM looked in the current directory, then in the directory the
+ * application was loaded from, then along the path.
+ *
+ * The first two are what matter and are what is done. The third was for
+ * finding other people's programs and is the part that needs a shell to have
+ * set a path in the first place, which nothing here does.
+ */
+uint32_t AES_shel_find()
+{
+    uint32_t buffer = aes_addrin(0);
+    char name[MAX_PATH], tried[MAX_PATH];
+    const char *program;
+    const char *slash;
+
+    string_in(buffer, name, sizeof name);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    looking for [%s]\n", name);
+    }
+
+    if (!name[0])
+        return AES_ERROR;
+
+    /* Where it says, which covers a name with a path already on it as well as
+     * one in the current directory */
+    if (it_is_there(name))
+        return AES_E_OK;
+
+    /*
+     * Beside the program, which is where an application keeps its resource. The
+     * name of the program is what this side knows; the directory it came from
+     * is in front of it.
+     */
+    program = tos_program_name();
+    slash = 0;
+    if (program)
+    {
+        const char *walk;
+
+        for (walk = program; *walk; walk++)
+            if (*walk == '\\' || *walk == '/' || *walk == ':')
+                slash = walk;
+    }
+
+    if (slash)
+    {
+        int n = (int)(slash - program) + 1;
+
+        if (n > (int)sizeof tried - 1)
+            n = (int)sizeof tried - 1;
+
+        memcpy(tried, program, n);
+        tried[n] = 0;
+        snprintf(tried + n, sizeof tried - n, "%s", name);
+
+        if (it_is_there(tried))
+        {
+            string_out(buffer, tried);
+
+            FUNC_TRACE_ARGS {
+                printf("    found beside the program: [%s]\n", tried);
+            }
+
+            return AES_E_OK;
+        }
+    }
+
+    FUNC_TRACE_ARGS {
+        printf("    not found\n");
+    }
+
+    return AES_ERROR;
+}
+
+/*
+ * shel_envrn - what an environment variable says
+ *
+ * The application hands over a name to look for, with its equals sign, and
+ * gets back a pointer to what follows it inside its own environment. A pointer
+ * into the environment rather than a copy, because that is what GEM did and
+ * an application is entitled to keep it.
+ */
+uint32_t AES_shel_envrn()
+{
+    uint32_t answer_at = aes_addrin(0);
+    uint32_t name_at = aes_addrin(1);
+    char name[MAX_PATH];
+    /*
+     * The environment, which is in the basepage: a program is given one when
+     * it is started and the basepage is where its address is kept. Read from
+     * there rather than from anything this side remembers, because the
+     * application is entitled to have changed it.
+     */
+    uint32_t environment = m68k_read_memory_32(TOS_BASEPAGE + 0x2c);
+    uint32_t walk;
+    int len;
+
+    string_in(name_at, name, sizeof name);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    looking for [%s]\n", name);
+    }
+
+    if (!answer_at || !name[0] || !environment)
+        return AES_ERROR;
+
+    len = (int)strlen(name);
+
+    /*
+     * The environment is strings one after another, ending with an empty one.
+     * Each is compared from the front, so the name has to carry its own equals
+     * sign - which is the caller's business and is how GEM defined it.
+     */
+    for (walk = environment; m68k_read_memory_8(walk); )
+    {
+        int i;
+
+        for (i = 0; i < len; i++)
+            if ((char)m68k_read_memory_8(walk + i) != name[i])
+                break;
+
+        if (i == len)
+        {
+            m68k_write_memory_32(answer_at, walk + len);
+
+            FUNC_TRACE_ARGS {
+                printf("    found it\n");
+            }
+
+            return AES_E_OK;
+        }
+
+        while (m68k_read_memory_8(walk))
+            walk++;
+        walk++;
+    }
+
+    /* Not there, which is answered with nothing rather than with an error: an
+     * application asks about variables that may not be set */
+    m68k_write_memory_32(answer_at, 0);
+
+    return AES_E_OK;
+}
+
+/*
+ * shel_get and shel_put - the desktop's own notes
+ *
+ * A buffer the desktop keeps, holding what an ST wrote into DESKTOP.INF: which
+ * windows were open, what the icons were called, which resolution to start in.
+ * The AES neither reads it nor writes it - it holds it - so this is a place to
+ * put something rather than a setting.
+ *
+ * It belongs to the session rather than to an application, which makes it the
+ * daemon's, for the same reason the scrap is: one application writes it and
+ * another expects to read what was written.
+ */
+uint32_t AES_shel_get()
+{
+    uint32_t buffer = aes_addrin(0);
+    int16_t length = aes_intin(0);
+    char notes[AESD_NOTES];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    up to %d bytes\n", length);
+    }
+
+    if (!buffer || length <= 0)
+        return AES_ERROR;
+
+    aes_client_notes_get(notes, sizeof notes);
+
+    for (i = 0; i < length && i < (int)sizeof notes; i++)
+        m68k_write_memory_8(buffer + i, (uint8_t)notes[i]);
+
+    return AES_E_OK;
+}
+
+uint32_t AES_shel_put()
+{
+    uint32_t buffer = aes_addrin(0);
+    int16_t length = aes_intin(0);
+    char notes[AESD_NOTES];
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %d bytes\n", length);
+    }
+
+    if (!buffer || length <= 0)
+        return AES_ERROR;
+
+    for (i = 0; i < length && i < (int)sizeof notes - 1; i++)
+        notes[i] = (char)m68k_read_memory_8(buffer + i);
+    notes[i] = 0;
+
+    aes_client_notes_set(notes, i);
+
+    return AES_E_OK;
+}
+
+/*
+ * shel_rdef and shel_wdef - which program the desktop runs when nothing else is
+ *
+ * On an ST this was how a replacement desktop said it was the shell now. There
+ * is no shell here to replace, so what is remembered is remembered and given
+ * back, and nothing acts on it. An application that sets it and reads it gets
+ * what it set, which is all it can check.
+ */
+static char shell_command[MAX_PATH] = "";
+static char shell_directory[MAX_PATH] = "";
+
+uint32_t AES_shel_rdef()
+{
+    FUNC_TRACE_ENTER
+
+    string_out(aes_addrin(0), shell_command);
+    string_out(aes_addrin(1), shell_directory);
+
+    return AES_E_OK;
+}
+
+uint32_t AES_shel_wdef()
+{
+    FUNC_TRACE_ENTER
+
+    string_in(aes_addrin(0), shell_command, sizeof shell_command);
+    string_in(aes_addrin(1), shell_directory, sizeof shell_directory);
+
+    FUNC_TRACE_ARGS {
+        printf("    [%s] in [%s]\n", shell_command, shell_directory);
+    }
 
     return AES_E_OK;
 }

@@ -94,6 +94,11 @@ static struct {
  */
 static char scrap_path[128];
 
+/* The desktop's notes, which shel_get and shel_put pass about. Held rather
+ * than understood: nothing here has an opinion on what is in it. */
+static char notes[AESD_NOTES];
+static int16_t notes_length;
+
 static int listening = -1;
 static char socket_path[108];
 static int talkative;
@@ -490,6 +495,29 @@ static void start_the_accessories(const char *directory)
     closedir(dir);
 }
 
+static void app_notes_get(int slot)
+{
+    struct aesd_packet out;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_NOTES_ARE;
+    out.notes_length = notes_length;
+    memcpy(out.notes, notes, sizeof out.notes);
+
+    send_to(apps[slot].fd, &out);
+}
+
+static void app_notes_set(int slot, const struct aesd_packet *in)
+{
+    (void)slot;
+
+    notes_length = in->notes_length;
+    if (notes_length < 0 || notes_length > AESD_NOTES)
+        notes_length = AESD_NOTES;
+
+    memcpy(notes, in->notes, sizeof notes);
+}
+
 static void tidy_up(void)
 {
     if (listening >= 0)
@@ -685,6 +713,14 @@ int main(int argc, char **argv)
 
                 case AESD_ACCESSORY:
                     app_accessory(slots[i], &in);
+                    break;
+
+                case AESD_NOTES_GET:
+                    app_notes_get(slots[i]);
+                    break;
+
+                case AESD_NOTES_SET:
+                    app_notes_set(slots[i], &in);
                     break;
 
                 default:

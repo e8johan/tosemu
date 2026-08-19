@@ -444,6 +444,84 @@ void aes_client_pump(void)
  * still not an error - it runs, it simply waits for a message that will not
  * come, which is what it would do on a machine where nobody clicked it.
  */
+/*
+ * The desktop's notes, which one application writes and another reads.
+ *
+ * Kept here as well as in the daemon so that a single application still has
+ * somewhere to put them - it is a buffer, and a program that puts something in
+ * a buffer expects to find it there.
+ */
+static char notes[AESD_NOTES];
+static int16_t notes_length;
+
+void aes_client_notes_get(char *to, int size)
+{
+    struct aesd_packet p;
+
+    if (d.fd < 0)
+    {
+        memcpy(to, notes, (size < AESD_NOTES) ? (size_t)size : AESD_NOTES);
+        return;
+    }
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_NOTES_GET;
+
+    if (!packet_write(&p))
+    {
+        daemon_gone();
+        memcpy(to, notes, (size < AESD_NOTES) ? (size_t)size : AESD_NOTES);
+        return;
+    }
+
+    for (;;)
+    {
+        if (!packet_read(&p))
+        {
+            daemon_gone();
+            memcpy(to, notes, (size < AESD_NOTES) ? (size_t)size : AESD_NOTES);
+            return;
+        }
+
+        if (p.kind == AESD_NOTES_ARE)
+        {
+            memcpy(to, p.notes,
+                   (size < AESD_NOTES) ? (size_t)size : AESD_NOTES);
+            return;
+        }
+
+        if (p.kind == AESD_DELIVER)
+            aes_message_post(p.message);
+
+        if (p.kind == AESD_ACCESSORIES)
+            accessories_are(&p);
+    }
+}
+
+void aes_client_notes_set(const char *from, int length)
+{
+    struct aesd_packet p;
+
+    if (length < 0)
+        length = 0;
+    if (length > AESD_NOTES)
+        length = AESD_NOTES;
+
+    memcpy(notes, from, (size_t)length);
+    notes_length = (int16_t)length;
+
+    if (d.fd < 0)
+        return;
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_NOTES_SET;
+    p.notes_length = notes_length;
+    memcpy(p.notes, notes, sizeof p.notes);
+
+    if (!packet_write(&p))
+        daemon_gone();
+}
+
 void aes_client_accessory(const char *name)
 {
     struct aesd_packet p;

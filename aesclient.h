@@ -74,6 +74,14 @@ void aes_client_scrap_get(char *path, size_t size);
 void aes_client_scrap_set(const char *path);
 
 /*
+ * The desktop's notes: a buffer one application writes and another reads,
+ * holding what an ST kept in DESKTOP.INF. Session state, like the scrap, and
+ * held rather than understood.
+ */
+void aes_client_notes_get(char *to, int size);
+void aes_client_notes_set(const char *from, int length);
+
+/*
  * Accessories.
  *
  * An accessory is an application with no window until somebody picks it out of

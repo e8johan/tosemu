@@ -92,6 +92,12 @@ uint32_t AES_scrp_write();
 
 uint32_t AES_shel_write();
 uint32_t AES_shel_read();
+uint32_t AES_shel_find();
+uint32_t AES_shel_envrn();
+uint32_t AES_shel_get();
+uint32_t AES_shel_put();
+uint32_t AES_shel_rdef();
+uint32_t AES_shel_wdef();
 
 /* Resource files, aesrsrc.c */
 

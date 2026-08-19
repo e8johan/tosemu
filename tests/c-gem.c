@@ -750,7 +750,40 @@ int main(int argc, char **argv)
             check((global[5] == 0) && (global[6] == 0), 1,
                   "and forgets where the trees were");
 
+            /*
+             * Finding a file, which is how a GEM program locates its own
+             * resource without knowing where it was started from. The one
+             * just written is still there to be found.
+             */
+            {
+                char where[128];
+
+                strcpy(where, "TEST.RSC");
+                check(shel_find(where), 1, "shel_find finds a file that is there");
+
+                strcpy(where, "NOSUCH.XYZ");
+                check(shel_find(where), 0, "and refuses one that is not");
+            }
+
             Fdelete("TEST.RSC");
+        }
+
+        /*
+         * The desktop's notes, which the AES holds rather than reads. What is
+         * checked is that it holds them: putting something in and getting it
+         * back is the whole of the contract.
+         */
+        {
+            char put[64], got[64];
+
+            strcpy(put, "#a000000\r\n#b000000\r\n");
+            check(shel_put(put, (short)strlen(put) + 1), 1,
+                  "shel_put takes the desktop's notes");
+
+            memset(got, 0, sizeof got);
+            check(shel_get(got, (short)strlen(put) + 1), 1,
+                  "shel_get gives them back");
+            check(strcmp(got, put), 0, "and they are what was put there");
         }
 
         v_clsvwk(vwk);

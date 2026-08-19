@@ -89,7 +89,24 @@ enum {
      */
     AESD_ACCESSORY,
     AESD_ACCESSORIES,
+
+    /*
+     * The desktop's own notes, which shel_get reads and shel_put writes.
+     *
+     * A buffer holding what an ST kept in DESKTOP.INF - which windows were
+     * open, what the icons were called. The AES neither reads it nor writes
+     * it, it holds it, so it is a place to put something rather than a
+     * setting; and it belongs to the session rather than to an application,
+     * because one writes it and another expects to read what was written.
+     */
+    AESD_NOTES_GET,
+    AESD_NOTES_SET,
+    AESD_NOTES_ARE,
 };
+
+/* How much of it there is. An ST gave the desktop a kilobyte and nothing
+ * expects more. */
+#define AESD_NOTES (1024)
 
 /* As many as GEM would load, and the number the AES splices into the Desk
  * menu, so the two agree by construction */
@@ -134,6 +151,10 @@ struct aesd_packet {
         char name[AESD_NAME_LEN];
         int16_t ap_id;
     } accessory[AESD_MAX_ACCS];
+
+    /* The desktop's notes, and how much of them is meant */
+    int16_t notes_length;
+    char notes[AESD_NOTES];
 };
 
 /*
