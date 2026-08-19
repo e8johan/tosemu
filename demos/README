@@ -138,3 +138,32 @@ The box is a window of the desktop's like the dialogs are. It has to be asked
 for separately from the way an application's own dialogs get one, because the
 selector reserves its screen from inside the AES rather than by calling
 form_dial - see the note in emuvdi/bridge.c.
+
+
+acc
+---
+
+A desk accessory, built as DEMO.ACC.
+
+What makes one an accessory is not what it is made of - it is a GEM application
+like any other - but that it never stops. A program runs, does something and
+exits; an accessory says what it is called and then waits for the rest of the
+session to ask for it.
+
+Saying what it is called is menu_register, and it is the only thing that makes
+an accessory reachable: the name goes into the Desk menu of every application
+running, including the ones that started first and the ones that have not
+started yet. Picking it there sends the accessory AC_OPEN, which is its cue to
+put a window up.
+
+It needs a daemon, because the menu it appears in belongs to the other
+applications rather than to itself:
+
+    make demos
+    mkdir -p /tmp/acc && cp demos/DEMO.ACC /tmp/acc/
+    bin/tosaesd -v /tmp/acc &
+    bin/tosemu demos/menu
+
+and the Desk menu has Demo in it, under a separator. Picking it prints a line
+from the accessory rather than doing anything to the menu demo, which is the
+whole point.

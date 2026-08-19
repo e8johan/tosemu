@@ -86,6 +86,11 @@ they share looks like, and messages one sends another - so `appl_find` and
 socket in `$XDG_RUNTIME_DIR`, and `TOSEMU_AESD` says somewhere else, which is
 how the test suite runs its own without disturbing a session.
 
+Give it a directory and it starts the accessories in it - anything ending in
+`.ACC`, each in an emulator of its own. They put themselves into the Desk menu
+of every application that runs afterwards, which is what an accessory is for
+and why it needs something that outlives any one program to do it.
+
 The screen is the daemon's when there is one, and that is not for convenience:
 it has to be one screen, because applications lay their windows out in it and
 are told where the others put theirs, so two that disagree about its size

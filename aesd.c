@@ -41,7 +41,9 @@
  * a machine's graphics mode is, one setting for everything running on it.
  */
 
+#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -51,6 +53,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
 #include "aesproto.h"
 
@@ -94,6 +97,16 @@ static char scrap_path[128];
 static int listening = -1;
 static char socket_path[108];
 static int talkative;
+static const char *accessory_directory;
+
+static void say_of(const char *what, const char *name)
+{
+    if (!talkative)
+        return;
+
+    printf("tosaesd: %s %s\n", what, name);
+    fflush(stdout);
+}
 
 static void say(const char *what, int16_t who, const char *name)
 {
@@ -328,6 +341,110 @@ static void app_accessory(int slot, const struct aesd_packet *in)
     tell_about_accessories(-1);
 }
 
+/*
+ * Starting the accessories.
+ *
+ * An accessory is a program like any other and is started like one: a process
+ * of its own running an emulator, which says hello and registers its name the
+ * same way anything else would. What makes it an accessory is that it does
+ * that instead of opening a window.
+ *
+ * The daemon does the starting because it is what exists before any of them
+ * and outlives all of them, which is what a session is. It knows nothing else
+ * about the emulator - it does not link a line of it - so it finds the program
+ * beside itself rather than being told where it is.
+ */
+static void start_accessory(const char *emulator, const char *path)
+{
+    pid_t child = fork();
+
+    if (child < 0)
+        return;
+
+    if (child == 0)
+    {
+        /* The daemon's socket is not the child's business: it opens its own
+         * when it says hello, and this one would be a second way in */
+        if (listening >= 0)
+            close(listening);
+
+        execl(emulator, emulator, path, (char *)NULL);
+
+        /* Only reached when the emulator is not where it was expected. The
+         * child says so rather than disappearing, because a session with no
+         * accessories and no reason given is the harder thing to work out. */
+        fprintf(stderr, "tosaesd: could not start %s with %s: %s\n",
+                path, emulator, strerror(errno));
+        _exit(1);
+    }
+
+    say_of("started", path);
+}
+
+/* Where the emulator is, which is beside this program */
+static int find_the_emulator(char *where, size_t size)
+{
+    char self[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
+    char *slash;
+
+    if (n <= 0)
+        return 0;
+
+    self[n] = 0;
+
+    slash = strrchr(self, '/');
+    if (!slash)
+        return 0;
+
+    *slash = 0;
+    snprintf(where, size, "%s/tosemu", self);
+
+    return access(where, X_OK) == 0;
+}
+
+/*
+ * Everything in a directory that looks like an accessory.
+ *
+ * Which is anything ending in .ACC, in either case, because a TOS filesystem
+ * did not care and the one underneath this might.
+ */
+static void start_the_accessories(const char *directory)
+{
+    char emulator[PATH_MAX];
+    struct dirent *entry;
+    DIR *dir;
+
+    if (!find_the_emulator(emulator, sizeof emulator))
+    {
+        fprintf(stderr, "tosaesd: cannot find tosemu beside me, so there is "
+                        "nothing to start the accessories with\n");
+        return;
+    }
+
+    dir = opendir(directory);
+    if (!dir)
+    {
+        fprintf(stderr, "tosaesd: no accessories in %s: %s\n",
+                directory, strerror(errno));
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        char path[PATH_MAX];
+        size_t len = strlen(entry->d_name);
+
+        if (len < 4 || strcasecmp(entry->d_name + len - 4, ".acc") != 0)
+            continue;
+
+        snprintf(path, sizeof path, "%s/%s", directory, entry->d_name);
+        start_accessory(emulator, path);
+    }
+
+    closedir(dir);
+}
+
 static void tidy_up(void)
 {
     if (listening >= 0)
@@ -355,12 +472,18 @@ int main(int argc, char **argv)
     {
         if (!strcmp(argv[i], "-v"))
             talkative = 1;
+        else if (!accessory_directory && argv[i][0] != '-')
+            accessory_directory = argv[i];
         else
         {
-            printf("Usage: tosaesd [-v]\n\n"
+            printf("Usage: tosaesd [-v] [directory]\n\n"
                    "The daemon several tosemu processes have in common: which\n"
                    "application is which, what the screen looks like, and\n"
                    "messages one sends another.\n\n"
+                   "A directory is looked in for accessories - anything ending\n"
+                   "in .ACC - and each one is started in an emulator of its\n"
+                   "own. They put themselves in the Desk menu of every\n"
+                   "application that runs afterwards.\n\n"
                    "TOSEMU_AESD says where to put the socket, and defaults to\n"
                    "$XDG_RUNTIME_DIR/" AESD_SOCKET_NAME ".\n");
             return 1;
@@ -424,6 +547,10 @@ int main(int argc, char **argv)
         printf("tosaesd: listening on %s\n", socket_path);
         fflush(stdout);
     }
+
+    /* And now that there is somewhere for them to say hello to */
+    if (accessory_directory)
+        start_the_accessories(accessory_directory);
 
     for (;;)
     {
