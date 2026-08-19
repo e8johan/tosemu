@@ -641,9 +641,37 @@ int main(int argc, char **argv)
     snprintf(where.sun_path, sizeof where.sun_path, "%s", socket_path);
 
     /*
-     * A socket left behind by a daemon that did not get to tidy up would stop
-     * this one starting for ever. Taking it away is safe because nobody is
-     * listening on it - if somebody were, binding would fail anyway.
+     * Whether one is already running, asked by trying to talk to it.
+     *
+     * This has to come first and the reason is not obvious. Unlinking the
+     * socket does not fail when somebody is listening on it - it takes the
+     * name away and leaves them holding a socket nobody can reach - so a
+     * second daemon started by accident would quietly orphan the first, along
+     * with every application talking to it. Binding would not have complained
+     * either, because by then there is nothing at that name to complain about.
+     */
+    {
+        int asking = socket(AF_UNIX, SOCK_STREAM, 0);
+
+        if (asking >= 0)
+        {
+            int answered = connect(asking, (struct sockaddr *)&where,
+                                   sizeof where) == 0;
+
+            close(asking);
+
+            if (answered)
+            {
+                printf("tosaesd: one is already running on %s\n", socket_path);
+                return 0;
+            }
+        }
+    }
+
+    /*
+     * Nobody answered, so anything at that name is what a daemon that did not
+     * get to tidy up left behind, and it would stop this one starting for
+     * ever.
      */
     unlink(socket_path);
 

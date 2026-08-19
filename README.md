@@ -423,6 +423,9 @@ accessories it starts, a mark in the panel, and applications coming and going.
     ./bin/tosaesd -v /tmp/gem &
     ./bin/tosemu demos/menu
 
+To find out whether one is already running, start another: it says so and
+stops rather than taking the first one's place.
+
 The daemon says what it is doing with `-v`. What to look for:
 
   - it starts DEMO.ACC and says so, and the accessory says it registered

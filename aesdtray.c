@@ -128,12 +128,16 @@ static void draw_the_mark(unsigned char *argb)
             else if (from_mid >= 4 && from_mid <= 6)
                 on = y > 2 + (from_mid - 4) * 3;        /* the outer two */
 
-            /* Bytes are blue, green, red, alpha the other way about: the wire
-             * wants them most significant first, which is A R G B */
+            /*
+             * Bytes most significant first, which is A R G B, and a red that
+             * is dark enough to read on a pale panel and bright enough on a
+             * dark one. A mark drawn in near white disappears on half the
+             * desktops there are, and there is no way to ask which this is.
+             */
             p[0] = on ? 0xff : 0x00;
-            p[1] = on ? 0xf0 : 0x00;
-            p[2] = on ? 0xf0 : 0x00;
-            p[3] = on ? 0xf0 : 0x00;
+            p[1] = on ? 0xc0 : 0x00;
+            p[2] = on ? 0x28 : 0x00;
+            p[3] = on ? 0x28 : 0x00;
         }
     }
 }
@@ -155,6 +159,16 @@ static void put_object(DBusMessageIter *at, const char *what)
 
     dbus_message_iter_open_container(at, DBUS_TYPE_VARIANT, "o", &variant);
     dbus_message_iter_append_basic(&variant, DBUS_TYPE_OBJECT_PATH, &what);
+    dbus_message_iter_close_container(at, &variant);
+}
+
+static void put_int(DBusMessageIter *at, int what)
+{
+    DBusMessageIter variant;
+    dbus_int32_t value = what;
+
+    dbus_message_iter_open_container(at, DBUS_TYPE_VARIANT, "i", &variant);
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &value);
     dbus_message_iter_close_container(at, &variant);
 }
 
@@ -197,6 +211,42 @@ static void put_the_mark(DBusMessageIter *at)
     dbus_message_iter_close_container(at, &variant);
 }
 
+/*
+ * The tooltip, which is a structure rather than a line of text: an icon name,
+ * an icon, a heading and a body. Saying it is a string is the sort of mistake
+ * that costs nothing until something reads it strictly.
+ */
+static void put_the_tooltip(DBusMessageIter *at)
+{
+    DBusMessageIter variant, tip, pixmaps;
+    const char *nothing = "";
+    const char *heading = "Atari";
+    const char *body = "GEM applications";
+
+    dbus_message_iter_open_container(at, DBUS_TYPE_VARIANT, "(sa(iiay)ss)",
+                                     &variant);
+    dbus_message_iter_open_container(&variant, DBUS_TYPE_STRUCT, 0, &tip);
+
+    dbus_message_iter_append_basic(&tip, DBUS_TYPE_STRING, &nothing);
+
+    dbus_message_iter_open_container(&tip, DBUS_TYPE_ARRAY, "(iiay)",
+                                     &pixmaps);
+    dbus_message_iter_close_container(&tip, &pixmaps);
+
+    dbus_message_iter_append_basic(&tip, DBUS_TYPE_STRING, &heading);
+    dbus_message_iter_append_basic(&tip, DBUS_TYPE_STRING, &body);
+
+    dbus_message_iter_close_container(&variant, &tip);
+    dbus_message_iter_close_container(at, &variant);
+}
+
+/* Everything a panel asks about, in the order it is worth asking */
+static const char *const every_property[] = {
+    "Category", "Id", "Title", "Status", "IconName", "IconPixmap",
+    "AttentionIconName", "OverlayIconName", "IconThemePath",
+    "ToolTip", "Menu", "ItemIsMenu", "WindowId", 0
+};
+
 static int item_property(DBusMessage *reply, const char *name)
 {
     DBusMessageIter at;
@@ -216,9 +266,17 @@ static int item_property(DBusMessage *reply, const char *name)
     else if (!strcmp(name, "IconPixmap"))
         put_the_mark(&at);
     else if (!strcmp(name, "ToolTip"))
-        put_string(&at, "GEM");
+        put_the_tooltip(&at);
     else if (!strcmp(name, "Menu"))
         put_object(&at, MENU_PATH);
+    else if (!strcmp(name, "AttentionIconName")
+             || !strcmp(name, "OverlayIconName")
+             || !strcmp(name, "IconThemePath"))
+        /* Nothing, but said rather than refused: a panel that asks for all of
+         * them and is given an error for one may make nothing of the lot */
+        put_string(&at, "");
+    else if (!strcmp(name, "WindowId"))
+        put_int(&at, 0);
     else if (!strcmp(name, "ItemIsMenu"))
         /*
          * Yes: clicking it opens the menu rather than doing something. There
@@ -341,6 +399,72 @@ static void put_the_menu(DBusMessage *reply)
 
 /* Answering the bus *******************************************************/
 
+/*
+ * Copies one value across, whatever shape it is.
+ *
+ * A variant can hold anything, and the things here range from a string to an
+ * array of structures with a byte array inside, so this walks rather than
+ * knows: containers are opened and their contents copied, and everything else
+ * is a basic value and is appended.
+ */
+static void put_variant_from(DBusMessageIter *to, DBusMessageIter *from)
+{
+    int type = dbus_message_iter_get_arg_type(from);
+
+    if (dbus_type_is_basic(type))
+    {
+        DBusBasicValue value;
+
+        dbus_message_iter_get_basic(from, &value);
+        dbus_message_iter_append_basic(to, type, &value);
+
+        return;
+    }
+
+    if (type == DBUS_TYPE_INVALID)
+        return;
+
+    {
+        DBusMessageIter inside, into;
+        char *what = 0;
+        const char *holds = 0;
+
+        dbus_message_iter_recurse(from, &inside);
+
+        /*
+         * What a container has to be told it holds, which is different for
+         * each kind. A struct or a dict entry carries its shape in itself and
+         * is told nothing. An array is named for what is in it, so its own
+         * signature less the leading a. A variant is named "v" whatever is
+         * inside it, so the answer has to come from the thing inside instead -
+         * which is what made this abort the first time.
+         */
+        if (type == DBUS_TYPE_VARIANT)
+        {
+            what = dbus_message_iter_get_signature(&inside);
+            holds = what;
+        }
+        else if (type != DBUS_TYPE_STRUCT && type != DBUS_TYPE_DICT_ENTRY)
+        {
+            what = dbus_message_iter_get_signature(from);
+            holds = what ? what + 1 : 0;
+        }
+
+        dbus_message_iter_open_container(to, type, holds, &into);
+
+        while (dbus_message_iter_get_arg_type(&inside) != DBUS_TYPE_INVALID)
+        {
+            put_variant_from(&into, &inside);
+            dbus_message_iter_next(&inside);
+        }
+
+        dbus_message_iter_close_container(to, &into);
+
+        if (what)
+            dbus_free(what);
+    }
+}
+
 static DBusHandlerResult handle(DBusConnection *connection, DBusMessage *msg,
                                 void *user)
 {
@@ -353,8 +477,65 @@ static DBusHandlerResult handle(DBusConnection *connection, DBusMessage *msg,
     if (!face || !member)
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-    /* What everything on a bus has to answer */
+    /*
+     * Everything at once, which is how a panel usually asks. Getting this
+     * wrong is invisible from the outside: the item registers, the watcher
+     * lists it, every property answers when asked for by name - and nothing
+     * appears, because nothing ever asked for one by name.
+     */
     if (!strcmp(face, "org.freedesktop.DBus.Properties")
+        && !strcmp(member, "GetAll"))
+    {
+        const char *asked_face = 0;
+
+        dbus_message_get_args(msg, 0, DBUS_TYPE_STRING, &asked_face,
+                              DBUS_TYPE_INVALID);
+
+        if (asked_face && !strcmp(asked_face, ITEM_FACE))
+        {
+            DBusMessageIter at, all, pair;
+            int i;
+
+            reply = dbus_message_new_method_return(msg);
+
+            dbus_message_iter_init_append(reply, &at);
+            dbus_message_iter_open_container(&at, DBUS_TYPE_ARRAY, "{sv}",
+                                             &all);
+
+            for (i = 0; every_property[i]; i++)
+            {
+                DBusMessage *one = dbus_message_new_method_return(msg);
+                DBusMessageIter from;
+
+                if (!one)
+                    continue;
+
+                /*
+                 * Each is written the same way it would be written on its own,
+                 * and then moved across. Two ways of saying what a property is
+                 * would be two things to keep alike.
+                 */
+                if (!item_property(one, every_property[i])
+                    || !dbus_message_iter_init(one, &from))
+                {
+                    dbus_message_unref(one);
+                    continue;
+                }
+
+                dbus_message_iter_open_container(&all, DBUS_TYPE_DICT_ENTRY, 0,
+                                                 &pair);
+                dbus_message_iter_append_basic(&pair, DBUS_TYPE_STRING,
+                                               &every_property[i]);
+                put_variant_from(&pair, &from);
+                dbus_message_iter_close_container(&all, &pair);
+
+                dbus_message_unref(one);
+            }
+
+            dbus_message_iter_close_container(&at, &all);
+        }
+    }
+    else if (!strcmp(face, "org.freedesktop.DBus.Properties")
         && !strcmp(member, "Get"))
     {
         const char *asked_face = 0, *asked = 0;
