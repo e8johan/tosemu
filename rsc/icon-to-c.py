@@ -54,6 +54,37 @@ def rasterise(svg, size):
     return None
 
 
+def plain(size):
+    """A mark drawn here, for when nothing can rasterise the picture.
+
+    Building tosemu should not need a rasteriser installed.  What it costs to
+    do without one is a plain shape rather than the real picture, which is a
+    great deal better than a build that fails or a panel showing nothing.
+    """
+    out = bytearray(size * size * 4)
+
+    for y in range(size):
+        for x in range(size):
+            mid, half = size // 2, size // 22.0
+            from_mid = abs(x - mid)
+            on = False
+
+            if y > size - 4 * half:
+                on = 1 * half < x < size - 2 * half     # the base
+            elif from_mid < 2 * half:
+                on = y > 2 * half                       # the middle upright
+            elif 4 * half <= from_mid <= 6 * half:
+                on = y > (2 + (from_mid / half - 4) * 3) * half
+
+            at = (y * size + x) * 4
+            out[at + 0] = 0xc0 if on else 0x00          # R, reordered below
+            out[at + 1] = 0x28 if on else 0x00
+            out[at + 2] = 0x28 if on else 0x00
+            out[at + 3] = 0xff if on else 0x00          # A
+
+    return bytes(out)
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit("usage: icon-to-c.py <picture.svg> <where-to-write.h>")
@@ -65,9 +96,11 @@ def main():
         raw = rasterise(svg, size)
 
         if raw is None:
-            sys.exit("icon-to-c.py: nothing here can turn %s into pixels - "
-                     "install rsvg-convert, ImageMagick or Inkscape, or leave "
-                     "the generated file as it is" % svg)
+            print("icon-to-c.py: nothing here can turn %s into pixels, so the "
+                  "panel gets a plain mark instead - install rsvg-convert, "
+                  "ImageMagick or Inkscape for the real one" % svg,
+                  file=sys.stderr)
+            raw = plain(size)
 
         # The wire wants A R G B, most significant first, and a rasteriser
         # gives R G B A.  Premultiplied is not asked for and not done.

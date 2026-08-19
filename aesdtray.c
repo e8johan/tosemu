@@ -117,9 +117,8 @@ static void say_once(const char *why)
  * nothing, which looks exactly like a session that failed to start, and there
  * is no way to tell the two apart from outside.
  *
- * rsc/tray.svg is the picture and rsc/tray-icon.h is what comes out of it. The
- * generated file is committed, so building tosemu needs no rasteriser; only
- * changing the picture does.
+ * rsc/tray.svg is the picture and rsc/tray-icon.h is what the build makes of
+ * it. See rsc/README.
  */
 #include "rsc/tray-icon.h"
 
