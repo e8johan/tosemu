@@ -51,6 +51,10 @@
  */
 WORD host_call_userdef(USERBLK *ub, PARMBLK *pb);
 
+/* All that one does is take the two blocks apart and hand the fields to
+ * host_userdef_draw, which is declared in emuvdi.h because it is written in
+ * types both sides of the seam can name - see struct host_userdef there. */
+
 /*
  * Waiting, which is the AES kernel's alone to do. The library files reach it
  * through ev_multi, and ev_multi reaches this: tosemu owns the event queue,

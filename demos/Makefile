@@ -5,7 +5,7 @@
 #   make demos
 #   ./bin/tosemu demos/dialog
 #
-DEMONAME=dialog window menu fsel
+DEMONAME=dialog window menu fsel userdef
 
 # An accessory is named for what it is rather than after its source: the daemon
 # looks for .ACC and nothing else

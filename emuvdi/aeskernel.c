@@ -42,6 +42,7 @@
 #include "gemlib.h"
 #include "lineavars.h"
 #include "aeskernel.h"
+#include "emuvdi.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -513,12 +514,33 @@ LONG dos_lseek(WORD handle, WORD smode, LONG sofst)
  * A G_USERDEF object draws itself, through a routine the application supplied.
  * That routine is 68000 code, so calling it means handing the parameter block
  * and the address to the emulator and letting the CPU run until it returns -
- * the way XBIOS_Supexec already does. Until that is wired up, a user drawn
- * object is left blank rather than drawn wrongly.
+ * the way XBIOS_Supexec already does.
+ *
+ * All that happens here is taking the two blocks apart. Neither can cross the
+ * seam whole: ub_code is a 68000 address kept in a field the compiler thinks
+ * is a function pointer, and pb_tree points at this side's copy of the tree
+ * rather than at the application's. Putting them back together in the shape
+ * the routine expects is aestree.c's, because the address of the application's
+ * own tree is something only it knows.
  */
 WORD host_call_userdef(USERBLK *ub, PARMBLK *pb)
 {
-    needs_kernel("drawing a G_USERDEF object");
+    struct host_userdef call;
 
-    return 0;
+    call.code = (uint32_t)(uintptr_t)ub->ub_code;
+    call.tree = pb->pb_tree;
+    call.obj = pb->pb_obj;
+    call.prevstate = pb->pb_prevstate;
+    call.currstate = pb->pb_currstate;
+    call.x = pb->pb_x;
+    call.y = pb->pb_y;
+    call.w = pb->pb_w;
+    call.h = pb->pb_h;
+    call.xc = pb->pb_xc;
+    call.yc = pb->pb_yc;
+    call.wc = pb->pb_wc;
+    call.hc = pb->pb_hc;
+    call.parm = (int32_t)pb->pb_parm;
+
+    return host_userdef_draw(&call);
 }

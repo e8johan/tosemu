@@ -223,6 +223,36 @@ uint16_t emuvdi_tree_state(void *tree, int index)
     return ((OBJECT *)tree + index)->ob_state;
 }
 
+/*
+ * A USERBLK, likewise, and for the same reason: ub_code is a function pointer
+ * and ub_parm a LONG, so it is eight bytes in the machine and sixteen here.
+ *
+ * What goes in ub_code is a 68000 address rather than anything this program
+ * can jump to. That is a lie about the type and it is the honest choice all
+ * the same: the field is where the machine keeps the routine, ob_user finds it
+ * by walking exactly the same path the real AES walked, and the one place it
+ * is read - call_usercode in gemoblib.c, which is a copy edited for this - is
+ * the place that knows it has to hand the address to the emulator rather than
+ * call it.
+ */
+void *emuvdi_userblk_alloc()
+{
+    USERBLK *ub = host_vdi_alloc(sizeof(USERBLK));
+
+    if (ub)
+        memset(ub, 0, sizeof(USERBLK));
+
+    return ub;
+}
+
+void emuvdi_userblk_set(void *block, uint32_t code, int32_t parm)
+{
+    USERBLK *ub = block;
+
+    ub->ub_code = (WORD (*)(PARMBLK *))(uintptr_t)code;
+    ub->ub_parm = parm;
+}
+
 void *emuvdi_tedinfo_alloc()
 {
     TEDINFO *ted = host_vdi_alloc(sizeof(TEDINFO));

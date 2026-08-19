@@ -46,6 +46,7 @@
 
 #include "gem_p.h"
 #include "aes_p.h"
+#include "emuvdi/emuvdi.h"
 #include "tossystem.h"
 #include "m68k.h"
 
@@ -264,6 +265,28 @@ void aes_trap()
     printf("AES call %d: intin %d, intout %d, addrin %d, addrout %d\n",
            pb.opcode, pb.n_intin, pb.n_intout, pb.n_addrin, pb.n_addrout);
 #endif
+
+    /*
+     * A call from inside a routine that draws an object for itself.
+     *
+     * That routine is running because the AES is halfway through drawing a
+     * tree, and the tree it is drawing is a copy in this program's memory that
+     * the next call would free and build again. So the call is refused rather
+     * than allowed to pull the tree out from under the drawing that asked for
+     * it. The VDI is not refused, and the VDI is all such a routine is
+     * supposed to use.
+     */
+    if (aes_userdef_running())
+    {
+        printf("AES: call %d from inside a routine that draws an object, "
+               "which is not allowed - it is refused\n", pb.opcode);
+
+        if (pb.n_intout > 0)
+            aes_set_intout(0, 0);
+        m68k_set_reg(M68K_REG_D0, 0);
+
+        return;
+    }
 
     for (i = 0; i < (int)(sizeof(AES_functions)/sizeof(struct AES_function)); ++i)
     {

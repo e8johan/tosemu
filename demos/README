@@ -91,6 +91,43 @@ application would carry a .RSC and call rsrc_load, which needs a TOS path
 resolved the way GEMDOS resolves one, and that is not written yet.
 
 
+userdef
+-------
+
+The same dialog with the buttons drawn round instead of square, because the
+program draws them itself.
+
+Everything in a GEM dialog is one of a dozen kinds the AES knows how to draw,
+except one: a G_USERDEF object - a G_PROGDEF to a resource editor - says "call
+me and I will draw it", and what it points at is a routine in the application.
+It is how every GEM program that did not look like a GEM program was written.
+
+Here the AES and the application are not the same kind of code. The AES is the
+emulator, running on the host; the routine is 68000 code in the emulated
+machine. So this is the one place where a call goes the other way: the emulator
+is halfway through drawing a dialog when it reaches an object it has to ask the
+application about, and it starts the CPU again and runs it to the end of the
+routine before carrying on.
+
+The routine gets everything it needs in a block the AES builds in the machine's
+own memory: which tree and which object, where it is, what it is clipped to,
+and the state it is going into. The tree in that block is the application's own
+rather than the copy the emulator has been drawing out of - this one reads the
+object's flags out of it to find out whether it is the default button, and the
+only tree it can read is its own.
+
+    ./bin/tosemu demos/userdef
+
+Hold a button down to see the routine draw the pressed state, which is its own
+doing rather than the AES inverting the rectangle: an object that draws itself
+is asked again when its state changes, and told what the state was as well as
+what it is becoming.
+
+The one rule is that it may only call the VDI. Calling the AES back would ask
+it to start again on a tree it has not finished, so a call made from inside one
+of these is refused and says so.
+
+
 menu
 ----
 

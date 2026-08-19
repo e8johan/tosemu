@@ -795,3 +795,8 @@ void halt_execution()
 {
     keepongoing = 0;
 }
+
+int execution_halted()
+{
+    return !keepongoing;
+}

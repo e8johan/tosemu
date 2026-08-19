@@ -21,18 +21,19 @@
 - Ptermres, which has nowhere to stay resident in.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
-- Objects an application draws itself - G_USERDEF, which a resource editor
-  calls G_PROGDEF - are drawn as empty boxes. The object's ob_spec points at
-  an APPLBLK holding the address of a routine in the machine's memory, and
-  calling it is more than reaching it: what the routine is handed is a
-  PARMBLK describing what to draw, and in that block is the address of the
-  tree. That has to be the application's own tree rather than the copy
-  aestree.c makes, because the application can only read its own, and it has
-  to be built in the machine's memory in the machine's layout - both blocks
-  are, and the routine walks them. So this needs the Supexec trampoline in
-  emuvdi/gemoblib.c to construct a PARMBLK there, fill it from the host side
-  of the seam, and hand back what the routine returns. lattice/EXAMPLES/WTEST
-  has two of them and is the thing to test it against.
+- A routine that draws an object for the application may only call the VDI,
+  and one that calls the AES is refused rather than obeyed. The AES is
+  halfway through drawing a tree when it calls the routine, and the tree it
+  is drawing is the copy aestree.c made, which the next AES call would free
+  and build again. Making that safe means a stack of trees rather than one,
+  and there is nothing yet that wants it: the routine is documented as VDI
+  only, and both of WTEST's keep to it.
+- A routine that draws an object runs with whatever writing mode the AES left
+  set on its workstation, because it draws through the AES's handle. That is
+  what an ST did as well - WTEST leans on it, and a button held down comes
+  out inverted rather than erased - but it is the sort of thing that will
+  differ from real GEM somewhere, and it will look like the routine being
+  wrong rather than the mode.
 - Add a configuration item (or command line option) to select from six 
   different graphics modes:
     1. 320x200, 4bpp (Atari ST)

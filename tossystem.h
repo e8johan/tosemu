@@ -146,4 +146,9 @@ uint32_t bios_static_alloc(uint32_t len);
 
 void halt_execution();
 
+/* Whether that has happened. The loop that runs the machine reads it for
+ * itself; this is for the one place that runs the machine from inside a call -
+ * host_userdef_draw in aestree.c - and has to stop when the loop would. */
+int execution_halted();
+
 #endif /* TOSSYSTEM_H */

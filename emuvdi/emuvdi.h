@@ -147,6 +147,51 @@ void emuvdi_tree_set(void *tree, int index, int16_t next, int16_t head,
  * selected, and a checked menu entry comes back checked */
 uint16_t emuvdi_tree_state(void *tree, int index);
 
+/*
+ * A USERBLK, which is what an object the application draws itself points at.
+ *
+ * It holds two things and neither means anything on this side: a routine that
+ * is 68000 code, and a long the application chose, which is usually an address
+ * in the machine as well. Both are carried across unchanged rather than
+ * translated, because the routine is the one that reads them and it reads them
+ * back where they came from - see host_userdef_draw in aestree.c.
+ */
+void *emuvdi_userblk_alloc();
+void emuvdi_userblk_set(void *block, uint32_t code, int32_t parm);
+
+/*
+ * And calling that routine, which is the one thing in the AES that runs the
+ * emulated CPU from inside a call rather than the other way round.
+ *
+ * A PARMBLK is not the same shape in the two places either - pb_tree is a
+ * pointer and pb_parm a LONG - and neither half of it can be handed over as it
+ * stands: the tree in it is this side's copy, and what the routine has to be
+ * given is the application's own, which only aestree.c knows the address of.
+ * So the fields go across one at a time and the block the routine reads is
+ * built in the machine's memory, in the machine's layout.
+ *
+ * This is declared here rather than in aeskernel.h with the rest of the seam
+ * because both halves have to name it, and aeskernel.h is written in EmuTOS's
+ * types. What it answers with is the state the object is to be drawn in, which
+ * is what the routine returns.
+ */
+struct host_userdef {
+    uint32_t code;              /* the routine, in the machine's memory */
+    const void *tree;           /* the tree being drawn, this side's copy */
+    int16_t obj;                /* which object in it */
+    int16_t prevstate;          /* what it was, and what it is to become */
+    int16_t currstate;
+    int16_t x, y, w, h;         /* where it is */
+    int16_t xc, yc, wc, hc;     /* and what the drawing is clipped to */
+    int32_t parm;               /* the long the application put in ub_parm */
+};
+
+int16_t host_userdef_draw(const struct host_userdef *call);
+
+/* Whether one of those routines is running now, which is how an AES call made
+ * from inside one is caught before it walks over the tree being drawn */
+int aes_userdef_running(void);
+
 /* A TEDINFO, which the text kinds of object point at. The three strings are
  * the text, the template and the validation. */
 void *emuvdi_tedinfo_alloc();

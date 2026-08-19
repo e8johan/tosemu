@@ -48,6 +48,7 @@
 #include "tosvars.h"
 #include "vdi_defs.h"
 #include "lineavars.h"
+#include "emuvdi.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -158,6 +159,24 @@ void host_menu_end(void)
 
 void host_dialog_end(void)
 {
+}
+
+/*
+ * Drawing an object the application draws itself, which means running the
+ * emulated CPU. There is no CPU here - this test is the port built against the
+ * host and nothing else - so it says so and leaves the object as it was.
+ */
+int16_t host_userdef_draw(const struct host_userdef *call)
+{
+    fprintf(stderr, "vditest: an object drawn by the application, and this "
+            "test has no machine to run its routine in\n");
+
+    return call->currstate;
+}
+
+int aes_userdef_running(void)
+{
+    return 0;
 }
 
 /*
