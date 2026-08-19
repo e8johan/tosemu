@@ -66,6 +66,12 @@ characters with `\r` for Return. Clicks are `x,y` to press and release there,
 without pressing anything - which is not a nicety, because a GEM menu opens
 when the pointer arrives among the titles rather than when it is clicked.
 
+`TOSEMU_TRACE_INPUT` says what every wait for the mouse asked for and what it
+was told, and which directories the file selector read. It is there because a
+wait that answers wrongly is invisible from anywhere else: two different waits
+asking the same question and one wait asking it twice look identical until
+something says which happened.
+
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.

@@ -47,6 +47,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <time.h>
 
@@ -333,6 +334,11 @@ LONG dos_sfirst(char *pattern, WORD attributes)
 
     if (tos_path_to_host(path, walk.where) != 0)
         return -34L;            /* EPTHNF */
+
+    /* TOSEMU_TRACE_INPUT says which directories were read, which is one line
+     * per thing the file selector was told to go into */
+    if (getenv("TOSEMU_TRACE_INPUT"))
+        fprintf(stderr, "tosemu: listing %s\n", walk.where);
 
     walk.attributes = attributes;
     walk.dir = opendir(walk.where);

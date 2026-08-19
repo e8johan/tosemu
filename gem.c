@@ -149,20 +149,61 @@ int gem_start()
  * the dialog and puts it back afterwards. Here nothing is covered - the screen
  * is still there, in its own window and its own memory - so what the two do
  * instead is put the dialog in a window of its own and take it away again.
+ *
+ * They nest, because dialogs do. The file selector is a dialog and it puts an
+ * alert up when it cannot read a directory; an application does the same when
+ * something goes wrong in the middle of one of its own. With one dialog at a
+ * time the alert takes the selector's window away and the selector has nothing
+ * to draw into when the alert has gone - which looks exactly like everything
+ * stopping, because nothing it does afterwards can be seen.
+ *
+ * A new one starts as a copy of whatever is being drawn into rather than of
+ * the screen, so an alert over the selector has the selector behind it.
  */
+#define DIALOGS (4)
+
+static struct {
+    struct surface *shows;
+    int16_t x, y, w, h;
+} stack[DIALOGS];
+
+static int depth;
+
 void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
+    struct surface *below = surface_selected();
+    struct surface *shows;
+
     if (!started || width <= 0 || height <= 0)
         return;
 
-    gem_dialog_end();
+    if (depth >= DIALOGS)
+    {
+        /* Deeper than anything reasonable does. Answering by drawing this one
+         * where the last one was is better than not drawing it at all. */
+        gem_dialog_end();
+    }
 
-    dialog = surface_create(surface_width(screen), surface_height(screen),
-                            surface_planes(screen));
-    if (!dialog)
+    shows = surface_create(surface_width(screen), surface_height(screen),
+                           surface_planes(screen));
+    if (!shows)
         return;
 
-    surface_copy(dialog, screen);
+    surface_copy(shows, below ? below : screen);
+
+    /* Only one of them is shown at a time, so the one underneath goes away
+     * while this one is up and comes back when it is done with */
+    if (depth > 0)
+        gfx_dialog_close();
+
+    stack[depth].shows = shows;
+    stack[depth].x = x;
+    stack[depth].y = y;
+    stack[depth].w = width;
+    stack[depth].h = height;
+    depth++;
+
+    dialog = shows;
     surface_select(dialog);
 
     gfx_dialog_open(dialog, x, y, width, height);
@@ -170,14 +211,29 @@ void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 
 void gem_dialog_end()
 {
-    if (!dialog)
+    if (depth <= 0)
         return;
 
     gfx_dialog_close();
 
-    surface_select(screen);
-    surface_free(dialog);
-    dialog = 0;
+    depth--;
+    surface_free(stack[depth].shows);
+    stack[depth].shows = 0;
+
+    if (depth > 0)
+    {
+        /* The one underneath, which was there before this one covered it */
+        dialog = stack[depth-1].shows;
+        surface_select(dialog);
+
+        gfx_dialog_open(dialog, stack[depth-1].x, stack[depth-1].y,
+                        stack[depth-1].w, stack[depth-1].h);
+    }
+    else
+    {
+        dialog = 0;
+        surface_select(screen);
+    }
 }
 
 /*
@@ -198,8 +254,12 @@ void gem_forget(void)
         surface_free(screen);
     screen = 0;
 
-    if (dialog)
-        surface_free(dialog);
+    while (depth > 0)
+    {
+        depth--;
+        surface_free(stack[depth].shows);
+        stack[depth].shows = 0;
+    }
     dialog = 0;
 
     started = 0;

@@ -273,6 +273,20 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * file list took long enough that a person had let go by the time
              * it asked again.
              */
+            /*
+             * TOSEMU_TRACE_INPUT says what each wait asked for and what it was
+             * told, which is the only way to see the difference between two
+             * waits asking the same question and one wait asking twice. The
+             * two look identical from anywhere else.
+             */
+            if (getenv("TOSEMU_TRACE_INPUT"))
+                printf("tosemu: wait for buttons %x to be %x, they are %x%s\n",
+                       bmask, bstate, now,
+                       (buttons_are(now, bmask, bstate)
+                        && state_answered && now == answered_with
+                        && (bstate & bmask) != 0)
+                       ? " - already answered with this press" : "");
+
             if (buttons_are(now, bmask, bstate)
                 && !(state_answered && now == answered_with
                      && (bstate & bmask) != 0))
