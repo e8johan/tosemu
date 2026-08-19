@@ -207,7 +207,15 @@ static struct {
     int key_count;
 
     int16_t mouse_x, mouse_y;   /* In the screen's pixels, not a window's */
+
+    /*
+     * What is held down as far as anything asking has been told, and what is
+     * really held down this instant. They are not the same thing and must not
+     * be: the second is what happened, the first is what has been looked at,
+     * and a press that is both answers twice.
+     */
     int16_t buttons;
+    int16_t pressed;
 
     /*
      * Whether the pointer has ever been anywhere.
@@ -711,10 +719,10 @@ static void pointer_gone(void)
 {
     w.pointer_in = 0;
 
-    if (!w.buttons)
+    if (!w.pressed && !w.buttons)
         return;
 
-    w.buttons = 0;
+    w.pressed = 0;
 
     if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
     {
@@ -792,16 +800,29 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
         default: return;
     }
 
+    /*
+     * Queued, and not written into the state as well.
+     *
+     * The queue is what happened and the state is what has been looked at, and
+     * one press must not be both. Setting the state here too let a single
+     * press answer twice: once from the state, by a wait that never got as far
+     * as draining anything, and once more from the change still sitting in the
+     * queue behind it - which walked the file selector two folders down for
+     * every click.
+     *
+     * So this only says what happened. Whoever takes it is what makes it so.
+     */
     if (state == WL_POINTER_BUTTON_STATE_PRESSED)
-        w.buttons |= bit;
+        w.pressed |= bit;
     else
-        w.buttons &= ~bit;
+        w.pressed &= ~bit;
 
     if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
     {
-        w.clicks[w.click_count].buttons = w.buttons;
+        w.clicks[w.click_count].buttons = w.pressed;
         w.clicks[w.click_count].x = w.mouse_x;
         w.clicks[w.click_count].y = w.mouse_y;
+        w.clicks[w.click_count].move = 0;
         w.click_count++;
     }
 }
