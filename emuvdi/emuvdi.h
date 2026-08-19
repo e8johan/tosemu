@@ -177,6 +177,11 @@ int16_t emuvdi_menu_do(int16_t *title, int16_t *item);
 
 /* How tall the menu bar is, which is the height of one box */
 int16_t emuvdi_menu_height();
+int16_t emuvdi_menu_register(char *name);
+void emuvdi_menu_forget_accessories(void);
+void emuvdi_menu_forget_tree(void);
+int16_t emuvdi_menu_first_accessory(void);
+
 void emuvdi_menu_active(int16_t *x, int16_t *y, int16_t *w, int16_t *h);
 int16_t emuvdi_menu_change(void *tree, int16_t object, uint16_t bit,
                            int16_t set, int16_t draw, int16_t only_if_enabled);

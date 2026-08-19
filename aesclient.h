@@ -74,6 +74,19 @@ void aes_client_scrap_get(char *path, size_t size);
 void aes_client_scrap_set(const char *path);
 
 /*
+ * Accessories.
+ *
+ * An accessory is an application with no window until somebody picks it out of
+ * the Desk menu, and that menu is in every application's bar - so who they are
+ * has to reach all of them, which makes the list the daemon's. One says what
+ * it is called and everybody finds out, including those that started first.
+ */
+void aes_client_accessory(const char *name);
+int16_t aes_client_accessories(void);
+const char *aes_client_accessory_name(int16_t which);
+int16_t aes_client_accessory_owner(int16_t which);
+
+/*
  * The connection, for the event loop to wait on beside the compositor and its
  * timer, or -1 when there is no daemon.
  */

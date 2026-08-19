@@ -75,6 +75,11 @@ static struct {
     int fd;
     int16_t ap_id;
     char name[AESD_NAME_LEN];
+
+    /* What it calls itself in the Desk menu, if it is an accessory. An
+     * application that never says is not one. */
+    int accessory;
+    char shown[AESD_NAME_LEN];
 } apps[MAX_APPS];
 
 /*
@@ -148,6 +153,8 @@ static int find_by_id(int16_t ap_id)
     return -1;
 }
 
+static void tell_about_accessories(int only_to);
+
 static void app_goodbye(int slot)
 {
     if (!apps[slot].used)
@@ -156,7 +163,14 @@ static void app_goodbye(int slot)
     say("gone", apps[slot].ap_id, apps[slot].name);
 
     close(apps[slot].fd);
-    memset(&apps[slot], 0, sizeof apps[slot]);
+    {
+        int was_accessory = apps[slot].accessory;
+
+        memset(&apps[slot], 0, sizeof apps[slot]);
+
+        if (was_accessory)
+            tell_about_accessories(-1);
+    }
 }
 
 /*
@@ -204,6 +218,10 @@ static void app_hello(int fd, const struct aesd_packet *in)
     send_to(fd, &out);
 
     say("hello", apps[slot].ap_id, apps[slot].name);
+
+    /* And who is already here, so that an application that starts after the
+     * accessories still has them in its Desk menu */
+    tell_about_accessories(slot);
 }
 
 static void app_find(int slot, const struct aesd_packet *in)
@@ -258,6 +276,56 @@ static void app_scrap_set(int slot, const struct aesd_packet *in)
         printf("tosaesd: the scrap is in %s\n", scrap_path);
         fflush(stdout);
     }
+}
+
+/*
+ * Who the accessories are, told to everybody.
+ *
+ * Not answered when asked, because nobody knows when to ask: an application
+ * puts its menu bar up once and the list can change afterwards, when an
+ * accessory is started or stops. So everyone is told each time it changes, and
+ * an application that has just arrived is told as part of arriving.
+ */
+static void tell_about_accessories(int only_to)
+{
+    struct aesd_packet out;
+    int i, n = 0;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_ACCESSORIES;
+
+    for (i = 0; i < MAX_APPS && n < AESD_MAX_ACCS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory)
+            continue;
+
+        memcpy(out.accessory[n].name, apps[i].shown, AESD_NAME_LEN);
+        out.accessory[n].ap_id = apps[i].ap_id;
+        n++;
+    }
+
+    out.accessories = (int16_t)n;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used)
+            continue;
+
+        if (only_to >= 0 && i != only_to)
+            continue;
+
+        send_to(apps[i].fd, &out);
+    }
+}
+
+static void app_accessory(int slot, const struct aesd_packet *in)
+{
+    apps[slot].accessory = 1;
+    memcpy(apps[slot].shown, in->name, AESD_NAME_LEN);
+
+    say("accessory", apps[slot].ap_id, apps[slot].shown);
+
+    tell_about_accessories(-1);
 }
 
 static void tidy_up(void)
@@ -441,6 +509,10 @@ int main(int argc, char **argv)
 
                 case AESD_SCRAP_SET:
                     app_scrap_set(slots[i], &in);
+                    break;
+
+                case AESD_ACCESSORY:
+                    app_accessory(slots[i], &in);
                     break;
 
                 default:

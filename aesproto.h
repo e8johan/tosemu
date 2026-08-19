@@ -77,7 +77,23 @@ enum {
     AESD_SCRAP_GET,
     AESD_SCRAP_SET,
     AESD_SCRAP,
+
+    /*
+     * An accessory saying so, and everybody being told who they are.
+     *
+     * An accessory is an application that never has a window of its own until
+     * somebody picks it out of the Desk menu, and the Desk menu is in every
+     * application's menu bar. So the list has to reach all of them, which
+     * makes it the daemon's: one says what it is called, and everyone finds
+     * out, including the ones that started before it.
+     */
+    AESD_ACCESSORY,
+    AESD_ACCESSORIES,
 };
+
+/* As many as GEM would load, and the number the AES splices into the Desk
+ * menu, so the two agree by construction */
+#define AESD_MAX_ACCS (6)
 
 struct aesd_packet {
     int16_t kind;
@@ -109,6 +125,15 @@ struct aesd_packet {
     /* A path, for the things that are named by one. TOS paths are short - a
      * drive, and directories of eight and three - so this is generous. */
     char path[128];
+
+    /* Who the accessories are, which everybody is told and nobody asks for:
+     * the list changes when one arrives or goes away, and an application
+     * cannot know when that was */
+    int16_t accessories;
+    struct {
+        char name[AESD_NAME_LEN];
+        int16_t ap_id;
+    } accessory[AESD_MAX_ACCS];
 };
 
 /*

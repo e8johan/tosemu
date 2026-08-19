@@ -40,8 +40,11 @@
 
 #include "aes_p.h"
 
+#include <stdio.h>
 #include <string.h>
 
+#include "aesclient.h"
+#include "aesproto.h"
 #include "gem_p.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
@@ -52,8 +55,15 @@
 #define MENU_REMOVE  (0)
 #define MENU_INSTALL (1)
 
-/* The message an application is sent when something is chosen from a menu */
+/* The message an application is sent when something is chosen from a menu, and
+ * the two an accessory is sent when it is asked for and told to go away */
 #define MN_SELECTED (10)
+#define AC_OPEN     (40)
+#define AC_CLOSE    (41)
+
+/* Which title the Desk menu is. It is the first, always, because the AES puts
+ * its own entries in it and has to know where they went. */
+#define DESK_TITLE  (3)
 
 /* The bits of an object's state these three calls are each about, obdefs.h */
 #define CHECKED  (0x0004)
@@ -68,6 +78,55 @@
  * slot of the desktop's own, past the end of them.
  */
 #define BAR_WINDOW (9)
+
+/*
+ * The accessories, as this application sees them.
+ *
+ * The names are kept here because the AES keeps the pointer rather than the
+ * words, so they have to stay put for as long as a bar is up. Which
+ * application each belongs to is kept beside them, because that is who a
+ * message goes to when somebody picks one, and the AES has no idea - on a
+ * machine with one address space it was a process descriptor, and here it is
+ * an application on the other end of a socket.
+ */
+#define MAX_ACCS (6)
+
+static struct {
+    char name[16];
+    int16_t owner;
+} accessory[MAX_ACCS];
+
+static int16_t accessories;
+
+/*
+ * Tells the AES who they are, just before a bar goes up.
+ *
+ * Done then rather than when the list arrives, because the AES splices them
+ * into whatever tree is being put up and there is no tree at any other time.
+ * An application that has had its bar up since before an accessory started
+ * gets it the next time it puts one up, which is what happens on an ST too.
+ */
+static void accessories_into_the_menu(void)
+{
+    int16_t i;
+
+    emuvdi_menu_forget_accessories();
+
+    accessories = aes_client_accessories();
+    if (accessories > MAX_ACCS)
+        accessories = MAX_ACCS;
+
+    for (i = 0; i < accessories; i++)
+    {
+        const char *name = aes_client_accessory_name(i);
+
+        snprintf(accessory[i].name, sizeof accessory[i].name, "  %s",
+                 name ? name : "");
+        accessory[i].owner = aes_client_accessory_owner(i);
+
+        emuvdi_menu_register(accessory[i].name);
+    }
+}
 
 /* Where the tree came from, so that what the AES changed in it - a ticked
  * entry, a greyed out one - goes back to the application */
@@ -169,18 +228,46 @@ void aes_menu_click()
 
     bar_running = 1;
 
+    /* The accessories again, because putting the bar up is what splices them
+     * in and this is putting it up: the list may also have changed since the
+     * application last did */
+    accessories_into_the_menu();
+
     emuvdi_menu_bar(host, 1);
 
     if (emuvdi_menu_do(&title, &item))
     {
+        int16_t first = emuvdi_menu_first_accessory();
+
         for (i = 0; i < 8; i++)
             message[i] = 0;
 
-        message[0] = MN_SELECTED;
-        message[3] = title;
-        message[4] = item;
+        /*
+         * An accessory, or something of the application's own.
+         *
+         * The entries the AES spliced into the Desk menu are not the
+         * application's and it has never heard of them, so picking one is not
+         * MN_SELECTED - it is AC_OPEN, and it goes to the accessory rather
+         * than to the application whose menu bar it was in.
+         */
+        if (title == DESK_TITLE && accessories > 0
+            && item >= first && item < first + accessories)
+        {
+            int16_t which = item - first;
 
-        aes_message_post(message);
+            message[0] = AC_OPEN;
+            message[3] = which;         /* which of its own menu entries */
+
+            aes_client_send(accessory[which].owner, message);
+        }
+        else
+        {
+            message[0] = MN_SELECTED;
+            message[3] = title;
+            message[4] = item;
+
+            aes_message_post(message);
+        }
     }
 
     bar_running = 0;
@@ -188,6 +275,7 @@ void aes_menu_click()
 
     aes_tree_out();
     aes_tree_done();
+    emuvdi_menu_forget_tree();
 
     /*
      * The bar has changed - the title that was held open is not held open any
@@ -220,6 +308,8 @@ uint32_t AES_menu_bar()
             if (!host)
                 return AES_ERROR;
 
+            accessories_into_the_menu();
+
             emuvdi_menu_bar(host, 1);
 
             bar_tree = address;
@@ -230,6 +320,7 @@ uint32_t AES_menu_bar()
 
             aes_tree_out();
             aes_tree_done();
+            emuvdi_menu_forget_tree();
             break;
 
         case MENU_REMOVE:
@@ -401,4 +492,58 @@ uint32_t AES_menu_text()
     }
 
     return AES_E_OK;
+}
+
+
+/* menu_register ***********************************************************/
+
+/*
+ * An accessory saying what it is called.
+ *
+ * It is the first thing one does: an accessory has no window and no menu bar
+ * of its own, so until it has said this there is no way to reach it and
+ * nothing will ever happen to it. What it gets back is the number of its own
+ * entry, which is how it tells its entries apart when there is more than one -
+ * an accessory is allowed up to six.
+ *
+ * The name goes to the daemon rather than into a menu here, because the menu
+ * it appears in belongs to whichever applications are running, not to this
+ * one. They are told, and they splice it in the next time they put a bar up.
+ */
+uint32_t AES_menu_register()
+{
+    int16_t who = aes_intin(0);
+    uint32_t address = aes_addrin(0);
+    char name[AESD_NAME_LEN + 1];
+    int i;
+
+    for (i = 0; i < AESD_NAME_LEN; i++)
+    {
+        name[i] = (char)m68k_read_memory_8(address + i);
+
+        if (name[i] == 0)
+            break;
+    }
+    for (; i < AESD_NAME_LEN; i++)
+        name[i] = ' ';
+    name[AESD_NAME_LEN] = 0;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    application %d is [%s]\n", who, name);
+    }
+
+    /*
+     * Negative is an accessory taking its entry away again, which one does
+     * when it is asked to stop. There is nothing to take away yet, because
+     * nothing here starts accessories - see the TODO.
+     */
+    if (who < 0)
+        return AES_ERROR;
+
+    aes_client_accessory(name);
+
+    /* The first entry, this being the only one an accessory gets here. GEM
+     * allowed several and answered with which; when that matters, the daemon
+     * is what has to remember it. */
+    return 0;
 }

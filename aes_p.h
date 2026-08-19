@@ -172,6 +172,7 @@ uint32_t AES_menu_icheck();
 uint32_t AES_menu_ienable();
 uint32_t AES_menu_tnormal();
 uint32_t AES_menu_text();
+uint32_t AES_menu_register();
 
 /* Window functions, aeswind.c */
 

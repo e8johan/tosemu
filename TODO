@@ -115,3 +115,11 @@
   If more of GEMDOS is wanted from the host side - shel_find will want it - the
   answer is to give gemdosfile.c host callable entry points and have both use
   them, not to keep adding here.
+- The accessory scenario is not in make check. An accessory registering, its
+  name appearing in another application's Desk menu, and AC_OPEN reaching it
+  when the entry is picked all work and were watched doing it, but automating
+  it wants three processes with a daemon between them and the recipe for that
+  was not reliable - the run either hung or left nothing in the file it was
+  meant to write. The two process message test next to it is the shape to
+  follow; what it does not have to deal with is a third process that has to be
+  clicked in the right place before anything happens.

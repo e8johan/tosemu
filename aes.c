@@ -117,7 +117,6 @@ uint32_t aes_global()
 #define AES_appl_yield      NULL
 #define AES_appl_search     NULL
 #define AES_appl_getinfo    NULL
-#define AES_menu_register   NULL
 #define AES_menu_popup      NULL
 #define AES_menu_attach     NULL
 #define AES_menu_istart     NULL

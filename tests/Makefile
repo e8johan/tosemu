@@ -12,6 +12,11 @@ CC=m68k-atari-mint-gcc
 # way, and that is the part being tested.
 TOSEMU=TOSEMU_NO_WINDOW=1 ../bin/tosemu
 
+# The same, with a limit on how long it may take. The tests that need a daemon
+# leave a process waiting for a message, and one that never comes would
+# otherwise wait for ever rather than fail.
+TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu
+
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 
 test-%: %.s
@@ -82,11 +87,11 @@ check: all
 	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd & \
 	  echo $$! > aesd.pid; \
 	  sleep 1; \
-	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU) test-c-aesd > out & \
+	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU_FOR_A_WHILE) test-c-aesd > out & \
 	  echo $$! > waiter.pid; \
 	  sleep 1; \
-	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU) test-c-aesd 'TEST-C-A' > out2; \
-	  wait `cat waiter.pid`; \
+	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU_FOR_A_WHILE) test-c-aesd 'TEST-C-A' > out2; \
+	  wait `cat waiter.pid` || true; \
 	  kill `cat aesd.pid`
 	! grep -q '^not ok' out
 	! grep -q '^not ok' out2

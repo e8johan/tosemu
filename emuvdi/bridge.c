@@ -628,3 +628,50 @@ int16_t emuvdi_fsel_input(char *path, char *name, int16_t *button,
 
     return answer;
 }
+
+
+/* Accessories in the Desk menu, aes/gemmnlib.c ****************************/
+
+WORD mn_register(WORD pid, char *pstr);
+void mn_init(void);
+extern WORD gl_dafirst;
+extern OBJECT *gl_mntree;
+
+/*
+ * Telling the AES who the accessories are, so that it splices them into the
+ * Desk menu when a bar goes up.
+ *
+ * It keeps the pointer rather than the words - that is what Atari's did and
+ * what EmuTOS copied - so the name has to stay where it was put for as long as
+ * the bar is up. Whoever calls this owns that.
+ */
+int16_t emuvdi_menu_register(char *name)
+{
+    return mn_register(0, name);
+}
+
+void emuvdi_menu_forget_accessories(void)
+{
+    mn_init();
+}
+
+/*
+ * Says the menu tree has gone.
+ *
+ * The AES keeps a pointer to whichever tree is the menu bar, and the tree it
+ * is given here is a copy that is let go of as soon as it has been drawn. Left
+ * alone that pointer outlives what it points at, and the next thing to look at
+ * the bar - registering an accessory does, because it splices the name in -
+ * walks memory that has been handed back.
+ */
+void emuvdi_menu_forget_tree(void)
+{
+    gl_mntree = NULL;
+}
+
+/* The first Desk menu entry that is an accessory rather than the application's
+ * own. Everything at or after it was spliced in. */
+int16_t emuvdi_menu_first_accessory(void)
+{
+    return gl_dafirst;
+}

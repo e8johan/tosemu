@@ -58,6 +58,30 @@ int main(int argc, char **argv)
 
     id = appl_init();
 
+    if (argc > 1 && !strcmp(argv[1], "acc"))
+    {
+        /*
+         * An accessory: says what it is called and then waits to be asked for,
+         * which is the whole shape of one. It never opens a window until
+         * somebody picks it out of a Desk menu.
+         */
+        short message[8];
+
+        check(menu_register(id, "  Clock  ") >= 0, 1,
+              "menu_register takes an accessory's name");
+
+        printf("registered as application %d\n", id);
+        fflush(stdout);
+
+        evnt_mesag(message);
+
+        check(message[0], 40, "and AC_OPEN arrives when it is picked");
+
+        printf("1..%d\n", n);
+        appl_exit();
+        return 0;
+    }
+
     if (argc < 2)
     {
         /* The one that waits */

@@ -37,6 +37,7 @@
 #include "aesclient.h"
 
 #include <errno.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,7 +54,18 @@ static struct {
     int16_t ap_id;
     int16_t apps;
     int16_t width, height, planes;
-} d = { -1, 0, 1, 0, 0, 0 };
+
+    /*
+     * Who the accessories are. Kept rather than asked for, because the daemon
+     * says when it changes: an application puts its menu bar up once and the
+     * list can change afterwards.
+     */
+    int16_t accessories;
+    struct {
+        char name[AESD_NAME_LEN + 1];
+        int16_t ap_id;
+    } accessory[AESD_MAX_ACCS];
+} d = { -1, 0, 1, 0, 0, 0, 0, {{{0}, 0}} };
 
 /* Where the daemon's socket is, which a test overrides so that it can run one
  * of its own without disturbing the one the person is using */
@@ -125,6 +137,25 @@ static int packet_write(const struct aesd_packet *p)
     }
 
     return 1;
+}
+
+/* Takes down who the accessories are now, which the daemon says rather than
+ * being asked */
+static void accessories_are(const struct aesd_packet *p)
+{
+    int i;
+
+    d.accessories = p->accessories;
+
+    if (d.accessories > AESD_MAX_ACCS)
+        d.accessories = AESD_MAX_ACCS;
+
+    for (i = 0; i < d.accessories; i++)
+    {
+        memcpy(d.accessory[i].name, p->accessory[i].name, AESD_NAME_LEN);
+        d.accessory[i].name[AESD_NAME_LEN] = 0;
+        d.accessory[i].ap_id = p->accessory[i].ap_id;
+    }
 }
 
 /* The daemon going away is not an error to report at every call afterwards.
@@ -288,6 +319,9 @@ int16_t aes_client_find(const char *name)
 
         if (p.kind == AESD_DELIVER)
             aes_message_post(p.message);
+
+        if (p.kind == AESD_ACCESSORIES)
+            accessories_are(&p);
     }
 }
 
@@ -397,4 +431,97 @@ void aes_client_pump(void)
 
     if (p.kind == AESD_DELIVER)
         aes_message_post(p.message);
+
+    if (p.kind == AESD_ACCESSORIES)
+        accessories_are(&p);
+}
+
+/*
+ * Saying this application is an accessory, and finding out who the others are.
+ *
+ * Without a daemon an accessory is an application that nothing will ever ask
+ * for: there is no desk menu but its own, and it is not in it. Saying so is
+ * still not an error - it runs, it simply waits for a message that will not
+ * come, which is what it would do on a machine where nobody clicked it.
+ */
+void aes_client_accessory(const char *name)
+{
+    struct aesd_packet p;
+    int i;
+
+    if (d.fd < 0)
+        return;
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_ACCESSORY;
+    for (i = 0; i < AESD_NAME_LEN; i++)
+        p.name[i] = (name && name[i]) ? name[i] : ' ';
+
+    if (!packet_write(&p))
+        daemon_gone();
+}
+
+/*
+ * Reads anything the daemon has already said, without waiting for it to say
+ * more.
+ *
+ * The daemon tells an application who the accessories are as part of letting
+ * it in, and an application that puts its menu bar up straight afterwards asks
+ * before the event loop has got round to reading it. Waiting would be wrong -
+ * there may be nothing to wait for - so this takes what has arrived and no
+ * more.
+ */
+static void catch_up(void)
+{
+    struct pollfd waiting;
+
+    if (d.fd < 0)
+        return;
+
+    for (;;)
+    {
+        struct aesd_packet p;
+
+        waiting.fd = d.fd;
+        waiting.events = POLLIN;
+        waiting.revents = 0;
+
+        if (poll(&waiting, 1, 0) <= 0)
+            return;
+
+        if (!packet_read(&p))
+        {
+            daemon_gone();
+            return;
+        }
+
+        if (p.kind == AESD_DELIVER)
+            aes_message_post(p.message);
+
+        if (p.kind == AESD_ACCESSORIES)
+            accessories_are(&p);
+    }
+}
+
+int16_t aes_client_accessories(void)
+{
+    catch_up();
+
+    return d.accessories;
+}
+
+const char *aes_client_accessory_name(int16_t which)
+{
+    if (which < 0 || which >= d.accessories)
+        return 0;
+
+    return d.accessory[which].name;
+}
+
+int16_t aes_client_accessory_owner(int16_t which)
+{
+    if (which < 0 || which >= d.accessories)
+        return -1;
+
+    return d.accessory[which].ap_id;
 }
