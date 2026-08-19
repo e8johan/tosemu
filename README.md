@@ -435,6 +435,9 @@ The daemon says what it is doing with `-v`. What to look for:
     doing anything to the application, which is the whole point of one
   - closing the application leaves the accessory running, and the panel is
     still the way to reach it
+  - Quit, at the bottom of the panel's menu, ends the session: everything is
+    asked to go with the message GEM has for it, and anything the daemon
+    started that has not gone is stopped
 
 Without a daemon everything still runs - one application on its own is the
 ordinary way to use this - and the only things missing are the ones that need

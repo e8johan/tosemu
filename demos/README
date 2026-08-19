@@ -156,6 +156,11 @@ running, including the ones that started first and the ones that have not
 started yet. Picking it there sends the accessory AC_OPEN, which is its cue to
 put a window up.
 
+It answers AP_TERM by leaving, which is the one message an accessory does fall
+out of its loop for: not an application closing, which happens all day, but the
+thing that started it saying there will not be another. An accessory that
+ignores it is stopped instead, which works and is less tidy.
+
 It needs a daemon, because the menu it appears in belongs to the other
 applications rather than to itself:
 

@@ -79,6 +79,19 @@ static unsigned menu_revision = 1;
 /* What to do when somebody picks one, which is the daemon's business rather
  * than this file's */
 static void (*picked)(int16_t ap_id);
+static void (*quit)(void);
+
+/*
+ * Which entry is which.
+ *
+ * The accessories are numbered from one so that nought can be the root, which
+ * makes the number the index into the list. Quit is given a number well past
+ * them so that it stays itself however many accessories there are - a menu
+ * where the last entry means something different depending on how many are
+ * above it is a menu somebody will eventually click wrong.
+ */
+#define ENTRY_QUIT      (100)
+#define ENTRY_SEPARATOR (101)
 
 static void say_once(const char *why)
 {
@@ -393,6 +406,11 @@ static void put_the_menu(DBusMessage *reply)
             put_entry(&children, i + 1, shown[i].name, 0);
     }
 
+    /* And the way out, which is the one thing in here that is about the
+     * session rather than about what is in it */
+    put_entry(&children, ENTRY_SEPARATOR, "", 1);
+    put_entry(&children, ENTRY_QUIT, "Quit", 0);
+
     dbus_message_iter_close_container(&root, &children);
     dbus_message_iter_close_container(&at, &root);
 }
@@ -580,11 +598,15 @@ static DBusHandlerResult handle(DBusConnection *connection, DBusMessage *msg,
             dbus_message_get_args(msg, 0, DBUS_TYPE_INT32, &which,
                                   DBUS_TYPE_STRING, &what, DBUS_TYPE_INVALID);
 
-            /* Numbered from one so that nought can be the root, so this is
-             * the index into the list of accessories */
-            if (what && !strcmp(what, "clicked")
-                && which >= 1 && which <= shown_count && picked)
-                picked(shown[which - 1].ap_id);
+            if (what && !strcmp(what, "clicked"))
+            {
+                if (which == ENTRY_QUIT && quit)
+                    quit();
+                else if (which >= 1 && which <= shown_count && picked)
+                    /* Numbered from one so that nought can be the root, so
+                     * this is the index into the list of accessories */
+                    picked(shown[which - 1].ap_id);
+            }
 
             reply = dbus_message_new_method_return(msg);
         }
@@ -613,13 +635,14 @@ static const DBusObjectPathVTable answering = { 0, handle, 0, 0, 0, 0 };
 
 /* What the daemon calls ***************************************************/
 
-int tray_open(void (*when_picked)(int16_t ap_id))
+int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void))
 {
     DBusError trouble;
     DBusMessage *ask, *said;
     char name[64];
 
     picked = when_picked;
+    quit = when_quit;
 
     dbus_error_init(&trouble);
 
@@ -767,9 +790,10 @@ void tray_pump(void)
  * part of this that depends on a library the rest does not, and a machine
  * without it should still get a working session rather than a build failure.
  */
-int tray_open(void (*when_picked)(int16_t ap_id))
+int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void))
 {
     (void)when_picked;
+    (void)when_quit;
 
     printf("tosaesd: built without D-Bus, so there is no icon in the panel - "
            "the accessories are still in the Desk menu of whatever is "

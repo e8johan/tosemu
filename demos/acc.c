@@ -63,11 +63,12 @@ static short call_aes(short op, short ni, short no, short ai, short ao)
 
 int main(int argc, char **argv)
 {
-    short id, entry;
+    short id, entry, handle, wchar, hchar, wbox, hbox;
     short message[8];
     short opened = 0;
 
     id = appl_init();
+    handle = graf_handle(&wchar, &hchar, &wbox, &hbox);
 
     /*
      * The name, which is what appears in the Desk menu. Padding it out is
@@ -105,6 +106,19 @@ int main(int argc, char **argv)
                    (opened == 1) ? "" : "s");
             fflush(stdout);
             break;
+
+        case AP_TERM:
+            /*
+             * The session is ending. This is the one message an accessory
+             * does fall out of its loop for: not the application closing,
+             * which happens all day, but the thing that started it saying
+             * there will not be another.
+             */
+            printf("asked to go, and going\n");
+            fflush(stdout);
+            v_clsvwk(handle);
+            appl_exit();
+            return 0;
 
         case AC_CLOSE:
             /*

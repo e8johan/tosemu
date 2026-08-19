@@ -39,7 +39,7 @@
 
 /* Says whether there is one. The answer is not worth acting on - it is said
  * plainly once and the session carries on either way. */
-int tray_open(void (*when_picked)(int16_t ap_id));
+int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void));
 void tray_close(void);
 
 /* Who is in the menu now */

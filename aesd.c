@@ -54,6 +54,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #include "aesproto.h"
 #include "aesdtray.h"
@@ -104,6 +105,21 @@ static int listening = -1;
 static char socket_path[108];
 static int talkative;
 static const char *accessory_directory;
+
+/*
+ * The accessories this daemon started, so that it can stop them again.
+ *
+ * By process rather than by connection, because stopping one is a thing to do
+ * to a process: an accessory never exits on its own - that is what makes it an
+ * accessory - so being asked nicely may not be enough.
+ */
+static pid_t started[AESD_MAX_ACCS];
+static int started_count;
+
+/* Set when somebody picks Quit, which is noticed at the top of the loop
+ * rather than acted on where it happens: tearing the daemon down inside a
+ * message from the panel would leave the panel waiting for a reply. */
+static int time_to_go;
 
 static void say_of(const char *what, const char *name)
 {
@@ -358,6 +374,12 @@ static void app_scrap_set(int slot, const struct aesd_packet *in)
  * the panel adds is that it works when no application is running, which is the
  * case a Desk menu cannot cover.
  */
+/* Picked Quit, which is noticed rather than acted on here - see time_to_go */
+static void quit_from_the_panel(void)
+{
+    time_to_go = 1;
+}
+
 static void picked_in_the_panel(int16_t ap_id)
 {
     struct aesd_packet out;
@@ -480,6 +502,9 @@ static void start_accessory(const char *emulator, const char *path)
         _exit(1);
     }
 
+    if (started_count < (int)(sizeof started / sizeof started[0]))
+        started[started_count++] = child;
+
     say_of("started", path);
 }
 
@@ -568,6 +593,54 @@ static void app_notes_set(int slot, const struct aesd_packet *in)
         notes_length = AESD_NOTES;
 
     memcpy(notes, in->notes, sizeof notes);
+}
+
+/*
+ * Ending the session.
+ *
+ * Everybody is asked first, with the message GEM has for exactly this, and
+ * given a moment to go of their own accord. Then whatever this daemon started
+ * and is still there is stopped, because an accessory that does not handle
+ * being asked would otherwise outlive the session that started it and sit
+ * there registered to a daemon that has gone.
+ *
+ * Applications are asked and not stopped. One that ignores the message is
+ * somebody's work with unsaved changes in it, and a program the person started
+ * themselves is theirs to close.
+ */
+static void everybody_out(void)
+{
+    struct aesd_packet out;
+    int i;
+
+    say_of("closing", "the session");
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_DELIVER;
+    out.message[0] = 50;                /* AP_TERM */
+
+    for (i = 0; i < MAX_APPS; i++)
+        if (apps[i].used)
+            send_to(apps[i].fd, &out);
+
+    /* A moment to act on it, which is what the message is for */
+    usleep(200 * 1000);
+
+    for (i = 0; i < started_count; i++)
+    {
+        if (started[i] <= 0)
+            continue;
+
+        if (waitpid(started[i], 0, WNOHANG) == 0)
+            kill(started[i], SIGTERM);
+    }
+
+    /* And collect them, so that nothing is left behind for init to adopt */
+    for (i = 0; i < started_count; i++)
+        if (started[i] > 0)
+            waitpid(started[i], 0, 0);
+
+    started_count = 0;
 }
 
 static void tidy_up(void)
@@ -706,7 +779,7 @@ int main(int argc, char **argv)
      * application is running. It is allowed to fail and says so once: a
      * desktop without tray icons is a session that is otherwise fine.
      */
-    tray_open(picked_in_the_panel);
+    tray_open(picked_in_the_panel, quit_from_the_panel);
 
     /* And now that there is somewhere for them to say hello to */
     if (accessory_directory)
@@ -745,6 +818,9 @@ int main(int argc, char **argv)
             slots[n] = i;
             n++;
         }
+
+        if (time_to_go)
+            break;
 
         if (poll(fds, n, -1) < 0)
         {
@@ -840,6 +916,9 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    if (time_to_go)
+        everybody_out();
 
     tray_close();
     tidy_up();
