@@ -213,6 +213,42 @@ than to be relative to where it was started. CLink is handed its startup module
 and library through a control file rather than on the command line, which only
 holds 126 characters.
 
+Lattice also ships `MAKE.TTP`, HiSoft's make, and it runs: with `TOS_BASE_PATH`
+pointing at the directory holding `lattice`, its own examples build where they
+sit, out of the rules in `BIN/DEFAULT.MK` and with no makefile of their own.
+
+  ```
+  cd tos_root/lattice/EXAMPLES/WTEST
+  env -u SHELL TOS_BASE_PATH=/path/to/tos_root \
+      PATH='C:\LATTICE\BIN\' INCLUDE='C:\LATTICE\H\' LIB='C:\LATTICE\LIB\' \
+      DEFAULT_MK='C:\LATTICE\BIN\DEFAULT.MK' \
+      CFLAGS='-b4 -r6 -v -d2 -m0 -rs -fm' LDFLAGS='-lg' \
+      tosemu ../../BIN/MAKE.TTP -e wtest.prg
+  ```
+
+Three things about that are worth knowing before spending an evening on them.
+`SHELL` has to be unset: make runs every recipe through it if it is there, and
+the host's `/bin/bash` is not a TOS program, so make looks for `bash.ttp`,
+gives up and reports an error code without ever saying what it could not find.
+`-e` is what lets `CFLAGS` and `LDFLAGS` come from the environment; make takes
+no `VAR=value` on its command line. And the target has to be lower case,
+because the suffix rules in `DEFAULT.MK` are, and make matches them exactly
+even though the file system does not.
+
+`DEFAULT.MK` has rules for `.prg`, `.ttp`, `.tos`, `.app` and `.gtp`, but not
+for `.acc`, so an accessory - `EXAMPLES/CLOCK`, whose `.PRJ` builds one - is
+the one thing to drive `LCC.TTP` for directly:
+
+  ```
+  tosemu ../../BIN/LCC.TTP -b4 -r6 -w -d2 -m0 -rr -fm -lg -oCLOCK.ACC CLOCK.C
+  ```
+
+The options in both come from the example's own `.PRJ` file, which is what the
+HiSoft editor built it with. The driver works out the startup module and the
+libraries from them and from the extension of the output: `-rr` and `.ACC`
+between them pick `CSRACC.O` with `LCGSR.LIB` and `LCSR.LIB`, which is exactly
+what `CLOCK.PRJ` lists.
+
 
 
 Hacking
@@ -279,7 +315,19 @@ C: is the whole host file system, so a path that starts at the root of the
 drive starts at the host root. `Dgetpath` hands out such a path, and an
 application that builds a file name from it has to arrive back at the same
 file. A `TOS_BASE_PATH` moves that root, and then the drive begins there
-instead.
+instead: only a path starting at the root of the drive is placed under it, a
+relative one stays relative to where the application is, `Dgetpath` reports
+the part that is on the drive rather than the whole host path, and anything
+resolving outside the base is refused rather than reached.
+
+Either separator is accepted. TOS spells a path with a backslash and most
+applications do, but one that takes a path from somewhere else - an
+environment variable, a makefile, a command line typed by a person - gets
+whichever was in it, and both name the same file.
+
+`TOSEMU_TRACE_PATHS` prints every path that is resolved and what it became.
+A program that cannot find a file usually says nothing about which file, and
+the list of names it tried is the whole answer.
 
 Processes
 ---------

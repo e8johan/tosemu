@@ -321,6 +321,7 @@ uint32_t GEMDOS_Dgetpath()
     uint32_t addr = peek_u32(2);
     uint16_t drive = peek_u16(6);
     char ubuf[PATH_MAX+1];
+    const char *path;
     int i;
 
     FUNC_TRACE_ENTER_ARGS {
@@ -334,13 +335,35 @@ uint32_t GEMDOS_Dgetpath()
     memset(ubuf, 0, PATH_MAX+1);
     getcwd(ubuf, sizeof ubuf);
 
+    /*
+     * What comes back has to be a path on the drive rather than a path on the
+     * host, because an application builds file names out of it and hands them
+     * straight back. The two are the same thing when the drive is the whole
+     * host file system; when TOS_BASE_PATH has moved the root, the part in
+     * front of it is not on the drive at all and has to come off - otherwise
+     * the base is put in front of it a second time on the way back in.
+     *
+     * At the root itself that leaves nothing, which is what TOS answers there:
+     * an empty string, to which an application appends its own separator.
+     */
+    path = ubuf;
+    if (tos_env->base_path[0] != 0)
+    {
+        size_t n = strlen(tos_env->base_path);
+
+        if (strncmp(ubuf, tos_env->base_path, n) == 0)
+            path = ubuf + n - 1;        /* keeping the separator it ends in */
+        else if (strlen(ubuf) == n - 1)
+            path = ubuf + n - 1;        /* standing on the root, so nothing */
+    }
+
     i=0;
     do
     {
-        m68k_write_memory_8(addr+i, ubuf[i]);
+        m68k_write_memory_8(addr+i, path[i]);
         ++i;
     }
-    while(ubuf[i-1]!=0 && i<PATH_MAX);
+    while(path[i-1]!=0 && i<PATH_MAX);
 
     return 0;
 }
@@ -418,22 +441,75 @@ static void resolve_case(char *path)
 }
 
 /*
+ * Whether a host path lands inside the base, which is what stops an
+ * application walking out of the drive with .. or a symbolic link.
+ *
+ * A file that is being created is not there yet and so has no real path of its
+ * own. What is checked then is the directory it is going into, which does have
+ * to exist whatever is about to be put in it.
+ */
+static int inside_base(const char *up)
+{
+    const char *base = tos_env->base_path;
+    size_t n = strlen(base);
+    char real[PATH_MAX+1];
+    char dir[PATH_MAX+1];
+    char *slash;
+
+    if (n == 0)
+        return 1;
+
+    memset(real, 0, sizeof real);
+
+    if (!realpath(up, real))
+    {
+        strncpy(dir, up, PATH_MAX);
+        dir[PATH_MAX] = 0;
+
+        slash = strrchr(dir, '/');
+        if (slash == dir)
+            dir[1] = 0;                 /* the root of the host itself */
+        else if (slash)
+            *slash = 0;
+        else
+            strcpy(dir, ".");           /* wherever the application is */
+
+        if (!realpath(dir, real))
+            return 0;
+    }
+
+    /* The base ends in a separator, so being inside it is having the whole of
+     * it in front, and being it is being all of it but that separator */
+    if (strncmp(real, base, n) == 0)
+        return 1;
+
+    return strlen(real) == n - 1 && strncmp(real, base, n - 1) == 0;
+}
+
+/*
  * Converts a TOS path, without its drive prefix, to a host path
  *
  * Returns 0 on success, or a negative GEMDOS error.
  */
 static int32_t host_resolve(const char *tp, char *up)
 {
-    char tbuf[PATH_MAX+1];
     int len;
     const char *src;
     char *dest;
     int prev_slash;
 
-    memset(tbuf, 0, PATH_MAX+1);
+    /*
+     * Only a path that starts at the root of the drive is placed under the
+     * base. A relative one is relative to where the application is, and the
+     * host already knows where that is - Dsetpath changed into it - so putting
+     * the base in front of it would name a file at the root of the drive
+     * instead of the one next door.
+     */
+    if (*tp == '\\' || *tp == '/')
+        strncpy(up, tos_env->base_path, PATH_MAX);
+    else
+        up[0] = 0;
 
-    /* Prepend prefix */
-    strncpy(up, tos_env->base_path, PATH_MAX);
     len = strlen(up);
     src = tp;
     dest = up + len;
@@ -443,44 +519,48 @@ static int32_t host_resolve(const char *tp, char *up)
      * and then the leading separator is the one to drop. */
     prev_slash = (len != 0);
 
-    /* Convert \ -> / */
+    /*
+     * Convert \ -> /, and treat a / the application wrote as the separator it
+     * plainly meant. TOS spells one with a backslash and applications mostly
+     * do, but the ones that take a path from somewhere else - an environment
+     * variable, a makefile, a command line typed by a person - get whichever
+     * was in it, and both name the same file here.
+     */
     while(*src && len < PATH_MAX)
     {
         switch(*src)
         {
         case '\\':
+        case '/':
             if (!prev_slash)
             {
                 *dest = '/';
                 ++ dest;
             }
             prev_slash = 1;
-            
+
             break;
         default:
             *dest = *src;
             ++ dest;
-            
+
             prev_slash = 0;
 
             break;
         }
-        
+
         ++ src;
         ++ len;
     }
 
+    *dest = 0;
+
     resolve_case(up);
 
-    /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
-    realpath(up, tbuf);
-
-    if (tos_env->base_path[0] != 0)
-    {
-        /* Ensure within prefix */
-        if (strncmp(up, tbuf, strlen(tos_env->base_path)-1))
-            return GEMDOS_EFILNF;
-    }
+    /* TODO, this limits the usage of symbolic links when mixing the TOS and
+     * host file systems */
+    if (!inside_base(up))
+        return GEMDOS_EFILNF;
 
     return GEMDOS_E_OK;
 }
@@ -501,20 +581,47 @@ static struct volume host_volume = {
  * Converts a TOS path to a host path, resolving the drive it refers to
  *
  * Returns 0 on success, or a negative GEMDOS error.
+ *
+ * TOSEMU_TRACE_PATHS prints every one of these, which is how to see what an
+ * application is actually looking for. That is worth having on its own switch
+ * rather than inside the GEMDOS trace, which is a compile time one and buries
+ * this in everything else: a program that cannot find a file usually says
+ * nothing at all about which file, and the list of names it tried is the whole
+ * answer. HiSoft's make looking for /bin/bash.ttp is what this found.
  */
 static int32_t path_from_tos(const char *tp, char *up)
 {
+    static int tracing = -1;
     const char *rest;
     struct volume *v;
     int drive;
+    int32_t err;
+
+    if (tracing < 0)
+        tracing = (getenv("TOSEMU_TRACE_PATHS") != NULL);
 
     drive = drive_from_path(tp, &rest);
     if (drive < 0)
+    {
+        if (tracing)
+            fprintf(stderr, "path: '%s' is on no drive there is\n", tp);
+
         return GEMDOS_EDRIVE;
+    }
 
     v = drive_volume(drive);
 
-    return v->resolve(rest, up);
+    err = v->resolve(rest, up);
+
+    if (tracing)
+    {
+        if (err)
+            fprintf(stderr, "path: '%s' -> %d\n", tp, (int)err);
+        else
+            fprintf(stderr, "path: '%s' -> '%s'\n", tp, up);
+    }
+
+    return err;
 }
 
 /* What the rest of the emulator is allowed to know about naming a file, see
@@ -703,11 +810,26 @@ glob_t *gemdos_prepare_dta(int *id)
     static int sid = 42;
     glob_t *res;
     struct globitem *item;
-    
+
     sid ++;
-    res = malloc(sizeof(glob_t));
+    /*
+     * Empty rather than merely allocated, because this is on the list from the
+     * moment it is made and everything on the list is handed to globfree in
+     * the end. Fsfirst turns back before it globs anything whenever the path
+     * it was given cannot be resolved, and globfree reading a block of
+     * whatever was in the heap frees pointers that were never pointers.
+     */
+    res = calloc(1, sizeof(glob_t));
     item = malloc(sizeof(struct globitem));
-    
+
+    if (res == NULL || item == NULL)
+    {
+        free(res);
+        free(item);
+        *id = 0;
+        return NULL;
+    }
+
     item->g = res;
     item->id = sid;
     item->next = globhead;
@@ -790,9 +912,11 @@ uint32_t GEMDOS_Fsfirst()
     memset(ubuf, 0, PATH_MAX+1);
     
     gres = gemdos_prepare_dta(&gres_id);
-    
+    if (gres == NULL)
+        return GEMDOS_ENSMEM;
+
     get_path(buf, filename);
-    
+
     err = path_from_tos(buf, ubuf);
     if (err)
         return err;

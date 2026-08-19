@@ -83,5 +83,28 @@ int main(int argc, char **argv)
         Fclose(h);
     check(Fdelete(path), 0, "Fdelete from the root of the drive succeeds");
 
+    /*
+     * The rest only holds when TOS_BASE_PATH has moved the root of the drive,
+     * which the test suite runs this a second time to check. Everything above
+     * has to be true either way, and is what says the two agree.
+     *
+     * The drive then stops somewhere, and walking up out of it has to fail
+     * rather than reach the host file system above. Without a base path there
+     * is nothing above C: to reach, so the same call is legal and this is
+     * skipped rather than reversed.
+     */
+    if (argc > 1 && strcmp(argv[1], "BASED") == 0)
+    {
+        check(Dgetpath(path, 0), 0, "Dgetpath at the root of a moved drive");
+        check(path[0], 0, "which is where this is run, so it is empty");
+
+        check(Fopen("\\..\\Makefile", 0) < 0, 1,
+              "a path leading out of the drive is refused");
+        check(Fopen("..\\Makefile", 0) < 0, 1,
+              "and so is a relative one");
+    }
+
+    printf("1..%d\n", n);
+
     return fails;
 }
