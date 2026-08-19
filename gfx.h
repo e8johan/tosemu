@@ -141,6 +141,10 @@ uint16_t gfx_kstate();
  */
 int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y);
 
+/* The next change without taking it, for deciding whose a press is before
+ * anyone acts on it */
+int gfx_button_peek(int16_t *buttons, int16_t *x, int16_t *y);
+
 /* Whether the pointer moved without anything being pressed. Only injected
  * input produces these; a real pointer is simply somewhere when asked. */
 int gfx_motion_take(void);

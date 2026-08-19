@@ -77,15 +77,13 @@
   Atari character set with CRLF between lines, and the desktop's is UTF-8 with
   LF, and the two do not agree about anything above 127. SCRAP.IMG against
   image/png is a second conversion and a larger one; text first.
-- A window's frame is drawn but not worked. The sliders, arrows and size box
-  appear and the elevators sit where the application says, but clicking one
-  does nothing: the AES sees a press in the frame and has nowhere to send it.
-  Each gadget has a message - WM_ARROWED for an arrow, WM_HSLID and WM_VSLID
-  for dragging an elevator, WM_SIZED for the size box - and sending them means
-  working out which gadget a point is in, which is walking the same tree
-  aesframe.c builds. It should be built once and kept rather than built to
-  draw and thrown away, so that finding a gadget and drawing one agree by
-  construction.
+- Dragging a window's elevator follows the pointer only when the button goes
+  down: a press says where to put it and the slider goes there, and moving the
+  pointer while holding it does nothing until the next press. GEM tracked the
+  drag, which is what makes scrolling feel continuous. The tracking loop is
+  gr_slidebox, which is bridged already and wants the frame as an object tree
+  it can be given - aesframe.c builds one and throws it away, so keeping it is
+  what this needs.
 
 - A window's information line is not drawn. It is one more object in the tree
   aesframe.c builds, and the only reason it is not there is that it is

@@ -78,6 +78,23 @@ void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
                     int16_t hslide, int16_t hslsize,
                     int16_t vslide, int16_t vslsize);
 
+/*
+ * Which part of a frame a point is in, and how far along a slider it fell.
+ * The names are aesframe.c's own; aeswind.c turns one into the message an
+ * application is sent.
+ */
+int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
+                  int16_t hslide, int16_t hslsize,
+                  int16_t vslide, int16_t vslsize,
+                  int16_t px, int16_t py, int16_t *along);
+
+/*
+ * A press somewhere on the screen, which may have landed on the frame of a
+ * window. Says whether it did, and sends the application whatever the gadget
+ * it hit is worth.
+ */
+int aes_wind_frame_press(int16_t x, int16_t y);
+
 /* The file selector, aesfsel.c */
 
 uint32_t AES_fsel_input();

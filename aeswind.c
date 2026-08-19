@@ -829,3 +829,163 @@ uint32_t AES_wind_new()
 
     return AES_E_OK;
 }
+
+
+/* Clicking the frame ******************************************************/
+
+/*
+ * What each gadget is worth, as a message.
+ *
+ * The names here are aesframe.c's, which are about what a thing looks like,
+ * and the messages are GEM's, which are about what it means. Keeping the two
+ * apart is what lets the frame be drawn differently one day without the
+ * meaning of clicking on it changing.
+ */
+#define WM_ARROWED (24)
+#define WM_HSLID   (25)
+#define WM_VSLID   (26)
+#define WM_SIZED   (27)
+
+/* What WM_ARROWED says happened, http://toshyp.atari.org/en/005010.html */
+#define WA_UPPAGE  (0)
+#define WA_DNPAGE  (1)
+#define WA_UPLINE  (2)
+#define WA_DNLINE  (3)
+#define WA_LFPAGE  (4)
+#define WA_RTPAGE  (5)
+#define WA_LFLINE  (6)
+#define WA_RTLINE  (7)
+
+/* The pieces of the frame, named as aesframe.c numbers them */
+enum {
+    HIT_NOTHING = -1,
+    HIT_BOX,
+    HIT_VBAR, HIT_UPARROW, HIT_DNARROW, HIT_VSLIDE, HIT_VELEV,
+    HIT_HBAR, HIT_LFARROW, HIT_RTARROW, HIT_HSLIDE, HIT_HELEV,
+    HIT_SIZER
+};
+
+static void send_to_owner(int16_t what, int16_t handle, int16_t a, int16_t b,
+                          int16_t c, int16_t d)
+{
+    int16_t message[8];
+    int i;
+
+    for (i = 0; i < 8; i++)
+        message[i] = 0;
+
+    message[0] = what;
+    message[3] = handle;
+    message[4] = a;
+    message[5] = b;
+    message[6] = c;
+    message[7] = d;
+
+    aes_message_post(message);
+}
+
+/*
+ * A press somewhere, which may have been on a window's frame.
+ *
+ * The AES does not scroll anything itself and never did: it works out which
+ * gadget was pressed and tells the application, which knows what its document
+ * is and how far a line of it goes. So all of this ends in a message.
+ *
+ * The one thing it does do is move the elevator, because an application that
+ * is told where the slider went expects to see it there - and it would
+ * otherwise have to set it back itself in answer to every drag.
+ */
+int aes_wind_frame_press(int16_t x, int16_t y)
+{
+    int16_t handle;
+
+    for (handle = 1; handle < WINDOWS; handle++)
+    {
+        struct window *win = window_at(handle);
+        int16_t sx, sy, sw, sh, along = 0;
+        int hit;
+
+        if (!win || !win->open)
+            continue;
+
+        sx = win->x; sy = win->y; sw = win->w; sh = win->h;
+        window_on_show(win->kind, &sx, &sy, &sw, &sh);
+
+        if (x < sx || x >= sx + sw || y < sy || y >= sy + sh)
+            continue;
+
+        hit = aes_frame_hit(win->kind, sx, sy, sw, sh,
+                            win->hslide, win->hslsize,
+                            win->vslide, win->vslsize, x, y, &along);
+
+        switch (hit)
+        {
+            case HIT_UPARROW:
+                send_to_owner(WM_ARROWED, handle, WA_UPLINE, 0, 0, 0);
+                return 1;
+            case HIT_DNARROW:
+                send_to_owner(WM_ARROWED, handle, WA_DNLINE, 0, 0, 0);
+                return 1;
+            case HIT_LFARROW:
+                send_to_owner(WM_ARROWED, handle, WA_LFLINE, 0, 0, 0);
+                return 1;
+            case HIT_RTARROW:
+                send_to_owner(WM_ARROWED, handle, WA_RTLINE, 0, 0, 0);
+                return 1;
+
+            /*
+             * The slide either side of the elevator is a page rather than a
+             * line, which is what makes a long document reachable without
+             * dragging: above the elevator is back a screenful, below it is on
+             * a screenful.
+             */
+            case HIT_VSLIDE:
+                send_to_owner(WM_ARROWED, handle,
+                              (along < win->vslide) ? WA_UPPAGE : WA_DNPAGE,
+                              0, 0, 0);
+                return 1;
+            case HIT_HSLIDE:
+                send_to_owner(WM_ARROWED, handle,
+                              (along < win->hslide) ? WA_LFPAGE : WA_RTPAGE,
+                              0, 0, 0);
+                return 1;
+
+            /*
+             * The elevator itself, which is where a person says how far
+             * through the document they want to be. The slider is moved here
+             * as well as reported, because being told where it went and seeing
+             * it stay put is the one thing that would look broken.
+             */
+            case HIT_VELEV:
+                win->vslide = along;
+                draw_frame(win);
+                send_to_owner(WM_VSLID, handle, along, 0, 0, 0);
+                return 1;
+            case HIT_HELEV:
+                win->hslide = along;
+                draw_frame(win);
+                send_to_owner(WM_HSLID, handle, along, 0, 0, 0);
+                return 1;
+
+            case HIT_SIZER:
+                /*
+                 * Resizing is the desktop's here - a window is a window of its
+                 * own and is resized by its edges - so this says the size it
+                 * already has rather than a new one. An application that
+                 * redraws for it loses nothing; one that ignores it loses
+                 * nothing either.
+                 */
+                send_to_owner(WM_SIZED, handle, win->x, win->y,
+                              win->w, win->h);
+                return 1;
+
+            default:
+                /* Inside the window, but on the part that is the
+                 * application's. It hears about that as a click, not as a
+                 * message. */
+                return 0;
+        }
+    }
+
+    return 0;
+}

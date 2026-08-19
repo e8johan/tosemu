@@ -96,6 +96,9 @@
 
 /* Where each one is in the tree being built */
 enum {
+    /* Not in the frame at all, which is most of the screen */
+    FRAME_NOTHING = -1,
+
     F_BOX,
     F_VBAR, F_UPARROW, F_DNARROW, F_VSLIDE, F_VELEV,
     F_HBAR, F_LFARROW, F_RTARROW, F_HSLIDE, F_HELEV,
@@ -106,9 +109,10 @@ enum {
 /* One object as it is being put together, before it is handed across */
 struct piece {
     int16_t next, head, tail;
+    int16_t parent;
     int16_t type;
     int32_t spec;
-    int16_t x, y, w, h;
+    int16_t x, y, w, h;         /* Where it is inside its parent */
     int used;
 };
 
@@ -118,6 +122,7 @@ static void add(int16_t parent, int16_t child, int16_t type, int32_t spec,
                 int16_t x, int16_t y, int16_t w, int16_t h)
 {
     piece[child].used = 1;
+    piece[child].parent = parent;
     piece[child].type = type;
     piece[child].spec = spec;
     piece[child].x = x;
@@ -168,18 +173,17 @@ static void elevator(int16_t along, int16_t least, int16_t size, int16_t where,
  * everything is worked out inside it, so the gadgets land where the
  * application was told its work area was not.
  */
-void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                    int16_t hslide, int16_t hslsize,
-                    int16_t vslide, int16_t vslsize)
+static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
+                   int16_t hslide, int16_t hslsize,
+                   int16_t vslide, int16_t vslsize)
 {
     int16_t handle, wchar, hchar, wbox, hbox;
     int16_t work_w, work_h;
     int have_vbar, have_hbar;
-    void *tree;
     int i;
 
     if (w <= 0 || h <= 0)
-        return;
+        return 0;
 
     have_vbar = (kind & (W_UPARROW|W_DNARROW|W_VSLIDE|W_SIZE)) != 0;
     have_hbar = (kind & (W_LFARROW|W_RTARROW|W_HSLIDE|W_SIZE)) != 0;
@@ -187,7 +191,7 @@ void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     /* Nothing to draw. A window with no gadgets is its work area and the
      * desktop's frame round the outside, which is the whole of it. */
     if (!have_vbar && !have_hbar)
-        return;
+        return 0;
 
     emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
 
@@ -284,6 +288,149 @@ void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
         add(F_BOX, F_SIZER, G_BOXCHAR,
             (kind & W_SIZE) ? SPEC_SIZER : SPEC_BAR,
             (int16_t)(w - wbox), (int16_t)(h - hbox), wbox, hbox);
+
+    return 1;
+}
+
+/*
+ * Where each part of the frame actually is on the screen.
+ *
+ * An object's place is inside its parent, which is what makes a tree cheap to
+ * move and awkward to click on, so the chain is added up once here. Both the
+ * drawing and the finding come out of lay_out, which is the whole point: a
+ * gadget that is drawn somewhere and found somewhere else is the kind of thing
+ * nobody notices until they try to use it.
+ */
+static void absolute(int which, int16_t *ax, int16_t *ay)
+{
+    int16_t sx = 0, sy = 0;
+    int walk = which;
+    int steps;
+
+    for (steps = 0; steps < F_COUNT && walk >= 0; steps++)
+    {
+        sx += piece[walk].x;
+        sy += piece[walk].y;
+
+        if (walk == F_BOX)
+            break;
+
+        walk = piece[walk].parent;
+    }
+
+    *ax = sx;
+    *ay = sy;
+}
+
+static int inside(int which, int16_t px, int16_t py)
+{
+    int16_t ax, ay;
+
+    if (!piece[which].used)
+        return 0;
+
+    absolute(which, &ax, &ay);
+
+    return px >= ax && px < ax + piece[which].w
+        && py >= ay && py < ay + piece[which].h;
+}
+
+/*
+ * Which part of the frame a point is in, and where along a slider it fell.
+ *
+ * The elevator is looked at before the slide it sits in, and the arrows before
+ * the bar they are on, because the smaller thing is the one that was meant.
+ */
+int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
+                  int16_t hslide, int16_t hslsize,
+                  int16_t vslide, int16_t vslsize,
+                  int16_t px, int16_t py, int16_t *along)
+{
+    static const int order[] = {
+        F_UPARROW, F_DNARROW, F_VELEV, F_VSLIDE,
+        F_LFARROW, F_RTARROW, F_HELEV, F_HSLIDE,
+        F_SIZER
+    };
+    int i;
+
+    if (along)
+        *along = 0;
+
+    if (!lay_out(kind, x, y, w, h, hslide, hslsize, vslide, vslsize))
+        return FRAME_NOTHING;
+
+    for (i = 0; i < (int)(sizeof order / sizeof order[0]); i++)
+    {
+        int which = order[i];
+
+        if (!inside(which, px, py))
+            continue;
+
+        /*
+         * How far along a slide the point was, in thousandths, which is what
+         * an application is told and what it sets a slider with.
+         *
+         * Worked out for the elevator as well as the slide it sits in, and
+         * against the slide either way: a press on the elevator is somebody
+         * saying to put it here, and answering nought because the elevator is
+         * not the slide would jump the document to the top on every touch.
+         *
+         * Measured against the room the elevator has to move in rather than
+         * the whole slide, so that dragging it to the end means the end
+         * rather than the end less its own height.
+         */
+        if (along
+            && (which == F_VSLIDE || which == F_VELEV
+                || which == F_HSLIDE || which == F_HELEV))
+        {
+            int up_and_down = (which == F_VSLIDE || which == F_VELEV);
+            int slide = up_and_down ? F_VSLIDE : F_HSLIDE;
+            int elev = up_and_down ? F_VELEV : F_HELEV;
+            int16_t ax, ay;
+            int16_t room, at;
+
+            absolute(slide, &ax, &ay);
+
+            if (up_and_down)
+            {
+                room = piece[slide].h - piece[elev].h;
+                at = py - ay - piece[elev].h / 2;
+            }
+            else
+            {
+                room = piece[slide].w - piece[elev].w;
+                at = px - ax - piece[elev].w / 2;
+            }
+
+            if (at < 0)
+                at = 0;
+
+            if (room <= 0)
+                *along = 0;
+            else
+            {
+                if (at > room)
+                    at = room;
+
+                *along = (int16_t)(((long)at * 1000 + room / 2) / room);
+            }
+        }
+
+        return which;
+    }
+
+    return FRAME_NOTHING;
+}
+
+void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
+                    int16_t hslide, int16_t hslsize,
+                    int16_t vslide, int16_t vslsize)
+{
+    void *tree;
+    int i;
+
+    if (!lay_out(kind, x, y, w, h, hslide, hslsize, vslide, vslsize))
+        return;
 
     /* And across it goes, in the order it was built, which is the order the
      * indices are in */

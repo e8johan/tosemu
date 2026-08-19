@@ -537,6 +537,28 @@ int gfx_motion_take(void)
     return 1;
 }
 
+/*
+ * What the next change is, without taking it.
+ *
+ * The AES has to look at a press before deciding whose it is - a press on a
+ * window's frame is the AES's own and never reaches the application - and
+ * looking is not the same as taking. Taking it and putting it back would be
+ * the same thing written twice and wrong once.
+ */
+int gfx_button_peek(int16_t *buttons, int16_t *x, int16_t *y)
+{
+    clicks_from_environment();
+
+    if (w.click_count == 0 || w.clicks[0].move)
+        return 0;
+
+    *buttons = w.clicks[0].buttons;
+    *x = w.clicks[0].x;
+    *y = w.clicks[0].y;
+
+    return 1;
+}
+
 int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
 {
     int i;

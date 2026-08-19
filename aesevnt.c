@@ -234,6 +234,28 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             }
         }
 
+        /*
+         * A press on a window's frame, before the application hears about it
+         * as a click.
+         *
+         * The frame is the AES's rather than the application's - it drew the
+         * sliders and it knows where they are - so pressing one is answered
+         * with a message saying what was pressed rather than with the click.
+         * That is what an application expects: it never asks where its own
+         * sliders are, it is told when one moves.
+         */
+        {
+            int16_t b, bx, by;
+
+            if (gfx_button_peek(&b, &bx, &by) && b
+                && aes_wind_frame_press(bx, by))
+            {
+                gfx_button_take(&b, &bx, &by);
+                state_answered = 0;
+                continue;
+            }
+        }
+
         if ((wanted & MU_MESAG) && message_take(message))
             return MU_MESAG;
 
