@@ -374,3 +374,71 @@ https://github.com/kstenerud/Musashi, is subject to the following license:
 > 
 > The above copyright notice and this permission notice shall be included in
 > all copies or substantial portions of the Software.
+
+
+Testing it
+----------
+
+Four layers, cheapest first. The first three need nothing but the machine you
+are on; the last needs a compositor and a pair of eyes.
+
+**The automated ones.** These are what CI runs and what should pass before
+anything is committed:
+
+    make check          the emulated machine: GEMDOS, BIOS, XBIOS, AES, VDI,
+                        and two processes talking through the daemon
+    make emuvdi-check   the ported VDI, built for the host and compared
+                        against what it should have drawn
+    make demos          the demonstration programs still compile
+
+`make check` builds its tests with the m68k-atari-mint cross compiler and runs
+them inside the emulator, so a failure there is a failure of the thing being
+tested rather than of the test.
+
+**The self hosted ones**, which need the period tool chains under `tos_root`:
+
+    make devpac-check    Devpac's assembler, run inside tosemu, assembling
+                         its own examples
+    make lattice-check   Lattice C 5.60's compiler and linker, likewise
+
+These are the honest end of the test suite: a compiler is a large, unforgiving
+program that uses a great deal of GEMDOS, and one that runs is worth more than
+any number of unit tests.
+
+**The demonstrations**, which draw something and can be driven without a mouse:
+
+    make demos
+    TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm \
+        TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
+
+Every demo runs headless like that, which is how they are checked here. Run
+them without `TOSEMU_NO_WINDOW` to see them as windows on the desktop:
+`dialog`, `window`, `menu`, `fsel`.
+
+**A whole session**, which is the part no test covers: a daemon, the
+accessories it starts, a mark in the panel, and applications coming and going.
+
+    make demos
+    mkdir -p /tmp/gem && cp demos/DEMO.ACC /tmp/gem/
+    ./bin/tosaesd -v /tmp/gem &
+    ./bin/tosemu demos/menu
+
+The daemon says what it is doing with `-v`. What to look for:
+
+  - it starts DEMO.ACC and says so, and the accessory says it registered
+  - a mark appears in the panel, and its menu lists the accessory
+  - the menu demo's own Desk menu has About, a separator, and Demo in it
+  - picking Demo either way prints a line from the accessory rather than
+    doing anything to the application, which is the whole point of one
+  - closing the application leaves the accessory running, and the panel is
+    still the way to reach it
+
+Without a daemon everything still runs - one application on its own is the
+ordinary way to use this - and the only things missing are the ones that need
+more than one program to exist.
+
+**When something is wrong**, three variables say what is happening:
+`TOSEMU_TRACE_INPUT` for every wait for the mouse and what it was told,
+`TOSEMU_SCREENSHOT` for what was drawn, and `-v` on the daemon for who is
+connected. The first exists because a wait that answers wrongly is invisible
+from anywhere else.
