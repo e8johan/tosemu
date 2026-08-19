@@ -608,6 +608,31 @@ static void app_notes_set(int slot, const struct aesd_packet *in)
  * somebody's work with unsaved changes in it, and a program the person started
  * themselves is theirs to close.
  */
+/*
+ * Whether everything this daemon started has gone, collecting any that have.
+ *
+ * Reaping here rather than at the end is what makes the waiting bounded: a
+ * child that has already gone is taken off the list, so the list emptying is
+ * the thing to wait for rather than each child in turn.
+ */
+static int all_gone(void)
+{
+    int i, left = 0;
+
+    for (i = 0; i < started_count; i++)
+    {
+        if (started[i] <= 0)
+            continue;
+
+        if (waitpid(started[i], 0, WNOHANG) != 0)
+            started[i] = 0;             /* gone, or never ours */
+        else
+            left++;
+    }
+
+    return left == 0;
+}
+
 static void everybody_out(void)
 {
     struct aesd_packet out;
@@ -623,22 +648,46 @@ static void everybody_out(void)
         if (apps[i].used)
             send_to(apps[i].fd, &out);
 
-    /* A moment to act on it, which is what the message is for */
-    usleep(200 * 1000);
-
-    for (i = 0; i < started_count; i++)
+    /*
+     * And then waited for, but never indefinitely.
+     *
+     * Asking is polite and stopping is certain, and the daemon has to end
+     * either way: it is the thing the person clicked Quit on, and a Quit that
+     * hangs because something it started will not go is worse than one that is
+     * blunt about it. So each stage is given a moment and then the next one
+     * happens.
+     */
+    for (i = 0; i < 40; i++)            /* two seconds, asked nicely */
     {
-        if (started[i] <= 0)
-            continue;
+        if (all_gone())
+            break;
 
-        if (waitpid(started[i], 0, WNOHANG) == 0)
-            kill(started[i], SIGTERM);
+        usleep(50 * 1000);
     }
 
-    /* And collect them, so that nothing is left behind for init to adopt */
+    if (!all_gone())
+    {
+        for (i = 0; i < started_count; i++)
+            if (started[i] > 0)
+                kill(started[i], SIGTERM);
+
+        for (i = 0; i < 20; i++)        /* one second, told */
+        {
+            if (all_gone())
+                break;
+
+            usleep(50 * 1000);
+        }
+    }
+
+    /* Whatever is left is not going to go */
     for (i = 0; i < started_count; i++)
         if (started[i] > 0)
+        {
+            say_of("would not go, so stopping it", "an accessory");
+            kill(started[i], SIGKILL);
             waitpid(started[i], 0, 0);
+        }
 
     started_count = 0;
 }
@@ -922,6 +971,13 @@ int main(int argc, char **argv)
 
     tray_close();
     tidy_up();
+
+    /*
+     * Said last, so that a daemon which stopped somewhere on the way out can
+     * be told from one that finished. Without it the difference between "it
+     * is taking a while" and "it is stuck" is invisible from outside.
+     */
+    say_of("gone", "the daemon");
 
     return 0;
 }
