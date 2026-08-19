@@ -419,11 +419,24 @@ static void clicks_from_environment(void)
 
     while (*clicks)
     {
-        int ux, uy, n2, moving = 0;
+        int ux, uy, n2, moving = 0, held = 0;
 
         if (*clicks == '@')
         {
             moving = 1;
+            clicks++;
+        }
+
+        /*
+         * "!x,y" presses there and does not let go, which is what a person
+         * does for the tenth of a second between pressing a mouse button and
+         * releasing it. Nothing else here can express that - every other form
+         * queues the release immediately - and a wait that answers wrongly
+         * while a button is held is invisible until somebody uses a real one.
+         */
+        if (*clicks == '!')
+        {
+            held = 1;
             clicks++;
         }
 
@@ -469,6 +482,14 @@ static void clicks_from_environment(void)
         w.clicks[w.click_count].y = (int16_t)y;
         w.clicks[w.click_count].move = 0;
         w.click_count++;
+
+        if (held)
+        {
+            clicks += n;
+            while (*clicks == ' ' || *clicks == ',')
+                clicks++;
+            continue;
+        }
 
         w.clicks[w.click_count].buttons = 0;    /* and up where it ended */
         w.clicks[w.click_count].x = (int16_t)ux;

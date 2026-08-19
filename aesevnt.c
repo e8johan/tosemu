@@ -163,8 +163,17 @@ static int buttons_are(int16_t buttons, int16_t mask, int16_t state)
 }
 
 /*
- * Whether the last wait was answered by how things were rather than by
- * something happening. See the note at the top of wait_for.
+ * The button state a wait was last answered with, and whether there was one.
+ *
+ * A wait is answered by the state as it is, which is right and is what makes
+ * one click do one click's worth of work. But the same state must not answer
+ * twice: a button is down for as long as somebody holds it, and answering
+ * "down" every time it is asked turns one press into a hundred - the file
+ * selector walks into the same folder until the path it is building runs off
+ * the end of the buffer the application gave it.
+ *
+ * So a state answers once. After that the wait sleeps until something changes,
+ * which is the release, or the next press after it.
  */
 static int state_answered;
 
@@ -185,19 +194,8 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
     gem_present();
 
     /*
-     * The button state that answered the last question is stale now, so move
-     * on by one thing that happened before answering this one.
-     *
-     * A wait is answered by the state as it is, which is right, and the same
-     * state must not answer twice while newer information is waiting. Ask
-     * whether the button is down just after a press and the answer is yes;
-     * ask again and it is still yes, because the release that followed is
-     * sitting in the queue and answering from the state never reaches it. The
-     * AES asks in a loop and gets the same stale yes for ever.
-     *
-     * Only when the last answer came from the state rather than from a change,
-     * and only one, so that within a single wait the state is still considered
-     * before it moves on.
+     * The state that answered the last question is stale once something else
+     * has happened, so move on by one before answering this one.
      */
     if (state_answered)
     {
@@ -331,6 +329,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * stuck behind a release nobody wanted - and everything queued
              * behind it, including where the pointer was going next.
              */
+            /* Something happened, so the state is new and may answer again */
             if (gfx_button_take(&b, &bx, &by))
             {
                 state_answered = 0;

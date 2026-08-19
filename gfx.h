@@ -113,6 +113,10 @@ void gfx_present();
  * A key is one word: the IKBD scan code in the high byte and the character in
  * the low one.
  *
+ * Injected input can also press without letting go, which is what a person
+ * does for the tenth of a second between pressing and releasing. A wait that
+ * answers wrongly while a button is held is invisible without it.
+ *
  * The mouse is in the screen's own pixels. A window shows a rectangle of the
  * screen at some whole-number scale, so a pointer position is divided by the
  * scale and moved by where that rectangle starts - which is what keeps every

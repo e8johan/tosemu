@@ -46,6 +46,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <time.h>
 
@@ -188,6 +189,30 @@ static int tos_name(const char *from, char *to)
     return 1;
 }
 
+/*
+ * Whether a directory is the one being listed, or one it is already inside.
+ *
+ * Following it would go round rather than down. Comparing where they really
+ * are rather than what they are called is the point: the names differ, which
+ * is what makes the loop look like progress.
+ */
+static int leads_back(const char *host)
+{
+    char real[PATH_MAX+1], here[PATH_MAX+1];
+    size_t n;
+
+    if (!realpath(host, real) || !realpath(walk.where, here))
+        return 0;
+
+    n = strlen(real);
+
+    if (strncmp(real, here, n) != 0)
+        return 0;
+
+    /* The same place, or a piece of the way to it */
+    return here[n] == 0 || here[n] == '/';
+}
+
 /* Fills the DTA from one directory entry, or says it is not one to answer
  * with */
 static int answer_with(const char *name)
@@ -216,6 +241,23 @@ static int answer_with(const char *name)
     if (S_ISDIR(about.st_mode))
     {
         if (!(walk.attributes & FA_SUBDIR))
+            return 0;
+
+        /*
+         * Not one that leads back to where we already are.
+         *
+         * A TOS filesystem is a tree and the file selector walks it as one, so
+         * it has no reason to expect a folder that contains itself. A host
+         * filesystem has plenty - /bin/X11 points at /bin on most machines -
+         * and walking into one appends to the path without ever getting
+         * anywhere, until the path runs off the end of the buffer the
+         * application handed over.
+         *
+         * Only the ones that lead back. A link to somewhere else is a folder
+         * as far as anything here is concerned, and hiding those would hide
+         * most of a modern filesystem.
+         */
+        if (leads_back(host))
             return 0;
 
         dta->d_attrib = FA_SUBDIR;

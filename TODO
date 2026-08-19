@@ -115,3 +115,26 @@
   If more of GEMDOS is wanted from the host side - shel_find will want it - the
   answer is to give gemdosfile.c host callable entry points and have both use
   them, not to keep adding here.
+- Reported: clicking once on a folder in the file selector makes the path grow
+  by itself - C:\BIN\X11\X11\X11... - until the application's path buffer
+  overruns and it crashes. The half of that which is understood is the folder:
+  /bin/X11 points at /bin on most Linux machines, so walking in arrives where
+  you started, and emuvdi/hostfs.c now leaves out a directory that leads back
+  to the one being listed or above it. TOS has no symlinks, so the selector has
+  no reason to expect a folder that contains itself.
+
+  The half that is not understood is why one click walked in repeatedly. GEM
+  needs a double click to enter a folder, and one press should give one. The
+  suspicion is that a wait for the button is answered again and again while it
+  is held - a person holds one for a tenth of a second, which is hundreds of
+  times round the selector's loop - but that has not been reproduced. Injected
+  input can now press without letting go, "!x,y" in TOSEMU_CLICKS, and a held
+  press on a list entry does not reproduce it either. So either the mechanism
+  is something else, or reproducing it needs the timing of a real hand.
+
+  A fix was tried and taken out again: refusing to answer twice from the same
+  unchanged button state stops the loop by construction, but it also stops
+  gr_watchbox, which asks whether the button is still down immediately after
+  the wait that reported it went down - so one click stopped closing a dialog.
+  Whatever the answer is, it has to tell those two apart, and the difference is
+  which wait is asking rather than what the button is doing.
