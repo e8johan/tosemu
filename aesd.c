@@ -168,22 +168,67 @@ static int find_by_id(int16_t ap_id)
 
 static void tell_about_accessories(int only_to);
 
+/*
+ * Telling the accessories that an application has gone.
+ *
+ * On an ST there was one screen and one application at a time, so a program
+ * ending took everything on the screen with it - including whatever an
+ * accessory had opened while it ran. AC_CLOSE is how the accessory finds out,
+ * so that it forgets a window rather than going on believing in one.
+ *
+ * Here every window is the desktop's and an accessory's window survives its
+ * host perfectly well, so this is less load-bearing than it was. It is still
+ * what an accessory is written to expect, and one that never hears it is one
+ * that will not open its window a second time.
+ */
+static void tell_accessories_it_closed(int16_t which)
+{
+    struct aesd_packet out;
+    int i;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_DELIVER;
+    out.message[0] = 41;                /* AC_CLOSE */
+    out.message[1] = which;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory)
+            continue;
+
+        /* Its own menu entry, which is what the message says: an accessory is
+         * allowed more than one and has to know which went away */
+        out.message[3] = 0;
+
+        send_to(apps[i].fd, &out);
+    }
+}
+
 static void app_goodbye(int slot)
 {
+    int was_accessory;
+    int16_t was;
+
     if (!apps[slot].used)
         return;
 
     say("gone", apps[slot].ap_id, apps[slot].name);
 
     close(apps[slot].fd);
+
+    was_accessory = apps[slot].accessory;
+    was = apps[slot].ap_id;
+    memset(&apps[slot], 0, sizeof apps[slot]);
+
+    if (was_accessory)
     {
-        int was_accessory = apps[slot].accessory;
-
-        memset(&apps[slot], 0, sizeof apps[slot]);
-
-        if (was_accessory)
-            tell_about_accessories(-1);
+        tell_about_accessories(-1);
+        return;
     }
+
+    /* An application ending is what an accessory is told about. An accessory
+     * ending is not: it is the thing that would have been told. */
+    tell_accessories_it_closed(was);
 }
 
 /*

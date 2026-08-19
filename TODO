@@ -123,3 +123,9 @@
   meant to write. The two process message test next to it is the shape to
   follow; what it does not have to deal with is a third process that has to be
   clicked in the right place before anything happens.
+- An accessory started by the daemon inherits the daemon's environment, so it
+  talks to a compositor whether or not the application that will show it in its
+  menu does. That is right for a session and wrong for a test, and it made one
+  look as though messages were arriving late when they were not. Whether an
+  accessory should be told where to draw - or simply left to inherit, as now -
+  is a question for when there is a desktop of our own to start them from.
