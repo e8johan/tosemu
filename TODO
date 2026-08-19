@@ -127,3 +127,49 @@
   look as though messages were arriving late when they were not. Whether an
   accessory should be told where to draw - or simply left to inherit, as now -
   is a question for when there is a desktop of our own to start them from.
+- GDOS and scalable fonts, which is the whole of the last milestone in the
+  plan and is not started. The Atari system fonts are there, compiled in from
+  EmuTOS, and they are what vst_font and v_gtext use. What is missing is
+  everything above them: loading .FNT files, FreeType and fontconfig behind
+  the SpeedoGDOS calls an application uses to ask for a typeface by name
+  (vst_load_fonts, vqt_name, vst_name, vst_arbpt, v_ftext, vqt_f_extent), a
+  table mapping the names documents were written with onto host faces - Swiss
+  721 to Nimbus Sans and so on - and ASSIGN.SYS read from the emulated
+  filesystem.
+
+  Metrics are the part to be careful about. An application lays itself out
+  from what vqt_extent tells it, so a substituted face changes where every
+  word on the page goes. That happened on real SpeedoGDOS too and is not a
+  fault, but it is the reason to get the bitmap fonts exactly right rather
+  than nearly right: those are the ones a document of the period was actually
+  set in.
+
+- Drawing outside a window is not promoted to a window of its own. form_dial
+  says a rectangle is being reserved and that gets one, which covers dialogs;
+  an application that draws on the desktop beside its window without saying so
+  - Calamus and its tool palette are the case the plan was written around -
+  draws into the screen the AES keeps and is seen by nobody.
+
+  The plan's answer is a scratch surface the size of the screen with the
+  regions that were drawn into tracked, and a rectangle that stays put for a
+  moment promoted to a window. The hysteresis is what stops a mouse drag
+  spawning windows. It also wants a per application file to say what the
+  heuristics got wrong, which is the honest part of the design rather than an
+  admission: no rule about where an application meant to draw will be right
+  for every application.
+
+- Settings and About, the tosemu dialogs of its own, are not written, and the
+  reason is a decision rather than an oversight. The plan has the daemon link
+  the AES, the VDI and the graphics and run a built in desktop application to
+  own them. That reverses the one thing kept true of the daemon throughout -
+  it links no part of the emulator, and everything it knows is in aesproto.h -
+  and would make the cross compiler a dependency of an ordinary build.
+
+  The cheaper way that keeps both: make About an ordinary GEM program the
+  daemon starts when the entry is picked, the way it starts an accessory. It
+  already knows how to start programs. That wants deciding rather than
+  assuming, because the plan says otherwise.
+
+- No .desktop files are written for GEM programs, so one has no icon and no
+  name of its own in a launcher or a task bar. The windows already carry an
+  app_id, which is the half that needs no files.
