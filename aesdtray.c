@@ -80,6 +80,7 @@ static unsigned menu_revision = 1;
  * than this file's */
 static void (*picked)(int16_t ap_id);
 static void (*quit)(void);
+static void (*look_again)(void);
 
 /*
  * Which entry is which.
@@ -92,6 +93,7 @@ static void (*quit)(void);
  */
 #define ENTRY_QUIT      (100)
 #define ENTRY_SEPARATOR (101)
+#define ENTRY_LOOK      (102)
 
 static void say_once(const char *why)
 {
@@ -384,9 +386,16 @@ static void put_the_menu(DBusMessage *reply)
             put_entry(&children, i + 1, shown[i].name, 0);
     }
 
-    /* And the way out, which is the one thing in here that is about the
-     * session rather than about what is in it */
+    /*
+     * And the two that are about the session rather than about what is in it.
+     * Looking again is only offered when there is a directory to look in -
+     * an entry that cannot do anything is worse than no entry.
+     */
     put_entry(&children, ENTRY_SEPARATOR, "", 1);
+
+    if (look_again)
+        put_entry(&children, ENTRY_LOOK, "Look for new accessories", 0);
+
     put_entry(&children, ENTRY_QUIT, "Quit", 0);
 
     dbus_message_iter_close_container(&root, &children);
@@ -580,6 +589,8 @@ static DBusHandlerResult handle(DBusConnection *connection, DBusMessage *msg,
             {
                 if (which == ENTRY_QUIT && quit)
                     quit();
+                else if (which == ENTRY_LOOK && look_again)
+                    look_again();
                 else if (which >= 1 && which <= shown_count && picked)
                     /* Numbered from one so that nought can be the root, so
                      * this is the index into the list of accessories */
@@ -613,7 +624,8 @@ static const DBusObjectPathVTable answering = { 0, handle, 0, 0, 0, 0 };
 
 /* What the daemon calls ***************************************************/
 
-int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void))
+int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void),
+              void (*when_look_again)(void))
 {
     DBusError trouble;
     DBusMessage *ask, *said;
@@ -621,6 +633,7 @@ int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void))
 
     picked = when_picked;
     quit = when_quit;
+    look_again = when_look_again;
 
     dbus_error_init(&trouble);
 
@@ -768,10 +781,12 @@ void tray_pump(void)
  * part of this that depends on a library the rest does not, and a machine
  * without it should still get a working session rather than a build failure.
  */
-int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void))
+int tray_open(void (*when_picked)(int16_t ap_id), void (*when_quit)(void),
+              void (*when_look_again)(void))
 {
     (void)when_picked;
     (void)when_quit;
+    (void)when_look_again;
 
     printf("tosaesd: built without D-Bus, so there is no icon in the panel - "
            "the accessories are still in the Desk menu of whatever is "

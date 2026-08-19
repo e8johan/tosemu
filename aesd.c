@@ -124,7 +124,9 @@ static const char *accessory_directory;
  */
 static struct {
     pid_t pid;
-    char from[64];              /* The file it was started from */
+    char from[64];              /* What to call it when saying something */
+    char path[PATH_MAX];        /* And where it came from, so that looking
+                                 * again can tell a new one from this one */
 } started[AESD_MAX_ACCS];
 
 static int started_count;
@@ -394,6 +396,31 @@ static void app_scrap_set(int slot, const struct aesd_packet *in)
  * the panel adds is that it works when no application is running, which is the
  * case a Desk menu cannot cover.
  */
+static int still_here(void);
+static void start_the_accessories(const char *directory);
+
+/*
+ * Picked Look again, which reads the directory and starts whatever is in it
+ * that is not running already.
+ *
+ * The accessories are read once when the session starts, and a person who
+ * drops another one in afterwards has no way to say so - short of starting it
+ * by hand against the right socket, which works and is not something to have
+ * to know. This is that, from the menu.
+ *
+ * Anything that has stopped is forgotten first, so that an accessory which
+ * fell over can be started again by the same menu entry that started it.
+ */
+static void look_again(void)
+{
+    if (!accessory_directory)
+        return;
+
+    still_here();
+
+    start_the_accessories(accessory_directory);
+}
+
 /* Picked Quit, which is noticed rather than acted on here - see time_to_go */
 static void quit_from_the_panel(void)
 {
@@ -529,6 +556,8 @@ static void start_accessory(const char *emulator, const char *path)
         started[started_count].pid = child;
         snprintf(started[started_count].from, sizeof started[started_count].from,
                  "%s", leaf ? leaf + 1 : path);
+        snprintf(started[started_count].path, sizeof started[started_count].path,
+                 "%s", path);
         started_count++;
     }
 
@@ -563,6 +592,19 @@ static int find_the_emulator(char *where, size_t size)
  * Which is anything ending in .ACC, in either case, because a TOS filesystem
  * did not care and the one underneath this might.
  */
+/* Whether this one is already running, which is what makes looking again safe
+ * to do twice */
+static int already_running(const char *path)
+{
+    int i;
+
+    for (i = 0; i < started_count; i++)
+        if (started[i].pid > 0 && !strcmp(started[i].path, path))
+            return 1;
+
+    return 0;
+}
+
 static void start_the_accessories(const char *directory)
 {
     char emulator[PATH_MAX];
@@ -593,6 +635,12 @@ static void start_the_accessories(const char *directory)
             continue;
 
         snprintf(path, sizeof path, "%s/%s", directory, entry->d_name);
+
+        /* One that is already running is left alone, so that looking again is
+         * a thing a person can do without counting how many times */
+        if (already_running(path))
+            continue;
+
         start_accessory(emulator, path);
     }
 
@@ -938,7 +986,8 @@ int main(int argc, char **argv)
      * application is running. It is allowed to fail and says so once: a
      * desktop without tray icons is a session that is otherwise fine.
      */
-    tray_open(picked_in_the_panel, quit_from_the_panel);
+    tray_open(picked_in_the_panel, quit_from_the_panel,
+              accessory_directory ? look_again : 0);
 
     /* And now that there is somewhere for them to say hello to */
     if (accessory_directory)

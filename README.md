@@ -426,6 +426,15 @@ accessories it starts, a mark in the panel, and applications coming and going.
 To find out whether one is already running, start another: it says so and
 stops rather than taking the first one's place.
 
+To add an accessory to a session that is already going, drop it in the
+directory and pick "Look for new accessories" from the panel's menu. Anything
+already running is left alone, so it can be picked as often as you like. One
+started by hand works too, and is what that entry does:
+
+    TOSEMU_AESD=/tmp/gem/aesd.socket ./bin/tosemu /tmp/gem/CLOCK.ACC &
+
+which is worth knowing when there is no panel to pick things from.
+
 The daemon says what it is doing with `-v`. What to look for:
 
   - it starts DEMO.ACC and says so, and the accessory says it registered
