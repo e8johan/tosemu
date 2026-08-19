@@ -34,6 +34,16 @@
   out inverted rather than erased - but it is the sort of thing that will
   differ from real GEM somewhere, and it will look like the routine being
   wrong rather than the mode.
+- An icon or an image in an object tree is drawn as an empty box. Every other
+  kind of object has an ob_spec aestree.c knows how to bring across - a colour
+  word is not a pointer, a string is copied, a TEDINFO is a structure of known
+  shape - and these two point at an ICONBLK or a BITBLK that points at a
+  bitmap, which is a conversion rather than a copy: the data is planar and in
+  the emulated memory, and what the VDI here draws from is a host surface.
+  Until that is written they become boxes, the same as a G_USERDEF with
+  nothing to call, because the AES reads the structure through the pointer
+  before it draws anything and a 68000 address is not one here. ProCalc is
+  most of a dialog of them, so it is the thing to try it against.
 - Add a configuration item (or command line option) to select from six 
   different graphics modes:
     1. 320x200, 4bpp (Atari ST)

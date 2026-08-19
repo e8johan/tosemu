@@ -403,11 +403,18 @@ void *aes_tree_in(uint32_t address)
             default:
                 /*
                  * Icons and images, which point at structures that point at
-                 * bitmaps. Neither is brought across yet, and one that is not
-                 * is left pointing at nothing rather than at the wrong thing:
-                 * a 68000 address means something else entirely here.
+                 * bitmaps. Neither is brought across yet, so neither can be
+                 * left as what it is: the AES reads an ICONBLK or a BITBLK
+                 * through the pointer before it draws anything, and a 68000
+                 * address means something else entirely here.
+                 *
+                 * So it becomes an empty box, the same as a G_USERDEF with
+                 * nothing to call - visible, the right size, and holding the
+                 * shape of the dialog together while plainly saying that
+                 * something is missing.
                  */
-                host_spec = 0;
+                type = (type & 0xff00) | G_BOX;
+                host_spec = (void *)(uintptr_t)0x00011100L;
                 break;
         }
 
