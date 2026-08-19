@@ -38,6 +38,16 @@
 #define GEM_AES (200) /* 0xc8 */
 #define GEM_VDI (115) /* 0x73 */
 
+/* vq_gdos, which is not a call so much as a knock on the door: a program puts
+ * -2 in d0 and asks whether anybody answers. TOS itself does not - its trap
+ * handler knows the two numbers above and returns without touching d0 for
+ * anything else - so d0 coming back as -2 is what "no GDOS" looks like, and
+ * GDOS being installed means something has taken the trap over and left a
+ * version number there instead.
+ * http://toshyp.atari.org/en/006.html
+ */
+#define GEM_GDOS (-2)
+
 /* How a function the tables name but nobody has implemented behaves, the same
  * contract BIOS and XBIOS use. FN_HALT stops and says which call it was, so
  * that an unimplemented function is found where it is used rather than

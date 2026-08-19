@@ -287,7 +287,7 @@ void gem_present()
 
 void gem_trap()
 {
-    uint16_t which = m68k_get_reg(0, M68K_REG_D0) & 0xffff;
+    int16_t which = (int16_t)(m68k_get_reg(0, M68K_REG_D0) & 0xffff);
 
     switch (which)
     {
@@ -296,6 +296,12 @@ void gem_trap()
             break;
         case GEM_VDI:
             vdi_trap();
+            break;
+        case GEM_GDOS:
+            /* Answered by saying nothing, which is the answer: d0 is left as
+             * the caller set it and that is what tells it there is no GDOS.
+             * There is none - see the TODO - and a program that asks is one
+             * that is prepared to be told so. */
             break;
         default:
             halt_execution();

@@ -138,6 +138,12 @@
   721 to Nimbus Sans and so on - and ASSIGN.SYS read from the emulated
   filesystem.
 
+  What is answered is the knock on the door. vq_gdos puts -2 in d0 and traps,
+  and TOS leaves d0 alone for anything that is not the AES or the VDI, so an
+  application asking is told there is none and takes the path it would have
+  taken on a machine without it. Installing GDOS is what would change the
+  answer, and that is the rest of this entry.
+
   Metrics are the part to be careful about. An application lays itself out
   from what vqt_extent tells it, so a substituted face changes where every
   word on the page goes. That happened on real SpeedoGDOS too and is not a
