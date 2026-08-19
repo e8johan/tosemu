@@ -41,6 +41,10 @@
  * a machine's graphics mode is, one setting for everything running on it.
  */
 
+/* For SO_PEERCRED's struct ucred, which is how a socket says which process is
+ * on the other end of it. Before every header, which is what it has to be. */
+#define _GNU_SOURCE
+
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -85,6 +89,11 @@ static struct {
      * application that never says is not one. */
     int accessory;
     char shown[AESD_NAME_LEN];
+
+    /* Which process it is, which the socket knows and is asked for rather
+     * than believed: it is how a connection is matched to a child this daemon
+     * started, so that one can be named by what it calls itself */
+    pid_t pid;
 } apps[MAX_APPS];
 
 /*
@@ -113,7 +122,11 @@ static const char *accessory_directory;
  * to a process: an accessory never exits on its own - that is what makes it an
  * accessory - so being asked nicely may not be enough.
  */
-static pid_t started[AESD_MAX_ACCS];
+static struct {
+    pid_t pid;
+    char from[64];              /* The file it was started from */
+} started[AESD_MAX_ACCS];
+
 static int started_count;
 
 /* Set when somebody picks Quit, which is noticed at the top of the loop
@@ -267,6 +280,8 @@ static void app_goodbye(int slot)
 static void app_hello(int fd, const struct aesd_packet *in)
 {
     struct aesd_packet out;
+    struct ucred who;
+    socklen_t how_much = sizeof who;
     int slot;
 
     for (slot = 0; slot < MAX_APPS; slot++)
@@ -293,6 +308,11 @@ static void app_hello(int fd, const struct aesd_packet *in)
     apps[slot].fd = fd;
     apps[slot].ap_id = (int16_t)slot;
     memcpy(apps[slot].name, in->name, AESD_NAME_LEN);
+
+    /* Which process it is, so that an accessory started here can be named by
+     * what it calls itself rather than by the file it came out of */
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &who, &how_much) == 0)
+        apps[slot].pid = who.pid;
 
     out.ap_id = apps[slot].ap_id;
     send_to(fd, &out);
@@ -503,7 +523,14 @@ static void start_accessory(const char *emulator, const char *path)
     }
 
     if (started_count < (int)(sizeof started / sizeof started[0]))
-        started[started_count++] = child;
+    {
+        const char *leaf = strrchr(path, '/');
+
+        started[started_count].pid = child;
+        snprintf(started[started_count].from, sizeof started[started_count].from,
+                 "%s", leaf ? leaf + 1 : path);
+        started_count++;
+    }
 
     say_of("started", path);
 }
@@ -609,36 +636,97 @@ static void app_notes_set(int slot, const struct aesd_packet *in)
  * themselves is theirs to close.
  */
 /*
- * Whether everything this daemon started has gone, collecting any that have.
+ * What an accessory is called, for saying something about it.
  *
- * Reaping here rather than at the end is what makes the waiting bounded: a
- * child that has already gone is taken off the list, so the list emptying is
- * the thing to wait for rather than each child in turn.
+ * What it calls itself if it got as far as registering, and the file it came
+ * out of if it did not - which is the case that matters, because one that
+ * never registered is exactly the one somebody will want named when it has to
+ * be stopped.
  */
-static int all_gone(void)
+static const char *name_of(int which)
+{
+    static char trimmed[AESD_NAME_LEN + 1];
+    int i, n;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory
+            || apps[i].pid != started[which].pid)
+            continue;
+
+        memcpy(trimmed, apps[i].shown, AESD_NAME_LEN);
+        trimmed[AESD_NAME_LEN] = 0;
+
+        /* The name is padded out for the menu, which is not how it should read
+         * in a sentence */
+        for (n = AESD_NAME_LEN; n > 0 && trimmed[n-1] == ' '; n--)
+            trimmed[n-1] = 0;
+
+        for (n = 0; trimmed[n] == ' '; n++)
+            ;
+
+        if (trimmed[n])
+            return trimmed + n;
+    }
+
+    return started[which].from;
+}
+
+/* Collects whichever have gone, and says how many are left */
+static int still_here(void)
 {
     int i, left = 0;
 
     for (i = 0; i < started_count; i++)
     {
-        if (started[i] <= 0)
+        if (started[i].pid <= 0)
             continue;
 
-        if (waitpid(started[i], 0, WNOHANG) != 0)
-            started[i] = 0;             /* gone, or never ours */
+        if (waitpid(started[i].pid, 0, WNOHANG) != 0)
+            started[i].pid = 0;         /* gone, or never ours */
         else
             left++;
     }
 
-    return left == 0;
+    return left;
 }
 
+/* Waits a while for one to go, and says whether it did */
+static int gone_within(int which, int tenths)
+{
+    int i;
+
+    for (i = 0; i < tenths; i++)
+    {
+        still_here();
+
+        if (started[which].pid <= 0)
+            return 1;
+
+        usleep(100 * 1000);
+    }
+
+    still_here();
+
+    return started[which].pid <= 0;
+}
+
+/*
+ * Ending the session.
+ *
+ * Everybody is asked first, with the message GEM has for exactly this, and
+ * given a moment to go of their own accord. Then whatever this daemon started
+ * and is still there is stopped, because an accessory that does not handle
+ * being asked would otherwise outlive the session that started it.
+ *
+ * Applications are asked and not stopped. One that ignores the message is
+ * somebody's work with unsaved changes in it, and a program the person started
+ * themselves is theirs to close.
+ */
 static void everybody_out(void)
 {
     struct aesd_packet out;
     int i;
-
-    say_of("closing", "the session");
 
     memset(&out, 0, sizeof out);
     out.kind = AESD_DELIVER;
@@ -649,45 +737,67 @@ static void everybody_out(void)
             send_to(apps[i].fd, &out);
 
     /*
-     * And then waited for, but never indefinitely.
+     * What each is called, taken now rather than when its turn comes.
      *
-     * Asking is polite and stopping is certain, and the daemon has to end
-     * either way: it is the thing the person clicked Quit on, and a Quit that
-     * hangs because something it started will not go is worse than one that is
-     * blunt about it. So each stage is given a moment and then the next one
-     * happens.
+     * Waiting for one collects every other that has gone in the meantime, and
+     * a name is looked up through the connection that has gone with it - so by
+     * the time the second is reached there is nothing left to ask. Two
+     * accessories and one line was the first thing this got wrong.
      */
-    for (i = 0; i < 40; i++)            /* two seconds, asked nicely */
     {
-        if (all_gone())
-            break;
+        static char names[AESD_MAX_ACCS][64];
 
-        usleep(50 * 1000);
-    }
-
-    if (!all_gone())
-    {
         for (i = 0; i < started_count; i++)
-            if (started[i] > 0)
-                kill(started[i], SIGTERM);
+            snprintf(names[i], sizeof names[i], "%s", name_of(i));
 
-        for (i = 0; i < 20; i++)        /* one second, told */
-        {
-            if (all_gone())
-                break;
-
-            usleep(50 * 1000);
-        }
+        for (i = 0; i < started_count; i++)
+            snprintf(started[i].from, sizeof started[i].from, "%s", names[i]);
     }
 
-    /* Whatever is left is not going to go */
+    /*
+     * One line each, and it is worth the trouble: what it says is whether an
+     * accessory went when it was asked, which is the difference between one
+     * that is well behaved and one that has to be stopped every time. A single
+     * line saying the session closed would hide that.
+     *
+     * Said whether or not the daemon was asked to be talkative, because this
+     * answers something the person just clicked rather than being chatter.
+     */
     for (i = 0; i < started_count; i++)
-        if (started[i] > 0)
+    {
+        printf("Asking %s to quit.", started[i].from);
+        fflush(stdout);
+
+        /*
+         * One that went while another was being waited for is not skipped: it
+         * did what it was asked, and the line saying so is the whole point.
+         *
+         * Two seconds, which is a long time for a program with nothing to save
+         * and no time at all for one that is thinking about it.
+         */
+        if (started[i].pid <= 0 || gone_within(i, 20))
         {
-            say_of("would not go, so stopping it", "an accessory");
-            kill(started[i], SIGKILL);
-            waitpid(started[i], 0, 0);
+            printf(" [ ok ]\n");
+            fflush(stdout);
+            continue;
         }
+
+        kill(started[i].pid, SIGTERM);
+
+        if (gone_within(i, 10))
+        {
+            printf(" [ stopped ]\n");
+            fflush(stdout);
+            continue;
+        }
+
+        kill(started[i].pid, SIGKILL);
+        waitpid(started[i].pid, 0, 0);
+        started[i].pid = 0;
+
+        printf(" [ killed ]\n");
+        fflush(stdout);
+    }
 
     started_count = 0;
 }
@@ -977,7 +1087,11 @@ int main(int argc, char **argv)
      * be told from one that finished. Without it the difference between "it
      * is taking a while" and "it is stuck" is invisible from outside.
      */
-    say_of("gone", "the daemon");
+    if (time_to_go)
+    {
+        printf("Terminating daemon.\n");
+        fflush(stdout);
+    }
 
     return 0;
 }
