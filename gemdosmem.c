@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -272,11 +273,14 @@ void gemdos_mem_init(struct tos_environment *te)
     
     /* The initial area is by convention and relates to the binary loading and
      * base page setup from tossystem */
-    ma->base = 0x800; 
-    ma->len = te->size + 0x100; /* Size + basepage */
-    /* The address the TPA ends at, which is where the initial block ends */
-    mem_allocatable_top = ma->base + ma->len;
-    
+    ma->base = 0x800;
+    ma->len = te->tpa_len; /* What the application was given, basepage and all */
+    /* The address the memory the emulator has ends at, which is not the same
+     * as the top of the initial block: an accessory is given room for itself
+     * and the rest of the machine stays free, which is where the stack it
+     * Mallocs comes from. A program is given all of it and the two meet. */
+    mem_allocatable_top = 0x900 + (uint32_t)te->size;
+
     mem_list = ma;
 }
 

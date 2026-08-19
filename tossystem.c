@@ -89,6 +89,12 @@ struct exec_header {
 #define BIOSRAMBASE (0xFA0000)
 #define BIOSRAMSIZE (0x10000)
 
+/* The stack an accessory is started on, which comes out of that RAM because it
+ * is not the accessory's - see the stack field of a tos_environment. It only
+ * has to last until the accessory points a7 somewhere of its own, which is the
+ * first thing one does, so it is small. */
+#define ACCESSORY_STACK (1024)
+
 static uint32_t biosram_free;
 
 int keepongoing;
@@ -410,6 +416,14 @@ void host_cmdlin(char *field, int argc, char **argv)
     field[1 + n] = 0;
 }
 
+/* Whether what is being loaded is an accessory, see tos_load_as_accessory */
+static int as_accessory;
+
+void tos_load_as_accessory(int yes)
+{
+    as_accessory = yes;
+}
+
 /* Builds the emulated machine around a binary, short of the subsystem setup,
  * which differs between the first application and one replacing another */
 static int load_tos_environment(struct tos_environment *te, void *binary,
@@ -468,6 +482,30 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     /* The BSS is zeroed by TOS when loading a program */
     memset(((uint8_t*)te->appmem) + te->tsize + te->dsize, 0, te->bsize);
 
+    /* How much of it the application owns. An accessory is given its
+     * basepage and its three segments, which is what the AES allocated
+     * before it loaded one; a program is given the lot. */
+    if (as_accessory)
+        te->tpa_len = TOS_BASEPAGE_SIZE + te->tsize + te->dsize + te->bsize;
+    else
+        te->tpa_len = (uint32_t)te->size + TOS_BASEPAGE_SIZE;
+
+    /* And what it stands on until it says otherwise. A program stands on the
+     * top of its own block; an accessory has no room in its own for a stack
+     * and borrows one, as it did from the AES. */
+    te->stack = 0x000800 + te->tpa_len;
+
+    if (as_accessory)
+    {
+        uint32_t borrowed = bios_static_alloc(ACCESSORY_STACK);
+
+        /* Nowhere to borrow from is not worth stopping for: an accessory sets
+         * its own stack up almost at once, so the top of its block is only
+         * ever the few words before that */
+        if (borrowed)
+            te->stack = borrowed + ACCESSORY_STACK;
+    }
+
     /* Allocate basepage */
     te->bp = malloc(sizeof(struct basepage));
     
@@ -499,7 +537,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
 
     memset(te->bp, 0, sizeof(struct basepage));
     te->bp->p_lowtpa = endianize_32(0x000800);
-    te->bp->p_hitpa = endianize_32(te->size + 0x900);
+    te->bp->p_hitpa = endianize_32(0x000800 + te->tpa_len);
     te->bp->p_tbase = endianize_32(0x000900);
     te->bp->p_tlen = endianize_32(te->tsize);
     te->bp->p_dbase = endianize_32(endianize_32(te->bp->p_tbase) + endianize_32(te->bp->p_tlen));
@@ -596,9 +634,25 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
 
     if (basepage == 0x800)
     {
-        /* The application the machine was built around */
-        sp = (te->size - 4) & ~1u;
+        /* The application the machine was built around. The basepage goes at
+         * 4(sp), the same as for a loaded one, so the stack starts a longword
+         * further down than the end of what it stands on. */
+        sp = (te->stack - 8) & ~1u;
         pc = 0x900;
+
+        /*
+         * And in a0 as well, if it is an accessory, because that is the only
+         * place an accessory is given it: the AES jumps straight to the text
+         * segment with the basepage in a0 and nothing on the stack - see
+         * gotopgm in EmuTOS's gemasm.S - where a program finds it at 4(sp).
+         *
+         * It is how an accessory knows it is one. A startup that finds an
+         * address there and no parent in the basepage it points at takes the
+         * accessory path, and one that finds a0 empty is a program however it
+         * was named.
+         */
+        if (as_accessory)
+            m68k_set_reg(M68K_REG_A0, basepage);
     }
     else
     {
@@ -688,6 +742,10 @@ static int replace_application(struct tos_environment *te)
     /* The application that introduced itself to GEM is gone, and the one
      * replacing it has to introduce itself again */
     gem_reset();
+
+    /* Whatever this one is called, it is a program: an accessory is loaded by
+     * the AES and nothing else, and Pexec is not the AES */
+    as_accessory = 0;
 
     err = load_tos_environment(te, pending.binary, pending.binary_size,
                                pending.cmdlin,

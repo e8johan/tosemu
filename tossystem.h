@@ -28,6 +28,27 @@ struct basepage;
 
 struct tos_environment {
     uint64_t size;
+
+    /* How much of the machine the application owns, counted from its basepage
+     * at 0x800.
+     *
+     * All of it for a program, because that is what TOS hands one and what
+     * Mshrink is there to give back. An accessory owns room for itself and no
+     * more: the AES sized the block when it loaded it, and an accessory that
+     * Mallocs a stack for itself without Mshrinking first - which is what one
+     * does, having nothing to give back - needs something left to Malloc from.
+     */
+    uint32_t tpa_len;
+
+    /* Where its stack starts, which is the top of the block it owns - except
+     * for an accessory, whose block is only as large as itself and has no room
+     * for one. The AES ran an accessory on a stack of the AES's own until it
+     * set up one of its own, which every accessory does in its first few
+     * instructions, and this is that stack: outside the TPA, so that Malloc
+     * can hand out everything above the accessory without handing out what it
+     * is standing on. */
+    uint32_t stack;
+
     void *appmem;
     void *supermem;
     void *staticmem0;
@@ -126,6 +147,17 @@ void exec_tos_basepage(uint32_t basepage);
 /* What this application is called: the program's name, in capitals, eight
  * characters padded with spaces, which is the form GEM uses */
 const char *tos_program_name(void);
+
+/*
+ * Says that the application about to be built is an accessory, which decides
+ * how much of the machine it is given rather than anything about what it does.
+ *
+ * Only the application tosemu was started with can be one: on an ST it is the
+ * AES that loads accessories, and tosemu standing in for it is what running
+ * one directly amounts to. A program that Pexecs an .ACC gets a program, the
+ * same as TOS would give it.
+ */
+void tos_load_as_accessory(int yes);
 
 int exec_tos_binary(const char *host_path, const char *cmdlin,
                     char *env, uint32_t env_len);

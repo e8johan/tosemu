@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -96,6 +97,21 @@ const char *tos_program_name(void)
     return program_name;
 }
 
+/*
+ * Whether the name is an accessory's.
+ *
+ * The extension is all there is to go on, and it is all the AES had to go on
+ * either - it started whatever in the root of the boot drive ended in .ACC.
+ * Either case, because a TOS filesystem did not care and the one underneath
+ * this might, which is the same rule the daemon reads the directory by.
+ */
+static int is_an_accessory(const char *path)
+{
+    size_t len = strlen(path);
+
+    return len >= 4 && strcasecmp(path + len - 4, ".acc") == 0;
+}
+
 int main(int argc, char **argv)
 {
     void *binary_data;
@@ -123,6 +139,7 @@ int main(int argc, char **argv)
     }
 
     remember_program_name(argv[argb]);
+    tos_load_as_accessory(is_an_accessory(argv[argb]));
 
     binary_data = map_tos_binary(argv[argb], &binary_size);
     if (binary_data == NULL)

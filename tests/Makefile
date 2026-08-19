@@ -2,7 +2,7 @@
 # extension .s, each one in CTESTNAME from a source file with the extension .c
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
-          cmdline
+          cmdline Malloc
 CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef
 
 CC=m68k-atari-mint-gcc
@@ -62,6 +62,16 @@ check: all
 	$(TOSEMU) test-cmdline 12 345 6789 > out
 	echo -n "12 345 6789" > out2
 	cmp out out2
+	# How much of the machine each of the two kinds of program is given, and
+	# how each is entered - the same binary run twice, the extension being
+	# the only difference, which is all the AES had to go on either. A
+	# program owns all of it and has nothing to Malloc from until it
+	# Mshrinks; an accessory owns room for itself, is handed its basepage in
+	# a0, and Mallocs a stack out of what is left.
+	$(TOSEMU) test-Malloc; test "$$?" = 1
+	cp test-Malloc MALLOC.ACC
+	$(TOSEMU) MALLOC.ACC; test "$$?" = 2
+	rm -f MALLOC.ACC
 	# The C library writes text mode line endings, i.e. CRLF, to files
 	$(TOSEMU) test-c-helloworld > out
 	printf 'Hello World!\r\n' > out2
