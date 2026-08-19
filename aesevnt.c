@@ -176,6 +176,7 @@ static int buttons_are(int16_t buttons, int16_t mask, int16_t state)
  * which is the release, or the next press after it.
  */
 static int state_answered;
+static int16_t answered_with;
 
 static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
@@ -255,7 +256,26 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
             gfx_mouse(&nx, &ny, &now);
 
-            if (buttons_are(now, bmask, bstate))
+            /*
+             * A press answers once. A release answers as often as it is asked.
+             *
+             * The two are not the same question. A press is something that
+             * happened and is acted on - the file selector walks into the
+             * folder under the pointer - so answering the same press twice
+             * walks in twice, and a button is held for a tenth of a second,
+             * which is long enough to do it hundreds of times. A release is a
+             * condition rather than an event: fm_button asks whether the
+             * button is up after gr_watchbox has already waited for it to come
+             * up, and refusing the second of those leaves it waiting for ever.
+             *
+             * On a machine of the period this never came up. The AES answered
+             * both from the level and got away with it, because redrawing a
+             * file list took long enough that a person had let go by the time
+             * it asked again.
+             */
+            if (buttons_are(now, bmask, bstate)
+                && !(state_answered && now == answered_with
+                     && (bstate & bmask) != 0))
             {
                 if (buttons)
                     *buttons = now;
@@ -265,6 +285,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                     *my = ny;
 
                 state_answered = 1;
+                answered_with = now;
 
                 return MU_BUTTON;
             }
