@@ -91,6 +91,18 @@ Give it a directory and it starts the accessories in it - anything ending in
 of every application that runs afterwards, which is what an accessory is for
 and why it needs something that outlives any one program to do it.
 
+It also puts a single mark in the panel, with the accessories as a menu hanging
+off it - not one icon each, because a person does not want six mystery icons
+appearing because a GEM program is running. It is the only way to reach an
+accessory when no application is running, which is the case the Desk menu
+cannot cover: that menu belongs to an application, and if none is running there
+is no menu to be in.
+
+Tray icons are a de facto protocol rather than a standard - KDE wrote it, others
+adopted it, GNOME needs an extension and some desktops have nothing of the sort
+- so every failure there is quiet. No bus, no panel, or built without D-Bus at
+all: the session still runs and the only thing lost is the icon.
+
 The screen is the daemon's when there is one, and that is not for convenience:
 it has to be one screen, because applications lay their windows out in it and
 are told where the others put theirs, so two that disagree about its size

@@ -56,6 +56,7 @@
 #include <sys/wait.h>
 
 #include "aesproto.h"
+#include "aesdtray.h"
 
 /*
  * How many applications there can be.
@@ -349,6 +350,52 @@ static void app_scrap_set(int slot, const struct aesd_packet *in)
  * accessory is started or stops. So everyone is told each time it changes, and
  * an application that has just arrived is told as part of arriving.
  */
+/*
+ * Somebody picked an accessory out of the panel.
+ *
+ * The same thing as picking it out of a Desk menu, and it arrives as the same
+ * message: an accessory cannot tell the two apart and has no reason to. What
+ * the panel adds is that it works when no application is running, which is the
+ * case a Desk menu cannot cover.
+ */
+static void picked_in_the_panel(int16_t ap_id)
+{
+    struct aesd_packet out;
+    int to = find_by_id(ap_id);
+
+    if (to < 0)
+        return;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_DELIVER;
+    out.message[0] = 40;                /* AC_OPEN */
+    out.message[3] = 0;
+
+    say("opening", apps[to].ap_id, apps[to].shown);
+
+    send_to(apps[to].fd, &out);
+}
+
+/* And the panel's copy of the list, which is the same list */
+static void tell_the_panel(void)
+{
+    const char *names[AESD_MAX_ACCS];
+    int16_t ids[AESD_MAX_ACCS];
+    int i, n = 0;
+
+    for (i = 0; i < MAX_APPS && n < AESD_MAX_ACCS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory)
+            continue;
+
+        names[n] = apps[i].shown;
+        ids[n] = apps[i].ap_id;
+        n++;
+    }
+
+    tray_accessories(names, ids, n);
+}
+
 static void tell_about_accessories(int only_to)
 {
     struct aesd_packet out;
@@ -379,6 +426,11 @@ static void tell_about_accessories(int only_to)
 
         send_to(apps[i].fd, &out);
     }
+
+    /* The panel shows the same list, and only needs telling when it changed
+     * rather than when one application is being caught up */
+    if (only_to < 0)
+        tell_the_panel();
 }
 
 static void app_accessory(int slot, const struct aesd_packet *in)
@@ -621,20 +673,39 @@ int main(int argc, char **argv)
         fflush(stdout);
     }
 
+    /*
+     * A mark in the panel, which is how the accessories are reached when no
+     * application is running. It is allowed to fail and says so once: a
+     * desktop without tray icons is a session that is otherwise fine.
+     */
+    tray_open(picked_in_the_panel);
+
     /* And now that there is somewhere for them to say hello to */
     if (accessory_directory)
         start_the_accessories(accessory_directory);
 
     for (;;)
     {
-        struct pollfd fds[MAX_APPS + 1];
-        int slots[MAX_APPS + 1];
+        struct pollfd fds[MAX_APPS + 2];
+        int slots[MAX_APPS + 2];
+        int panel_slot = -1;
+        int panel = tray_fd();
         int n = 0;
 
         fds[n].fd = listening;
         fds[n].events = POLLIN;
         slots[n] = -1;
         n++;
+
+        /* The panel, when there is one to talk to */
+        if (panel >= 0)
+        {
+            panel_slot = n;
+            fds[n].fd = panel;
+            fds[n].events = POLLIN;
+            slots[n] = -2;
+            n++;
+        }
 
         for (i = 0; i < MAX_APPS; i++)
         {
@@ -656,10 +727,20 @@ int main(int argc, char **argv)
             break;
         }
 
+        /*
+         * The panel first, and whether or not it said anything: libdbus keeps
+         * messages of its own that have to be let out, and a reply that is
+         * never flushed is a panel waiting for an answer that was written.
+         */
+        tray_pump();
+
         for (i = 0; i < n; i++)
         {
             struct aesd_packet in;
             ssize_t got;
+
+            if (i == panel_slot)
+                continue;
 
             if (!(fds[i].revents & (POLLIN|POLLHUP|POLLERR)))
                 continue;
@@ -732,6 +813,7 @@ int main(int argc, char **argv)
         }
     }
 
+    tray_close();
     tidy_up();
 
     return 0;

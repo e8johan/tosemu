@@ -56,7 +56,13 @@ LD = gcc
 # keeps every address in the program below the four gigabyte line, because GEM
 # keeps pointers in thirty two bit fields and the VDI and AES are linked in
 # here. See EMUTOSLDFLAGS.
-CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS)
+# The tray icon is the one thing here that wants a library the rest does not,
+# and a machine without it should get a working session rather than a build
+# failure - so it is looked for rather than required.
+DBUSFLAGS = $(shell pkg-config --cflags dbus-1 2>/dev/null && echo -DHAVE_DBUS)
+DBUSLIBS  = $(shell pkg-config --libs dbus-1 2>/dev/null)
+
+CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
@@ -176,8 +182,8 @@ bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 # The daemon several emulators have in common. It links none of the emulator:
 # nothing it does involves a 68000, and everything it knows about is in
 # aesproto.h.
-bin/tosaesd: aesd.o
-	$(LD) $(LDFLAGS) $^ -o $@
+bin/tosaesd: aesd.o aesdtray.o
+	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) -o $@
 
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
