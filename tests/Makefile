@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon
 
 CC=m68k-atari-mint-gcc
 
@@ -36,6 +36,9 @@ test-c-aesd: c-aesd.c
 	$(CC) $< -lgem -o $@
 
 test-c-userdef: c-userdef.c
+	$(CC) $< -lgem -o $@
+
+test-c-icon: c-icon.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -98,6 +101,10 @@ check: all
 	# An object the application draws itself, which is the AES calling back
 	# into the machine in the middle of a call out of it
 	$(TOSEMU) test-c-userdef > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The objects that are pictures, which are the only ones whose ob_spec
+	# leads to a bitmap rather than to a word or a string
+	$(TOSEMU) test-c-icon > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42

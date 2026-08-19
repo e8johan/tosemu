@@ -110,6 +110,36 @@
 #define TE_TXTLEN   (24)
 #define TE_TMPLEN   (26)
 
+/* A BITBLK, which is what a G_IMAGE points at */
+#define BI_SIZE     (14)
+#define BI_PDATA     (0)
+#define BI_WB        (4)
+#define BI_HL        (6)
+#define BI_X         (8)
+#define BI_Y        (10)
+#define BI_COLOR    (12)
+
+/*
+ * An ICONBLK, which is what a G_ICON points at. A G_CICON points at a
+ * CICONBLK, which is one of these with a pointer to the colour versions of the
+ * icon after it - so the fields that matter are at the same offsets in both.
+ */
+#define IB_SIZE     (34)
+#define IB_PMASK     (0)
+#define IB_PDATA     (4)
+#define IB_PTEXT     (8)
+#define IB_CHAR     (12)
+#define IB_XCHAR    (14)
+#define IB_YCHAR    (16)
+#define IB_XICON    (18)
+#define IB_YICON    (20)
+#define IB_WICON    (22)
+#define IB_HICON    (24)
+#define IB_XTEXT    (26)
+#define IB_YTEXT    (28)
+#define IB_WTEXT    (30)
+#define IB_HTEXT    (32)
+
 /* The object types, obdefs.h */
 #define G_BOX       (20)
 #define G_TEXT      (21)
@@ -143,21 +173,41 @@
  * something that is not a string. */
 #define MAX_STRING  (256)
 
+/*
+ * The largest form worth bringing across, in words.
+ *
+ * An icon is thirty two by thirty two and an image is not much larger, so this
+ * is generous by any measure an application would recognise. Something asking
+ * for more than it is a pointer into whatever happened to be there rather than
+ * at a picture, which is the same reason strings have a length above.
+ */
+#define MAX_FORM    (16 * 1024)
+
 static struct {
     uint32_t tos;           /* Where the tree is in the machine */
     void *host;             /* And where the copy is */
     int count;              /* How many objects it has */
 
-    /* Everything allocated for it, so that it can all be let go at once */
-    void *blocks[MAX_OBJECTS * 2];
+    /* Everything allocated for it, so that it can all be let go at once.
+     * Five to an object, which is what the hungriest of them takes: an icon
+     * is a block, a mask, an image and a label, and a text object is a block
+     * and three strings. */
+    void *blocks[MAX_OBJECTS * 5];
     int block_count;
 } tree;
+
+/* Whether there is room to take charge of another block, asked before one is
+ * made rather than after, so that nothing is allocated that nothing will free */
+static int room_for_a_block(void)
+{
+    return tree.block_count < (int)(sizeof tree.blocks / sizeof tree.blocks[0]);
+}
 
 static void *tree_alloc(long size)
 {
     void *block;
 
-    if (tree.block_count >= (int)(sizeof tree.blocks / sizeof tree.blocks[0]))
+    if (!room_for_a_block())
         return 0;
 
     /* Below the four gigabyte line, because the address goes into an ob_spec,
@@ -220,7 +270,7 @@ static void *userblk_in(uint32_t address)
     if (address == 0)
         return 0;
 
-    if (tree.block_count >= (int)(sizeof tree.blocks / sizeof tree.blocks[0]))
+    if (!room_for_a_block())
         return 0;
 
     block = emuvdi_userblk_alloc();
@@ -254,6 +304,9 @@ static void *tedinfo_in(uint32_t address, char **text_out,
     if (address == 0)
         return 0;
 
+    if (!room_for_a_block())
+        return 0;
+
     ted = emuvdi_tedinfo_alloc();
     if (!ted)
         return 0;
@@ -275,6 +328,155 @@ static void *tedinfo_in(uint32_t address, char **text_out,
                        words, 8);
 
     return ted;
+}
+
+/*
+ * A monochrome form out of the machine.
+ *
+ * A word at a time, because a form is words: the two halves of every one of
+ * them are the other way round in there, and reading through the emulator's
+ * accessors turns them over as it copies. That is the same trade the raster
+ * operations in vdi.c make and for the same reason - the surfaces this VDI
+ * draws into are in host order, which is what lets the rest of it go unedited.
+ */
+static void *form_in(uint32_t address, int words)
+{
+    uint16_t *copy;
+    int i;
+
+    if (address == 0 || words <= 0 || words > MAX_FORM)
+        return 0;
+
+    copy = tree_alloc((long)words * 2);
+    if (!copy)
+        return 0;
+
+    for (i = 0; i < words; i++)
+        copy[i] = (uint16_t)m68k_read_memory_16(address + 2*i);
+
+    return copy;
+}
+
+/*
+ * A BITBLK, which is what a G_IMAGE points at.
+ *
+ * bi_wb says how wide the form is in bytes and bi_hl how tall in lines, and
+ * the picture is taken from bi_x, bi_y inside it - so what has to come across
+ * is everything down to the bottom of what will be read rather than only the
+ * height the block declares. A resource file puts the picture at the top left
+ * and the two are the same; something that does not, is not.
+ */
+static void *bitblk_in(uint32_t address)
+{
+    void *block, *data;
+    int16_t words[5];
+    int i;
+
+    if (address == 0 || !room_for_a_block())
+        return 0;
+
+    for (i = 0; i < 5; i++)
+        words[i] = (int16_t)m68k_read_memory_16(address + BI_WB + i*2);
+
+    /* bi_wb and bi_hl. A form with no width or no height is not one, and it
+     * cannot be left to the AES to notice: a form it is given as a null
+     * pointer is the screen, which it would then draw onto itself. */
+    if (words[0] <= 0 || words[1] <= 0 || words[3] < 0)
+        return 0;
+
+    data = form_in(m68k_read_memory_32(address + BI_PDATA),
+                   ((words[0] + 1) / 2) * (words[3] + words[1]));
+    if (!data)
+        return 0;
+
+    block = emuvdi_bitblk_alloc();
+    if (!block)
+        return 0;
+
+    tree.blocks[tree.block_count++] = block;
+
+    emuvdi_bitblk_set(block, data, words, 5);
+
+    return block;
+}
+
+/*
+ * An ICONBLK, which is what a G_ICON points at and what the CICONBLK of a
+ * G_CICON begins with.
+ *
+ * The mask and the image are the same size, ib_wicon across by ib_hicon down,
+ * one plane. The label is a string like any other except that it is never
+ * allowed to be missing: the AES reads its first character to decide whether
+ * to draw a background behind it, and does so without looking first.
+ *
+ * The colour versions a G_CICON carries after all this are not brought across,
+ * so one is drawn from the mask and the image underneath them - which is what
+ * a CICONBLK keeps them for and what the same icon looked like on a machine in
+ * high resolution.
+ */
+static void *iconblk_in(uint32_t address)
+{
+    void *block, *mask, *data;
+    char *text;
+    int16_t words[11];
+    int i, form;
+
+    if (address == 0 || !room_for_a_block())
+        return 0;
+
+    for (i = 0; i < 11; i++)
+        words[i] = (int16_t)m68k_read_memory_16(address + IB_CHAR + i*2);
+
+    /* ib_wicon and ib_hicon, which are what the AES reads both forms by */
+    if (words[5] <= 0 || words[6] <= 0)
+        return 0;
+
+    form = ((words[5] + 15) / 16) * words[6];
+
+    mask = form_in(m68k_read_memory_32(address + IB_PMASK), form);
+    data = form_in(m68k_read_memory_32(address + IB_PDATA), form);
+    if (!mask || !data)
+        return 0;
+
+    text = string_in(m68k_read_memory_32(address + IB_PTEXT));
+    if (!text)
+    {
+        /* No label at all, which is not the same as an empty one and not
+         * something the AES looks for */
+        text = tree_alloc(1);
+        if (!text)
+            return 0;
+
+        text[0] = 0;
+    }
+
+    if (!room_for_a_block())
+        return 0;
+
+    block = emuvdi_iconblk_alloc();
+    if (!block)
+        return 0;
+
+    tree.blocks[tree.block_count++] = block;
+
+    emuvdi_iconblk_set(block, mask, data, text, words, 11);
+
+    return block;
+}
+
+/*
+ * What an object becomes when what it points at cannot be brought across.
+ *
+ * An empty box: visible, the right size, holding the shape of the dialog
+ * together, and plainly saying that something is missing. Leaving it as what
+ * it was is not the alternative - the AES reads the structure through the
+ * pointer before it draws anything, and a 68000 address is not one here.
+ */
+static void *drawn_as_a_box(uint16_t *type)
+{
+    *type = (*type & 0xff00) | G_BOX;
+
+    return (void *)(uintptr_t)0x00011100L;
 }
 
 /* Where each object's editable text came from and went, so that it can be put
@@ -384,37 +586,35 @@ void *aes_tree_in(uint32_t address)
                                        &texts[i].tos_text, &texts[i].length);
                 break;
 
+            case G_IMAGE:
+                host_spec = bitblk_in(spec);
+                if (!host_spec)
+                    host_spec = drawn_as_a_box(&type);
+                break;
+
+            /* A G_CICON points at a CICONBLK, which is an ICONBLK with the
+             * colour versions of the same icon after it. What comes across is
+             * the ICONBLK, so it is drawn in black and white */
+            case G_ICON:
+            case G_CICON:
+                host_spec = iconblk_in(spec);
+                if (!host_spec)
+                    host_spec = drawn_as_a_box(&type);
+                break;
+
             case G_USERDEF:
+                /* Nothing to call is drawn as a box: leaving it as an object
+                 * the AES will try to call ends in reaching through a pointer
+                 * to nothing */
                 host_spec = userblk_in(spec);
                 if (!host_spec)
-                {
-                    /*
-                     * Nothing to call, so it is drawn as an empty box. A box
-                     * is visible and the right size, which is what keeps the
-                     * dialog round it usable and says plainly that something
-                     * is missing; leaving it as an object the AES will try to
-                     * call ends in reaching through a pointer to nothing.
-                     */
-                    type = (type & 0xff00) | G_BOX;
-                    host_spec = (void *)(uintptr_t)0x00011100L;
-                }
+                    host_spec = drawn_as_a_box(&type);
                 break;
 
             default:
-                /*
-                 * Icons and images, which point at structures that point at
-                 * bitmaps. Neither is brought across yet, so neither can be
-                 * left as what it is: the AES reads an ICONBLK or a BITBLK
-                 * through the pointer before it draws anything, and a 68000
-                 * address means something else entirely here.
-                 *
-                 * So it becomes an empty box, the same as a G_USERDEF with
-                 * nothing to call - visible, the right size, and holding the
-                 * shape of the dialog together while plainly saying that
-                 * something is missing.
-                 */
-                type = (type & 0xff00) | G_BOX;
-                host_spec = (void *)(uintptr_t)0x00011100L;
+                /* A kind nobody here has heard of, whose ob_spec could be
+                 * anything at all */
+                host_spec = drawn_as_a_box(&type);
                 break;
         }
 

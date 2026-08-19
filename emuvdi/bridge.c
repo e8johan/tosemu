@@ -285,6 +285,59 @@ char *emuvdi_tedinfo_text(void *t)
     return ((TEDINFO *)t)->te_ptext;
 }
 
+void *emuvdi_bitblk_alloc()
+{
+    BITBLK *bi = host_vdi_alloc(sizeof(BITBLK));
+
+    if (bi)
+        memset(bi, 0, sizeof(BITBLK));
+
+    return bi;
+}
+
+void emuvdi_bitblk_set(void *blk, void *data, const int16_t *words, int count)
+{
+    BITBLK *bi = blk;
+    WORD *fields = &bi->bi_wb;
+    int i;
+
+    bi->bi_pdata = data;
+
+    /* The five words after the pointer, in the order they are declared, which
+     * is the order they arrive in from the machine */
+    for (i = 0; i < count && i < 5; i++)
+        fields[i] = words[i];
+}
+
+void *emuvdi_iconblk_alloc()
+{
+    /* The larger of the two, so that the same block serves a G_ICON and a
+     * G_CICON: the colour list is what a CICONBLK adds, and it stays empty
+     * until there is something to put in it */
+    CICONBLK *cib = host_vdi_alloc(sizeof(CICONBLK));
+
+    if (cib)
+        memset(cib, 0, sizeof(CICONBLK));
+
+    return cib;
+}
+
+void emuvdi_iconblk_set(void *blk, void *mask, void *data, char *text,
+                        const int16_t *words, int count)
+{
+    ICONBLK *ib = blk;      /* which a CICONBLK begins with */
+    WORD *fields = &ib->ib_char;
+    int i;
+
+    ib->ib_pmask = mask;
+    ib->ib_pdata = data;
+    ib->ib_ptext = text;
+
+    /* And the eleven words after the three pointers, likewise */
+    for (i = 0; i < count && i < 11; i++)
+        fields[i] = words[i];
+}
+
 /* EmuTOS's alert library, aes/gemfmalt.c */
 WORD fm_alert(WORD defbut, char *palstr);
 

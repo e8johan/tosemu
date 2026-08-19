@@ -34,16 +34,20 @@
   out inverted rather than erased - but it is the sort of thing that will
   differ from real GEM somewhere, and it will look like the routine being
   wrong rather than the mode.
-- An icon or an image in an object tree is drawn as an empty box. Every other
-  kind of object has an ob_spec aestree.c knows how to bring across - a colour
-  word is not a pointer, a string is copied, a TEDINFO is a structure of known
-  shape - and these two point at an ICONBLK or a BITBLK that points at a
-  bitmap, which is a conversion rather than a copy: the data is planar and in
-  the emulated memory, and what the VDI here draws from is a host surface.
-  Until that is written they become boxes, the same as a G_USERDEF with
-  nothing to call, because the AES reads the structure through the pointer
-  before it draws anything and a 68000 address is not one here. ProCalc is
-  most of a dialog of them, so it is the thing to try it against.
+- A colour icon is drawn in black and white. A G_CICON points at a CICONBLK,
+  which is an ICONBLK with a chain of colour versions of the same icon after
+  it - one for each resolution the icon was drawn for - and only the ICONBLK
+  at the front of it is brought across, so what is drawn is the mono version
+  underneath. Which is what a CICONBLK carries one for, and what the icon
+  looked like in high resolution, so it is a fallback rather than a hole; but
+  a machine with four planes ought to be showing the four plane icon.
+
+  The chain is the work: each link is a plane count and up to four forms - the
+  image and its mask, and the same again for the selected state - where a mono
+  icon is two. Picking which link is the other half, and it is not aestree.c's
+  to decide from what the application handed over: rsrc_load fixes the chain
+  up for the screen it finds, so what arrives here should already be the right
+  one, and that wants checking against a resource file that has more than one.
 - Add a configuration item (or command line option) to select from six 
   different graphics modes:
     1. 320x200, 4bpp (Atari ST)

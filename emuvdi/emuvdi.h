@@ -200,6 +200,28 @@ void emuvdi_tedinfo_set(void *ted, char *text, char *tmplt, char *valid,
 char *emuvdi_tedinfo_text(void *ted);
 
 /*
+ * A BITBLK, which a G_IMAGE points at: a monochrome form, where in it the
+ * picture starts, and the colour to draw it in. The five words are bi_wb to
+ * bi_color, in the order they are declared.
+ */
+void *emuvdi_bitblk_alloc();
+void emuvdi_bitblk_set(void *blk, void *data, const int16_t *words, int count);
+
+/*
+ * An ICONBLK, which a G_ICON points at: a mask, an image and a label. The
+ * eleven words are ib_char to ib_htext, likewise.
+ *
+ * What is allocated is a CICONBLK, which is an ICONBLK with the colour
+ * versions of the same icon hanging off the end, because that is what a
+ * G_CICON points at and one routine draws both. An icon whose colour list is
+ * empty is drawn from the mask and the image, which is what a G_ICON is and
+ * what a G_CICON keeps them for.
+ */
+void *emuvdi_iconblk_alloc();
+void emuvdi_iconblk_set(void *blk, void *mask, void *data, char *text,
+                        const int16_t *words, int count);
+
+/*
  * Runs a dialog: draws it, waits, and answers with the object that ended it.
  * This is EmuTOS's form library, which is a loop over the same waiting an
  * application does for itself.
