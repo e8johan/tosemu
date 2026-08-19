@@ -1,0 +1,32 @@
+rsc - pictures
+==============
+
+tray.svg is the mark that goes in the panel. Replace it with the real thing
+and run make; nothing else has to change.
+
+Two things it has to be:
+
+  square, because a panel gives it a square and will squash anything else;
+
+  readable on a pale panel and on a dark one. There is no way to ask a panel
+  which it is, so a shape in one strong colour is the safe answer - fine light
+  lines disappear against one of them.
+
+What happens to it
+------------------
+
+icon-to-c.py rasterises it at the sizes a panel asks for and writes
+tray-icon.h, which is compiled into tosaesd. So the picture is in the program
+rather than beside it.
+
+That is deliberate. An icon looked for at runtime has to be found at runtime -
+an install prefix, a theme directory, a path relative to the binary - and one
+that is not found leaves the item rendering as nothing, which looks exactly
+like a session that failed to start. There is no way to tell those apart from
+outside. A picture that is compiled in cannot go missing.
+
+tray-icon.h is generated and committed, so an ordinary build needs no
+rasteriser. Only changing the picture does, and any of rsvg-convert,
+ImageMagick or Inkscape will do it.
+
+Do not edit tray-icon.h. Edit the picture.

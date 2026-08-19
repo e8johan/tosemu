@@ -182,6 +182,16 @@ bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 # The daemon several emulators have in common. It links none of the emulator:
 # nothing it does involves a 68000, and everything it knows about is in
 # aesproto.h.
+# The tray icon, turned into pixels the panel can be handed. The generated file
+# is committed, so this only runs when the picture changes and an ordinary
+# build needs no rasteriser - which is the point of doing it here rather than
+# at runtime, where a picture that cannot be found leaves the item showing
+# nothing at all.
+rsc/tray-icon.h: rsc/tray.svg rsc/icon-to-c.py
+	python3 rsc/icon-to-c.py $< $@
+
+aesdtray.o: rsc/tray-icon.h
+
 bin/tosaesd: aesd.o aesdtray.o
 	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) -o $@
 

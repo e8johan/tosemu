@@ -109,51 +109,22 @@ static void say_once(const char *why)
 /* The mark itself *********************************************************/
 
 /*
- * Drawn rather than loaded, because a file would have to be found at runtime
- * and an icon that is missing is worse than one that is plain. It is a small
- * ARGB square, which is what the panel takes when no icon theme has a name it
- * recognises - and no icon theme has a name for this.
+ * The picture, compiled in rather than found.
+ *
+ * A panel is handed pixels rather than a file, so the picture has to be in the
+ * program somewhere. Putting it in at build time means it cannot go missing: an
+ * icon looked for at runtime and not found leaves the item rendering as
+ * nothing, which looks exactly like a session that failed to start, and there
+ * is no way to tell the two apart from outside.
+ *
+ * rsc/tray.svg is the picture and rsc/tray-icon.h is what comes out of it. The
+ * generated file is committed, so building tosemu needs no rasteriser; only
+ * changing the picture does.
  */
-#define ICON_SIZE (22)
+#include "rsc/tray-icon.h"
 
-static void draw_the_mark(unsigned char *argb)
-{
-    int x, y;
-
-    for (y = 0; y < ICON_SIZE; y++)
-    {
-        for (x = 0; x < ICON_SIZE; x++)
-        {
-            unsigned char *p = argb + (y * ICON_SIZE + x) * 4;
-            int mid = ICON_SIZE / 2;
-            int from_mid = (x < mid) ? (mid - x) : (x - mid);
-            int on = 0;
-
-            /*
-             * Three uprights on a base: the middle one full height, the outer
-             * two shorter and leaning away, which is the shape of the mark
-             * everybody who had one of these machines recognises.
-             */
-            if (y > ICON_SIZE - 4)
-                on = x > 1 && x < ICON_SIZE - 2;        /* the base */
-            else if (from_mid < 2)
-                on = y > 2;                             /* the middle */
-            else if (from_mid >= 4 && from_mid <= 6)
-                on = y > 2 + (from_mid - 4) * 3;        /* the outer two */
-
-            /*
-             * Bytes most significant first, which is A R G B, and a red that
-             * is dark enough to read on a pale panel and bright enough on a
-             * dark one. A mark drawn in near white disappears on half the
-             * desktops there are, and there is no way to ask which this is.
-             */
-            p[0] = on ? 0xff : 0x00;
-            p[1] = on ? 0xc0 : 0x00;
-            p[2] = on ? 0x28 : 0x00;
-            p[3] = on ? 0x28 : 0x00;
-        }
-    }
-}
+#define HOW_MANY_PICTURES \
+    ((int)(sizeof tray_pictures / sizeof tray_pictures[0]))
 
 /* Answering for a property ************************************************/
 
@@ -195,31 +166,39 @@ static void put_bool(DBusMessageIter *at, int what)
     dbus_message_iter_close_container(at, &variant);
 }
 
-/* The icon, as the one thing the protocol calls a(iiay): a list of sizes, each
- * with its pixels */
+/*
+ * The icon, as the protocol wants it: a(iiay), which is a list of sizes each
+ * with its pixels. Every size is offered and the panel takes whichever suits
+ * it, which is what makes one look right on a doubled display as well.
+ */
 static void put_the_mark(DBusMessageIter *at)
 {
-    unsigned char argb[ICON_SIZE * ICON_SIZE * 4];
-    DBusMessageIter variant, array, one, pixels;
-    dbus_int32_t size = ICON_SIZE;
-    const unsigned char *p = argb;
-    int n = (int)sizeof argb;
-
-    draw_the_mark(argb);
+    DBusMessageIter variant, array;
+    int i;
 
     dbus_message_iter_open_container(at, DBUS_TYPE_VARIANT, "a(iiay)", &variant);
     dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY, "(iiay)",
                                      &array);
-    dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT, 0, &one);
 
-    dbus_message_iter_append_basic(&one, DBUS_TYPE_INT32, &size);
-    dbus_message_iter_append_basic(&one, DBUS_TYPE_INT32, &size);
+    for (i = 0; i < HOW_MANY_PICTURES; i++)
+    {
+        DBusMessageIter one, pixels;
+        dbus_int32_t size = tray_pictures[i].size;
+        const unsigned char *p = tray_pictures[i].argb;
+        int n = size * size * 4;
 
-    dbus_message_iter_open_container(&one, DBUS_TYPE_ARRAY, "y", &pixels);
-    dbus_message_iter_append_fixed_array(&pixels, DBUS_TYPE_BYTE, &p, n);
-    dbus_message_iter_close_container(&one, &pixels);
+        dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT, 0, &one);
 
-    dbus_message_iter_close_container(&array, &one);
+        dbus_message_iter_append_basic(&one, DBUS_TYPE_INT32, &size);
+        dbus_message_iter_append_basic(&one, DBUS_TYPE_INT32, &size);
+
+        dbus_message_iter_open_container(&one, DBUS_TYPE_ARRAY, "y", &pixels);
+        dbus_message_iter_append_fixed_array(&pixels, DBUS_TYPE_BYTE, &p, n);
+        dbus_message_iter_close_container(&one, &pixels);
+
+        dbus_message_iter_close_container(&array, &one);
+    }
+
     dbus_message_iter_close_container(&variant, &array);
     dbus_message_iter_close_container(at, &variant);
 }

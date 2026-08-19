@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The mark that goes in the panel.
+
+  A placeholder, drawn to the same shape the code used to generate: three
+  uprights on a base. Replace it with the real thing and run make - nothing
+  else has to change.
+
+  Two things it has to be:
+
+    square, because a panel gives it a square and will squash anything else;
+
+    readable on a pale panel and on a dark one, because there is no way to ask
+    which it is. A shape in one strong colour survives both; fine light lines
+    disappear on one of them.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
+  <g fill="#c02828">
+    <rect x="9"  y="3"  width="4"  height="16"/>
+    <path d="M 7,3 L 8,3 L 8,19 L 5,19 Z"/>
+    <path d="M 15,3 L 14,3 L 14,19 L 17,19 Z"/>
+    <rect x="2"  y="19" width="18" height="3"/>
+  </g>
+</svg>
