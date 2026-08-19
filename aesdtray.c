@@ -69,7 +69,7 @@ static int said_why_not;
 /* Who the accessories are, as the panel last saw them. The menu is rebuilt
  * from this, and the numbers are what come back when one is clicked. */
 static struct {
-    char name[AESD_NAME_LEN + 1];
+    char name[AESD_ACC_NAME_LEN + 1];
     int16_t ap_id;
 } shown[AESD_MAX_ACCS];
 

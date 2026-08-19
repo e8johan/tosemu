@@ -88,7 +88,7 @@ static struct {
     /* What it calls itself in the Desk menu, if it is an accessory. An
      * application that never says is not one. */
     int accessory;
-    char shown[AESD_NAME_LEN];
+    char shown[AESD_ACC_NAME_LEN];
 
     /* Which process it is, which the socket knows and is asked for rather
      * than believed: it is how a connection is matched to a child this daemon
@@ -155,6 +155,18 @@ static void say(const char *what, int16_t who, const char *name)
     else
         printf("tosaesd: %s %d\n", what, who);
 
+    fflush(stdout);
+}
+
+/* The same, for the longer thing an accessory calls itself in the Desk menu.
+ * Neither field is terminated, so both are printed by length rather than
+ * read to a zero. */
+static void say_shown(const char *what, int16_t who, const char *shown)
+{
+    if (!talkative)
+        return;
+
+    printf("tosaesd: %s %d (%.*s)\n", what, who, AESD_ACC_NAME_LEN, shown);
     fflush(stdout);
 }
 
@@ -440,7 +452,7 @@ static void picked_in_the_panel(int16_t ap_id)
     out.message[0] = 40;                /* AC_OPEN */
     out.message[3] = 0;
 
-    say("opening", apps[to].ap_id, apps[to].shown);
+    say_shown("opening", apps[to].ap_id, apps[to].shown);
 
     send_to(apps[to].fd, &out);
 }
@@ -478,7 +490,7 @@ static void tell_about_accessories(int only_to)
         if (!apps[i].used || !apps[i].accessory)
             continue;
 
-        memcpy(out.accessory[n].name, apps[i].shown, AESD_NAME_LEN);
+        memcpy(out.accessory[n].name, apps[i].shown, AESD_ACC_NAME_LEN);
         out.accessory[n].ap_id = apps[i].ap_id;
         n++;
     }
@@ -505,9 +517,9 @@ static void tell_about_accessories(int only_to)
 static void app_accessory(int slot, const struct aesd_packet *in)
 {
     apps[slot].accessory = 1;
-    memcpy(apps[slot].shown, in->name, AESD_NAME_LEN);
+    memcpy(apps[slot].shown, in->shown, AESD_ACC_NAME_LEN);
 
-    say("accessory", apps[slot].ap_id, apps[slot].shown);
+    say_shown("accessory", apps[slot].ap_id, apps[slot].shown);
 
     tell_about_accessories(-1);
 }
@@ -693,7 +705,7 @@ static void app_notes_set(int slot, const struct aesd_packet *in)
  */
 static const char *name_of(int which)
 {
-    static char trimmed[AESD_NAME_LEN + 1];
+    static char trimmed[AESD_ACC_NAME_LEN + 1];
     int i, n;
 
     for (i = 0; i < MAX_APPS; i++)
@@ -702,12 +714,12 @@ static const char *name_of(int which)
             || apps[i].pid != started[which].pid)
             continue;
 
-        memcpy(trimmed, apps[i].shown, AESD_NAME_LEN);
-        trimmed[AESD_NAME_LEN] = 0;
+        memcpy(trimmed, apps[i].shown, AESD_ACC_NAME_LEN);
+        trimmed[AESD_ACC_NAME_LEN] = 0;
 
         /* The name is padded out for the menu, which is not how it should read
          * in a sentence */
-        for (n = AESD_NAME_LEN; n > 0 && trimmed[n-1] == ' '; n--)
+        for (n = AESD_ACC_NAME_LEN; n > 0 && trimmed[n-1] == ' '; n--)
             trimmed[n-1] = 0;
 
         for (n = 0; trimmed[n] == ' '; n++)

@@ -92,7 +92,8 @@
 #define MAX_ACCS (6)
 
 static struct {
-    char name[16];
+    /* Room for the entry, the two spaces it is indented by, and a terminator */
+    char name[AESD_ACC_NAME_LEN + 3];
     int16_t owner;
 } accessory[MAX_ACCS];
 
@@ -514,19 +515,20 @@ uint32_t AES_menu_register()
 {
     int16_t who = aes_intin(0);
     uint32_t address = aes_addrin(0);
-    char name[AESD_NAME_LEN + 1];
+    char name[AESD_ACC_NAME_LEN + 1];
     int i;
 
-    for (i = 0; i < AESD_NAME_LEN; i++)
+    /* Taken as it stands rather than padded out to the field: a name is padded
+     * because GEM compares eight characters of one, and this is not a name -
+     * it is an entry, and the menu is drawn as wide as the longest of them */
+    for (i = 0; i < AESD_ACC_NAME_LEN; i++)
     {
         name[i] = (char)m68k_read_memory_8(address + i);
 
         if (name[i] == 0)
             break;
     }
-    for (; i < AESD_NAME_LEN; i++)
-        name[i] = ' ';
-    name[AESD_NAME_LEN] = 0;
+    name[i] = 0;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    application %d is [%s]\n", who, name);

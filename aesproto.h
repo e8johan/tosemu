@@ -46,6 +46,18 @@
 
 #define AESD_NAME_LEN (8)
 
+/*
+ * What an accessory calls itself in the Desk menu, which is a longer thing
+ * than a name.
+ *
+ * A name is eight characters because that is what GEM looks an application up
+ * by. This is words a person reads, and GEM never measured them - it kept the
+ * pointer menu_register was given and let the menu grow to fit. What limited
+ * them in practice was the width of the Desk menu, and twenty characters is
+ * wider than one fits in a low resolution screen.
+ */
+#define AESD_ACC_NAME_LEN (20)
+
 enum {
     /*
      * A new application. It says what it is called - eight characters padded
@@ -137,6 +149,11 @@ struct aesd_packet {
 
     char name[AESD_NAME_LEN];
 
+    /* And what an accessory calls itself in the Desk menu, which is not its
+     * name: one is what appl_find looks it up by and the other is what a
+     * person picks it out by, and an accessory has both */
+    char shown[AESD_ACC_NAME_LEN];
+
     int16_t message[8];
 
     /* A path, for the things that are named by one. TOS paths are short - a
@@ -148,7 +165,7 @@ struct aesd_packet {
      * cannot know when that was */
     int16_t accessories;
     struct {
-        char name[AESD_NAME_LEN];
+        char name[AESD_ACC_NAME_LEN];
         int16_t ap_id;
     } accessory[AESD_MAX_ACCS];
 

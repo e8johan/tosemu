@@ -62,7 +62,7 @@ static struct {
      */
     int16_t accessories;
     struct {
-        char name[AESD_NAME_LEN + 1];
+        char name[AESD_ACC_NAME_LEN + 1];
         int16_t ap_id;
     } accessory[AESD_MAX_ACCS];
 } d = { -1, 0, 1, 0, 0, 0, 0, {{{0}, 0}} };
@@ -152,8 +152,8 @@ static void accessories_are(const struct aesd_packet *p)
 
     for (i = 0; i < d.accessories; i++)
     {
-        memcpy(d.accessory[i].name, p->accessory[i].name, AESD_NAME_LEN);
-        d.accessory[i].name[AESD_NAME_LEN] = 0;
+        memcpy(d.accessory[i].name, p->accessory[i].name, AESD_ACC_NAME_LEN);
+        d.accessory[i].name[AESD_ACC_NAME_LEN] = 0;
         d.accessory[i].ap_id = p->accessory[i].ap_id;
     }
 }
@@ -532,8 +532,11 @@ void aes_client_accessory(const char *name)
 
     memset(&p, 0, sizeof p);
     p.kind = AESD_ACCESSORY;
-    for (i = 0; i < AESD_NAME_LEN; i++)
-        p.name[i] = (name && name[i]) ? name[i] : ' ';
+    /* What is left of the field stays as the memset left it, so a name shorter
+     * than the field is terminated and one that fills it is not - which is why
+     * everything that reads it copies by length and terminates its own copy */
+    for (i = 0; i < AESD_ACC_NAME_LEN && name && name[i]; i++)
+        p.shown[i] = name[i];
 
     if (!packet_write(&p))
         daemon_gone();
