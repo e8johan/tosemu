@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-watchbox
 
 CC=m68k-atari-mint-gcc
 
@@ -39,6 +39,9 @@ test-c-userdef: c-userdef.c
 	$(CC) $< -lgem -o $@
 
 test-c-icon: c-icon.c
+	$(CC) $< -lgem -o $@
+
+test-c-watchbox: c-watchbox.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -105,6 +108,11 @@ check: all
 	# The objects that are pictures, which are the only ones whose ob_spec
 	# leads to a bitmap rather than to a word or a string
 	$(TOSEMU) test-c-icon > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Watching a box, which waits for the button to come up and so needs
+	# one to have been pressed - twice, because it is watched twice
+	TOSEMU_CLICKS='72,64 72,64' $(TOSEMU) test-c-watchbox > out; \
+	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42

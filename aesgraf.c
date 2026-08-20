@@ -251,9 +251,14 @@ uint32_t AES_graf_shrinkbox()
 uint32_t AES_graf_watchbox()
 {
     uint32_t address = aes_addrin(0);
-    int16_t obj = aes_intin(0);
-    int16_t instate = aes_intin(1);
-    int16_t outstate = aes_intin(2);
+
+    /* From one rather than from nought. The first word is the one graf_slidebox
+     * puts the parent object in, and watchbox has no parent to put there, but
+     * it is still the word the arguments start after: a binding leaves it
+     * alone rather than closing the gap. */
+    int16_t obj = aes_intin(1);
+    int16_t instate = aes_intin(2);
+    int16_t outstate = aes_intin(3);
     void *host;
     int16_t inside;
 
