@@ -297,11 +297,36 @@ WORD get_palette(void)
 void get_pixel_size(WORD *width, WORD *height)
 {
     /*
-     * In thousandths of a millimetre. These are the numbers an ST reports for
-     * a low resolution screen, and applications divide by them to work out how
-     * large a thing is on the glass.
+     * In thousandths of a millimetre, worked out the way bios/screen.c works
+     * it out, which is from the shape of the screen rather than from which
+     * machine this is meant to be.
+     *
+     * They are not decoration. The AES builds a window frame out of boxes and
+     * sizes them by dividing one of these by the other, and the VDI draws a
+     * circle by the same ratio, so both come out the wrong shape when these
+     * are. The screen where that shows is the ST's medium resolution one,
+     * which is the only one whose pixels are not square: the same glass
+     * carries twice as many across and no more down, so a pixel is half as
+     * wide as it is tall and everything meant to look square has to be drawn
+     * twice as wide. Reporting a square pixel there made the frame gadgets
+     * come out half the width they belong.
      */
-    *width = 372;
+    if (V_REZ_HZ > 640 || V_REZ_VT > 400)
+    {
+        /* Larger than an ST's, so the numbers TOS 3 and TOS 4 used */
+        *width = (V_REZ_HZ < 640) ? 556 : 278;
+        *height = (V_REZ_VT < 400) ? 556 : 278;
+        return;
+    }
+
+    /* And ST TOS's own set, which is a different one */
+    if (5 * V_REZ_HZ >= 12 * V_REZ_VT)  /* includes ST medium */
+        *width = 169;
+    else if (V_REZ_HZ >= 480)           /* ST high */
+        *width = 372;
+    else                                /* ST low */
+        *width = 338;
+
     *height = 372;
 }
 

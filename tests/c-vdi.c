@@ -34,12 +34,16 @@
  * answer comes back out of the surface, so a call that quietly did nothing is
  * told apart from one that drew.
  *
- * On the ST's low resolution screen, which the suite asks for by setting
- * TOSEMU_SCREEN. That is not the screen an application would want - it is
- * forty characters across and a GEM dialog does not fit on it - but half of
- * what the VDI does is decide which planes to light, and the screen a GEM
- * application wants has one plane and two colours. The sizes below are that
- * screen's, so they say which one this asked for as well as checking it.
+ * On a screen with colours in it, which the suite asks for by setting
+ * TOSEMU_SCREEN. That is not the screen an application would want - the one it
+ * wants has a single plane and two colours - but half of what the VDI does is
+ * decide which planes to light, and there is nothing to decide with one.
+ *
+ * Which screen is named on the command line, and the suite runs this on more
+ * than one. The drawing is the same drawing either way: everything below is
+ * within a hundred pixels of the corner, so it fits on the smallest of them,
+ * and what changes is how many bytes a row of the screen is - which is the
+ * arithmetic every one of these calls does before it touches a pixel.
  */
 
 #include <stdio.h>
@@ -71,10 +75,36 @@ static short pixel(short x, short y)
     return index;
 }
 
+/* The screens this is run on, and what each of them is */
+static const struct {
+    const char *name;
+    short width, height, colours;
+} screens[] = {
+    { "low",       320, 200, 16 },
+    { "tt-medium", 640, 480, 16 },
+};
+
 int main(int argc, char **argv)
 {
     short pxy[8];
     short i;
+    int which = -1;
+
+    if (argc < 2)
+    {
+        printf("Bail out! - no screen named to expect\n");
+        return 1;
+    }
+
+    for (i = 0; i < (short)(sizeof screens / sizeof screens[0]); i++)
+        if (strcmp(argv[1], screens[i].name) == 0)
+            which = i;
+
+    if (which < 0)
+    {
+        printf("Bail out! - this does not run on a %s screen\n", argv[1]);
+        return 1;
+    }
 
     /* Every attribute defaulted, and coordinates in pixels rather than in the
      * normalised space nothing has used since GEM was portable */
@@ -85,12 +115,13 @@ int main(int argc, char **argv)
     v_opnwk(work_in, &handle, work_out);
     check(handle > 0, 1, "v_opnwk gives a workstation handle");
 
-    /* What the workstation says it is, which is the screen this was asked to
-     * run on. work_out holds the largest addressable pixel rather than the
-     * count of them. */
-    check(work_out[0], 319, "the workstation is 320 pixels across");
-    check(work_out[1], 199, "the workstation is 200 pixels down");
-    check(work_out[13], 16, "the workstation has 16 colours");
+    /* What the workstation says it is, which has to be the screen this was
+     * asked to run on - everything below is measured against it. work_out
+     * holds the largest addressable pixel rather than the count of them. */
+    check(work_out[0], screens[which].width - 1,
+          "the workstation is as wide as the screen asked for");
+    check(work_out[1], screens[which].height - 1, "and as tall");
+    check(work_out[13], screens[which].colours, "with the colours to draw in");
 
     vswr_mode(handle, MD_REPLACE);
 
@@ -180,10 +211,13 @@ int main(int argc, char **argv)
         MFDB screen_fdb, off;
         short pxy2[8];
 
+        /* Built from what the workstation said rather than from constants,
+         * which is what an application has to do: an MFDB that describes the
+         * screen as another shape is read as that shape */
         screen_fdb.fd_addr = 0L;        /* the screen */
-        screen_fdb.fd_w = 320;
-        screen_fdb.fd_h = 200;
-        screen_fdb.fd_wdwidth = 320 / 16;
+        screen_fdb.fd_w = screens[which].width;
+        screen_fdb.fd_h = screens[which].height;
+        screen_fdb.fd_wdwidth = screens[which].width / 16;
         screen_fdb.fd_stand = 0;
         screen_fdb.fd_nplanes = 4;
 

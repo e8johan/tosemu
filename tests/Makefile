@@ -118,26 +118,31 @@ check: all
 	# on the command line
 	TOSEMU_KEYS='\r\r\r' TOSEMU_CLICKS='60,116' $(TOSEMU) test-c-gem > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
-	# On the screen with the colours, because half of what the VDI does is
-	# decide which planes to light and a monochrome screen has one. It is
-	# also the only test that names a screen for its own sake rather than
-	# because of what it draws.
-	TOSEMU_SCREEN=low $(TOSEMU) test-c-vdi > out; ! grep -q '^not ok' out
+	# On a screen with colours in it, because half of what the VDI does is
+	# decide which planes to light and there is nothing to decide with one.
+	# Twice, on the two shapes of screen that have the same four planes: the
+	# drawing is the same, and what differs is how many bytes a row is,
+	# which is the arithmetic every one of these calls does first.
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-vdi low > out; ! grep -q '^not ok' out
 	# A GEM call that is not implemented stops the emulator, so the count at
 	# the end of the output is what says every check in the file ran
 	grep -q '^1\.\.' out
-	# Which screen the machine turned out to have, which an application is
-	# told once and lays everything out for. Each of the three, and then a
-	# fourth run where a daemon was asked for one screen and the emulator
-	# for another: the daemon is what decides, because the screen has to be
-	# one screen for everything sharing it.
-	$(TOSEMU) test-c-screen high > out; ! grep -q '^not ok' out
-	grep -q '^1\.\.' out
-	TOSEMU_SCREEN=low $(TOSEMU) test-c-screen low > out; ! grep -q '^not ok' out
-	grep -q '^1\.\.' out
-	TOSEMU_SCREEN=medium $(TOSEMU) test-c-screen medium > out; \
+	TOSEMU_SCREEN=tt-medium $(TOSEMU) test-c-vdi tt-medium > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# Which screen the machine turned out to have, which an application is
+	# told once and lays everything out for. Every one of them, the first
+	# without asking because that is the default, and then a run where a
+	# daemon was asked for one screen and the emulator for another: the
+	# daemon is what decides, because the screen has to be one screen for
+	# everything sharing it.
+	$(TOSEMU) test-c-screen high > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	for s in low medium high tt-medium tt-high; do \
+	  TOSEMU_SCREEN=$$s $(TOSEMU) test-c-screen $$s > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
 	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium ../bin/tosaesd & \
 	  echo $$! > screen.pid; \
 	  sleep 1; \

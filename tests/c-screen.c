@@ -70,10 +70,23 @@ static void check(long got, long want, const char *name)
 static const struct {
     const char *name;
     short width, height, colours, wchar, hchar;
+
+    /* How large a pixel is, in thousandths of a millimetre, which is what an
+     * application divides by to work out how large a thing is on the glass.
+     * The ST's medium resolution screen is the one where they are not square:
+     * the same glass carries twice as many across and no more down. */
+    short wpixel, hpixel;
+
+    /* And how large the boxes a window frame is built out of come out, which
+     * is the AES dividing one of those by the other. It is the only place the
+     * shape of a pixel is visible without measuring anything. */
+    short wbox, hbox;
 } modes[] = {
-    { "low",    320, 200, 16, 8,  8  },
-    { "medium", 640, 200,  4, 8,  8  },
-    { "high",   640, 400,  2, 8, 16  },
+    { "low",        320, 200,  16, 8,  8, 338, 372, 12, 11 },
+    { "medium",     640, 200,   4, 8,  8, 169, 372, 24, 11 },
+    { "high",       640, 400,   2, 8, 16, 372, 372, 19, 19 },
+    { "tt-medium",  640, 480,  16, 8, 16, 278, 278, 19, 19 },
+    { "tt-high",   1280, 960,   2, 8, 16, 278, 278, 19, 19 },
 };
 
 int main(int argc, char **argv)
@@ -111,6 +124,8 @@ int main(int argc, char **argv)
     check(phys > 0, 1, "graf_handle gives the AES's workstation");
     check(wchar, modes[which].wchar, "a character is as wide as the screen says");
     check(hchar, modes[which].hchar, "and as tall");
+    check(wbox, modes[which].wbox, "a frame box is as wide as the pixels are");
+    check(hbox, modes[which].hbox, "and as tall as a character and a bit");
 
     /* And how large the screen is, which is the VDI's. work_out holds the
      * largest addressable pixel rather than the count of them. */
@@ -122,6 +137,8 @@ int main(int argc, char **argv)
     check(vwk > 0, 1, "v_opnvwk opens a workstation on it");
     check(work_out[0], modes[which].width - 1, "the screen is as wide as asked");
     check(work_out[1], modes[which].height - 1, "and as tall as asked");
+    check(work_out[3], modes[which].wpixel, "its pixels are the right width");
+    check(work_out[4], modes[which].hpixel, "and the right height");
     check(work_out[13], modes[which].colours, "with the colours that go with it");
 
     v_clsvwk(vwk);

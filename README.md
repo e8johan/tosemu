@@ -59,15 +59,21 @@ picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
-Which screen it is comes from `TOSEMU_SCREEN`, and there are the three the ST
-had: `low` is 320x200 in sixteen colours, `medium` 640x200 in four, and `high`
-640x400 in two. `high` is the default because that is what GEM applications
-were written for. This is not a matter of taste: a resource is laid out in
-characters, and how many fit across the screen is what decides whether a dialog
-fits on it at all - an ordinary dialog is more than forty characters wide, so
-on the low resolution screen the AES centres it at a negative coordinate and it
-hangs off both edges with its side borders out of sight. Low resolution is
-useful for the colours and not for much else.
+Which screen it is comes from `TOSEMU_SCREEN`. The ST's three are `low`,
+320x200 in sixteen colours, `medium`, 640x200 in four, and `high`, 640x400 in
+two; the TT's are `tt-medium`, 640x480 in sixteen, and `tt-high`, 1280x960 in
+two. `high` is the default because that is what GEM applications were written
+for. This is not a matter of taste: a resource is laid out in characters, and
+how many fit across the screen is what decides whether a dialog fits on it at
+all - an ordinary dialog is more than forty characters wide, so on the low
+resolution screen the AES centres it at a negative coordinate and it hangs off
+both edges with its side borders out of sight. Low resolution is useful for the
+colours and not for much else.
+
+The TT's screens are larger rather than different: everything is laid out in
+characters of the same size, so an application gets more room rather than a
+bigger picture. `tt-high` is 1280x960, which at the default scale would be a
+window larger than most displays - set `TOSEMU_SCALE=1` with it.
 
 When `tosaesd` is running it is what decides, and the variable is read from its
 environment rather than from each application's. The screen has to be one

@@ -48,14 +48,43 @@
   to decide from what the application handed over: rsrc_load fixes the chain
   up for the screen it finds, so what arrives here should already be the right
   one, and that wants checking against a resource file that has more than one.
-- Add a configuration item (or command line option) to select from six 
-  different graphics modes:
-    1. 320x200, 4bpp (Atari ST)
-    2. 640x200, 2bpp (Atari ST)
-    3. 640x400, 1bpp (Atari ST)
-    4. 1280x960, 1bpp (Atari TT)
-    5. 640x480, 18bpp (Atari Falcon)
-    6. Native screen resolution split by scaling factor, 24bpp (Best possible)
+- The screens. TOSEMU_SCREEN picks one, and five of them are there: the ST's
+  three, and the TT's medium and high. Those five are all the same thing in
+  different proportions - interleaved planes, four or two or one - so each is
+  a line in the table in aesproto.h and nothing else.
+
+  Three more were wanted and none of them is another line in that table:
+
+    TT low, 320x480 in 256 colours. Eight planes, so the layout is one the VDI
+    already draws in, but the palette is not: MAP_COL and REV_MAP_COL are
+    sixteen entries unless EXTENDED_PALETTE is on, and init_colors walks them
+    to numcolors either way. Asking for it today runs off the end of both
+    arrays and the colours come back as rubbish - a cleared screen reads as
+    254 rather than 0. EXTENDED_PALETTE is (CONF_WITH_VIDEL ||
+    CONF_WITH_TT_SHIFTER), so having it means building the VDI with hardware
+    support for a shifter that is not there, and deciding what the parts of
+    that which touch registers should do instead. Worth it: it is the only one
+    of the three that needs nothing new from the surface.
+
+    Falcon true colour, 640x480. Sixteen bits to a pixel rather than planes,
+    which wants CONF_WITH_VDI_16BIT and, before that, a surface that can hold
+    it. surface.h says what a surface is - an Atari bitmap, planes interleaved
+    a word at a time - and says why: keeping that shape is what lets the VDI
+    be EmuTOS's code rather than a rewrite of it. A second layout means the
+    surface, the raster copies, what gfx.c hands the compositor and the
+    line-length arithmetic in host_surface_select all learn there are two. The
+    18bpp in the original note is the Falcon's DAC; what is in memory is 16.
+
+    Native resolution at 24bpp. The same second layout, and 24bpp is not a
+    shape the VDI has at all - EmuTOS draws in one to eight planes or in
+    sixteen bits, and nothing else. It also has to ask the compositor how
+    large the display is before the screen is made, and the screen is made
+    before any window opens, so gfx.c would have to be able to answer that
+    without one.
+
+  None of them is needed by a GEM application of the era, which asks for
+  colours by index and gets them from a palette. They are for what an
+  application would draw with the extra colours rather than for GEM itself.
 - Add a configuration item (or command line option) to select the memory size 
   from what the various Atari models (ST, TT and Falcon) offered, and then the
   maximum possible given the restrictions of the APIs.- wind_update takes no lock, and with a process per application there is
