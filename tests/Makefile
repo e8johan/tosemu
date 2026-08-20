@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-watchbox
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-watchbox c-mkstate
 
 CC=m68k-atari-mint-gcc
 
@@ -42,6 +42,9 @@ test-c-icon: c-icon.c
 	$(CC) $< -lgem -o $@
 
 test-c-watchbox: c-watchbox.c
+	$(CC) $< -lgem -o $@
+
+test-c-mkstate: c-mkstate.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -112,6 +115,12 @@ check: all
 	# Watching a box, which waits for the button to come up and so needs
 	# one to have been pressed - twice, because it is watched twice
 	TOSEMU_CLICKS='72,64 72,64' $(TOSEMU) test-c-watchbox > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Asking where the mouse is rather than waiting for it, which is what an
+	# application tracking a slider does. The pointer is moved twice and
+	# then pressed and not let go of, and none of it is waited for.
+	TOSEMU_CLICKS='@100,60 @150,80 !200,100' $(TOSEMU) test-c-mkstate > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42

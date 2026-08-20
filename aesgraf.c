@@ -332,7 +332,7 @@ uint32_t AES_graf_mkstate()
     if (!gem_start())
         return AES_ERROR;
 
-    gfx_mouse(&x, &y, &buttons);
+    gfx_mouse_now(&x, &y, &buttons);
 
     aes_set_intout(1, x);
     aes_set_intout(2, y);

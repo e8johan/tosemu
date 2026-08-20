@@ -99,6 +99,11 @@ void gfx_dialog_close();
  */
 int gfx_fd();
 void gfx_dispatch();
+
+/* The same for whatever has been said already, without waiting for more,
+ * which is what a caller that is only catching up wants */
+void gfx_dispatch_ready(void);
+
 void gfx_flush();
 
 /* Puts what is in the surface on the screen, in every window showing part
@@ -123,7 +128,16 @@ void gfx_present();
  * other part of the emulator from having to know a window was involved.
  */
 int gfx_key_take(uint16_t *key);
+
+/* As of the last change taken off the queue, which is what a wait wants: it
+ * considers each change where that change happened */
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);
+
+/* And as of now, which is what graf_mkstate wants - an application polling it
+ * takes nothing off the queue and would otherwise be told the same thing for
+ * ever. Listens to the compositor and reads to the end of the queue, taking
+ * nothing: what is in it belongs to the waits. */
+void gfx_mouse_now(int16_t *x, int16_t *y, int16_t *buttons);
 
 /* Whether the pointer has been anywhere yet. Where it is means nothing until
  * it has: nought,nought is a real place, and things happen there. */

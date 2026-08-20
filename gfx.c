@@ -57,6 +57,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mman.h>
 
 #include <wayland-client.h>
@@ -370,6 +371,15 @@ int gfx_key_take(uint16_t *key)
     return 1;
 }
 
+/*
+ * Where the pointer is and what is held down, as of the last change anybody
+ * took off the queue.
+ *
+ * That is what a wait wants. The event loop is answered by changes rather than
+ * by states, and it considers each one where it happened, so the state it
+ * reads has to be the state as of the change it was handed and not as of some
+ * later one it has not looked at yet.
+ */
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
 {
     clicks_from_environment();
@@ -377,6 +387,51 @@ void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
     *x = w.mouse_x;
     *y = w.mouse_y;
     *buttons = w.buttons;
+}
+
+/*
+ * And as of now, which is a different question and has a different answer.
+ *
+ * An application that polls takes nothing and waits for nothing: it asks,
+ * looks, and asks again. Answering it as of the last change taken tells it
+ * whatever the wait before its loop happened to leave behind, and that never
+ * moves - so a person dragging a slider watches it sit still, and the loop
+ * they are dragging in never ends, because the button it is waiting to see
+ * released was read before they released it.
+ *
+ * On an ST there was nothing to arrange. The keyboard processor kept the
+ * position and the buttons up to date and reading them cost nothing and
+ * consumed nothing, so a program could poll them and did. This is that:
+ * anything the compositor has said is listened to first, and the answer is as
+ * of the newest thing in the queue rather than the oldest.
+ *
+ * The queue itself is left alone, because what is in it belongs to the waits.
+ * They need every change and not merely the latest - that is what stops a
+ * click too quick to be seen from reading as a button that was never pressed.
+ */
+void gfx_mouse_now(int16_t *x, int16_t *y, int16_t *buttons)
+{
+    int i;
+
+    clicks_from_environment();
+
+    /* An application that polls never reaches the event loop, so this is the
+     * only place its idea of where the pointer is can catch up */
+    gfx_dispatch_ready();
+
+    *x = w.mouse_x;
+    *y = w.mouse_y;
+    *buttons = w.buttons;
+
+    for (i = 0; i < w.click_count; i++)
+    {
+        *x = w.clicks[i].x;
+        *y = w.clicks[i].y;
+
+        /* A move says where the pointer went and nothing about the buttons */
+        if (!w.clicks[i].move)
+            *buttons = w.clicks[i].buttons;
+    }
 }
 
 int gfx_mouse_known(void)
@@ -1571,6 +1626,31 @@ void gfx_flush()
 {
     if (w.display)
         wl_display_flush(w.display);
+}
+
+/*
+ * The same, for whatever the compositor has said already.
+ *
+ * gfx_dispatch waits when there is nothing to read, which is right for an
+ * event loop and wrong for a caller that is only catching up - so whether
+ * there is anything is asked first, and nothing said means nothing done.
+ */
+void gfx_dispatch_ready(void)
+{
+    struct pollfd waiting;
+
+    if (!w.display)
+        return;
+
+    wl_display_dispatch_pending(w.display);
+    wl_display_flush(w.display);
+
+    waiting.fd = wl_display_get_fd(w.display);
+    waiting.events = POLLIN;
+    waiting.revents = 0;
+
+    if (poll(&waiting, 1, 0) > 0)
+        gfx_dispatch();
 }
 
 /*
