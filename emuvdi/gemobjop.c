@@ -55,7 +55,9 @@ char ob_sst(OBJECT *tree, WORD obj, LONG *pspec, WORD *pstate, WORD *ptype,
     case G_BOXCHAR:
     case G_IBOX:
         /*
-         * TOSEMU: the only thing changed in this file.
+         * TOSEMU: one of the two things changed in this file - see the return
+         * at the end of this function for the other, which is the same
+         * mistake made about a different byte.
          *
          * The border thickness is the second byte of the spec, and EmuTOS
          * takes it by pointing a char at the LONG and stepping one along. That
@@ -85,7 +87,22 @@ char ob_sst(OBJECT *tree, WORD obj, LONG *pspec, WORD *pstate, WORD *ptype,
         th -= 256;
     *pth = th;
 
-    return *(char *)pspec;  /* only useful for G_BOXCHAR */
+    /*
+     * TOSEMU: the character a G_BOXCHAR shows, which is the top byte of the
+     * spec and is what EmuTOS reaches for by pointing a char at the LONG.
+     *
+     * The same step off the same wrong end as the thickness above, and the
+     * more visible of the two: on a machine whose LONG is eight bytes and
+     * whose low one comes first, this reads the last byte of the spec instead
+     * of the first. That byte is nought in everything the AES draws itself -
+     * the drive letters, the close box and the arrows in the file selector are
+     * 0x41ff1100 and its like - so every one of them drew nothing at all, and
+     * the four arrows of a window's scroll bars, whose specs end in 0x01, all
+     * drew the same arrow.
+     *
+     * Shifting asks for the byte rather than for the end it happens to be at.
+     */
+    return (char)((*pspec >> 24) & 0xff);  /* only useful for G_BOXCHAR */
 }
 
 
