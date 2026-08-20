@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-watchbox c-mkstate
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate
 
 CC=m68k-atari-mint-gcc
 
@@ -42,6 +42,9 @@ test-c-icon: c-icon.c
 	$(CC) $< -lgem -o $@
 
 test-c-boxchar: c-boxchar.c
+	$(CC) $< -lgem -o $@
+
+test-c-fsel: c-fsel.c
 	$(CC) $< -lgem -o $@
 
 test-c-watchbox: c-watchbox.c
@@ -118,6 +121,12 @@ check: all
 	# One character packed into the object itself rather than pointed at,
 	# which is every drive letter and every scroll bar arrow the AES draws
 	$(TOSEMU) test-c-boxchar > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Opening the file selector more than once, which has to be the same
+	# dialog every time. Three clicks to a pass: one the dialog throws
+	# away, then the close box, then Cancel - see the test for why.
+	TOSEMU_CLICKS='5,18 33,73 167,181 5,18 33,73 167,181 5,18 33,73 167,181' \
+	  $(TOSEMU_FOR_A_WHILE) test-c-fsel > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Watching a box, which waits for the button to come up and so needs
 	# one to have been pressed - twice, because it is watched twice

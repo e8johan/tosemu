@@ -83,6 +83,10 @@ void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
 void gem_rsc_init(void);
 void gem_rsc_fixit(void);
 
+/* And the one tree in it that needs more than the general fixing up,
+ * aes/gemfslib.c */
+void fs_start(void);
+
 void emuvdi_aes_init()
 {
     gsx_init();
@@ -97,6 +101,22 @@ void emuvdi_aes_init()
      */
     gem_rsc_init();
     gem_rsc_fixit();
+
+    /*
+     * The file selector on top of that, which is laid out once and here
+     * because it cannot be laid out twice.
+     *
+     * Its tree is the most worked over in the resource - the closer, the
+     * arrows, the elevator and all twenty-six drive letters are nudged into
+     * place for the character size the screen turned out to have - and every
+     * one of those adjustments is a step from where the object already is
+     * rather than a position it is put at. So it is a thing done to a tree
+     * fresh out of the resource and to no other. gem_rsc_init above copies one
+     * out every time it is called, which is what makes here the right place:
+     * done again on a tree that has already had it, the dialog grows by a
+     * little each time and its drive letters walk off the bottom of it.
+     */
+    fs_start();
 
     /*
      * Somewhere to keep what is underneath a menu or an alert while one is up.
@@ -665,7 +685,6 @@ int16_t emuvdi_objc_edit(void *tree, int16_t obj, int16_t key,
 /* EmuTOS's file selector, aes/gemfslib.c **********************************/
 
 WORD fs_input(char *pipath, char *pisel, WORD *pbutton, char *pilabel);
-void fs_start(void);
 
 /*
  * Putting the file selector up.
@@ -680,10 +699,6 @@ int16_t emuvdi_fsel_input(char *path, char *name, int16_t *button,
 {
     WORD chosen = 0;
     WORD answer;
-
-    /* Its own dialog has to be laid out for the character size the screen
-     * turned out to have, the same as any other tree out of the AES resource */
-    fs_start();
 
     /*
      * And a window to put it in.
