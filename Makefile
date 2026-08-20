@@ -2,7 +2,7 @@
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
-              gfx.c \
+              gfx.c screen.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -44,6 +44,12 @@ WAYLANDHEADERS = gen/xdg-shell-client-protocol.h \
                  gen/xdg-decoration-unstable-v1-client-protocol.h
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
+
+# Talking to the compositor without showing anything, which is what asking how
+# large the display is amounts to. The daemon wants this and not the rest: it
+# has no windows and no keyboard, and a keymap library it never calls is a
+# dependency it should not have.
+WAYLANDONLYLIBS = $(shell pkg-config --libs wayland-client)
 
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
@@ -118,7 +124,7 @@ EMUTOSLDFLAGS = -no-pie
 all: bin/tosemu bin/tosaesd
 
 .PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check demos
+        emuvdi-check screen-check demos
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -179,9 +185,16 @@ emuvdi/%.o: emuvdi/%.c Makefile
 bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
-# The daemon several emulators have in common. It links none of the emulator:
-# nothing it does involves a 68000, and everything it knows about is in
+# The daemon several emulators have in common. It links none of the emulator's
+# own workings: nothing it does involves a 68000, and everything it says is in
 # aesproto.h.
+#
+# screen.c is the exception and has to be. The daemon is what decides which
+# screen the session has - it tells each application when it arrives, including
+# the accessories it starts itself - so it needs the same answer the emulator
+# would have worked out alone, which means the same code rather than a second
+# copy of it. That is also what puts wayland in this link: one of the screens
+# is as large as the display, and only the compositor knows how large that is.
 # The tray icon, turned into pixels the panel can be handed.
 #
 # Done here rather than at runtime because a picture that cannot be found at
@@ -195,8 +208,20 @@ rsc/tray-icon.h: rsc/tray.svg rsc/icon-to-c.py
 
 aesdtray.o: rsc/tray-icon.h
 
-bin/tosaesd: aesd.o aesdtray.o
-	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) -o $@
+bin/tosaesd: aesd.o aesdtray.o screen.o
+	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) $(WAYLANDONLYLIBS) -o $@
+
+# Turning a display into a screen, checked without a display. Built for the
+# host rather than for the emulated machine, for the same reason bin/vditest
+# is: what is being checked is not something an application can reach. A
+# compositor's answer cannot be arranged by a test, so the asking is checked by
+# using it and the arithmetic is checked here.
+bin/screentest: screentest.c screen.o
+	@mkdir -p bin/
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(WAYLANDONLYLIBS) -o $@
+
+screen-check: bin/screentest
+	./bin/screentest
 
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
@@ -258,7 +283,7 @@ bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: bin/tosemu bin/tosaesd
+check: bin/tosemu bin/tosaesd screen-check
 	$(MAKE) -C tests check
 
 devpac-check: bin/tosemu

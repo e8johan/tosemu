@@ -67,6 +67,7 @@
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 
 #include "surface.h"
+#include "screen.h"
 #include "emuvdi/emuvdi.h"
 
 /* Told to the AES when a window's frame is used to close it, so that the
@@ -78,41 +79,15 @@ void host_window_closed(int16_t handle);
  *
  * A whole number, because anything else is a blur: an ST pixel becomes a
  * square block of them and stays a hard edge, which is what the artwork of the
- * period was drawn for. Three is a reasonable guess at a modern display -
- * a 640x400 screen becomes 1920x1200 - and TOSEMU_SCALE says otherwise.
+ * period was drawn for. screen_scale reads it, because it is also what the
+ * size of the display is divided by to arrive at a screen that fills it, and
+ * those two have to be the same number.
  *
  * It is kept per window rather than once, because it is a property of how a
  * window is being shown rather than of the machine: two windows of the same
  * application can honestly be shown at different sizes, and one day they will
  * be.
  */
-#define SCALE_DEFAULT (3)
-#define SCALE_MAX     (16)
-
-static int scale_wanted(void)
-{
-    static int scale;
-    const char *said;
-
-    if (scale)
-        return scale;
-
-    scale = SCALE_DEFAULT;
-
-    said = getenv("TOSEMU_SCALE");
-    if (said)
-    {
-        int n = atoi(said);
-
-        if (n >= 1 && n <= SCALE_MAX)
-            scale = n;
-        else
-            printf("TOSEMU_SCALE has to be a whole number between 1 and %d, "
-                   "so %s is ignored\n", SCALE_MAX, said);
-    }
-
-    return scale;
-}
 
 /*
  * A window, which shows one rectangle of a surface. A GEM window is one of
@@ -1213,7 +1188,7 @@ static int window_create(struct window *win, const char *title,
     win->sy = sy;
     win->sw = sw;
     win->sh = sh;
-    win->scale = scale_wanted();
+    win->scale = screen_scale();
     win->width = sw * win->scale;
     win->height = sh * win->scale;
 

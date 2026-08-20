@@ -62,6 +62,7 @@
 
 #include "aesproto.h"
 #include "aesdtray.h"
+#include "screen.h"
 
 /*
  * How many applications there can be.
@@ -911,8 +912,12 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Which machine this session is, before anybody can arrive to be told */
-    aesd_screen_mode(&screen_width, &screen_height, &screen_planes);
+    /* Which machine this session is, before anybody can arrive to be told.
+     * The screens that are as large as the display ask the compositor here,
+     * which is also the only place that can: an accessory the daemon starts
+     * has to be told the same screen as everything else, and it is this
+     * process that tells it. */
+    screen_mode(&screen_width, &screen_height, &screen_planes);
 
     said = getenv("TOSEMU_AESD");
     if (said && *said)

@@ -75,6 +75,34 @@ characters of the same size, so an application gets more room rather than a
 bigger picture. `tt-high` is 1280x960, which at the default scale would be a
 window larger than most displays - set `TOSEMU_SCALE=1` with it.
 
+Two more are a rule rather than a size: `native-mono` and `native-color` are as
+large as the display will hold, in one plane and in four. They are not Atari
+screens and are not pretending to be. What they are for is a GEM application
+having the room a modern display has, which is the one thing the machine could
+not give it - and the rest of GEM does not mind, because a resource is measured
+in characters and more of them across is simply more room.
+
+How large that is comes out of two divisions. The compositor's own scaling is
+one - a display reporting 3456x2160 at a scale of two shows a window in half of
+those - and `TOSEMU_SCALE` is the other, being how many of those an ST pixel
+becomes. So a 3456x2160 display at scale two gives a 576x360 screen at the
+default `TOSEMU_SCALE=3`, and that screen magnified by three is 1728x1080,
+which is the display. They are one setting rather than two for exactly that
+reason. The width is rounded down to a multiple of sixteen, because a row of a
+surface is a whole number of words, so the window can come out a little short of
+the display's width and never over it.
+
+`TOSEMU_OUTPUT` says which display to measure, by the name the compositor gives
+it - `eDP-1`, `DP-1` and so on, which `wayland-info` will list. Without it, the
+first one the compositor mentions. With no compositor to ask at all the size
+falls back to 640x400 and the planes stay as asked, which is what happens on a
+machine with no desktop and in the test suite.
+
+Asking costs one round trip at the moment the machine is decided, and no window:
+`wl_output` is a global like any other and says how large it is without anything
+being shown. When `tosaesd` is running it is the one that asks, because it is
+the one that decides - so set these on the daemon, not on each application.
+
 When `tosaesd` is running it is what decides, and the variable is read from its
 environment rather than from each application's. The screen has to be one
 screen for everything sharing it - applications lay their windows out in it and

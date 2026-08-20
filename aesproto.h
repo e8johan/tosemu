@@ -22,9 +22,6 @@
 #define AESPROTO_H
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 /*
  * What the emulator says to the daemon, and the daemon back.
@@ -188,78 +185,10 @@ struct aesd_packet {
 #define AESD_SOCKET_NAME "tosaesd"
 
 /*
- * Which screen the machine has, which is the one thing about it an application
- * cannot be told twice.
- *
- * The ones the machines had, named the way they named them. This is not a
- * preference: a GEM application is laid out in characters and assumes how many
- * of them fit across, because the resource editor it was drawn in had a screen
- * in mind. A dialog forty-five characters wide is an ordinary dialog on a
- * screen eighty characters across and does not fit at all on one that is
- * forty, where the AES centres it at a negative coordinate and it hangs off
- * both edges.
- *
- * So the ST's high resolution screen is the default, being the one GEM
- * applications were written for. The ST's low resolution one is for the things
- * that need colours to be worth testing - the AES draws in sixteen of them and
- * a monochrome screen has two - and its medium one is here because the machine
- * had it. The TT's two are here because they cost nothing: they are the same
- * planes in another shape, and everything that lays itself out in characters
- * simply has more of them to work with.
- *
- * The TT's third is not here, and neither are the Falcon's. Both want
- * something the VDI was not built with rather than another line in this table
- * - see the note in TODO, which says which flag each of them turns on.
- *
- * It lives with the protocol because it is the daemon that decides: the screen
- * has to be one screen for everything running, and two processes that read the
- * environment separately are two processes that can disagree about it. Both
- * ends read it the same way so that a session with no daemon in it gets the
- * same machine as a session with one.
+ * Which screen the machine has is not here, because working it out is more
+ * than a protocol header should carry: it reads the environment and, for the
+ * sizes that depend on the display, asks the compositor. See screen.h, which
+ * both ends link for the purpose.
  */
-static inline void aesd_screen_mode(int16_t *width, int16_t *height,
-                                    int16_t *planes)
-{
-    static const struct {
-        const char *name;
-        int16_t width, height, planes;
-    } modes[] = {
-        { "low",        320, 200, 4 },
-        { "medium",     640, 200, 2 },
-        { "high",       640, 400, 1 },
-        { "tt-medium",  640, 480, 4 },
-        { "tt-high",   1280, 960, 1 },
-    };
-    const int high = 2;
-    const char *want = getenv("TOSEMU_SCREEN");
-    int i;
-
-    for (i = 0; want && i < (int)(sizeof modes / sizeof modes[0]); i++)
-    {
-        if (strcmp(want, modes[i].name) != 0)
-            continue;
-
-        *width = modes[i].width;
-        *height = modes[i].height;
-        *planes = modes[i].planes;
-        return;
-    }
-
-    /* Said and not understood, which is worth a word: a misspelt resolution
-     * that quietly becomes the usual one is a machine that is not the one that
-     * was asked for, and everything drawn on it is the wrong size */
-    if (want)
-    {
-        fprintf(stderr, "TOSEMU_SCREEN: no screen is called '%s'. There is",
-                want);
-        for (i = 0; i < (int)(sizeof modes / sizeof modes[0]); i++)
-            fprintf(stderr, "%s %s", i ? "," : "", modes[i].name);
-        fprintf(stderr, ".\n");
-    }
-
-    *width = modes[high].width;
-    *height = modes[high].height;
-    *planes = modes[high].planes;
-}
 
 #endif /* AESPROTO_H */

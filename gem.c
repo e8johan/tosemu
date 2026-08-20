@@ -42,7 +42,7 @@
 #include "surface.h"
 #include "aes_p.h"
 #include "aesclient.h"
-#include "aesproto.h"
+#include "screen.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
@@ -50,9 +50,9 @@
 /*
  * The screen, which both halves of GEM draw on and which neither owns.
  *
- * Which of the ST's screens it is comes from aesd_screen_mode - see the note
- * there - and the VDI works out which resolution to report from how many
- * planes this has, so the two cannot disagree.
+ * Which screen it is comes from screen_mode - see the note there - and the VDI
+ * works out which resolution to report from how many planes this has, so the
+ * two cannot disagree.
  */
 static struct surface *screen;
 
@@ -76,7 +76,7 @@ static int started;
 /* The screen this session was asked for, for when there is no daemon to say */
 void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
 {
-    aesd_screen_mode(width, height, planes);
+    screen_mode(width, height, planes);
 }
 
 /*

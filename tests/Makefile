@@ -15,6 +15,14 @@ CC=m68k-atari-mint-gcc
 # want a daemon start one of their own and say where it is.
 NO_DAEMON=TOSEMU_AESD=$(CURDIR)/nosuch.socket
 
+# And a compositor that is not there, for the screens whose size is as large as
+# the display. What a compositor answers is not something a test can arrange -
+# one machine has two displays and a build server has none - so the screens
+# that ask are checked for what they come to when there is nothing to ask, and
+# the arithmetic for when there is gets bin/screentest, which is handed the
+# numbers rather than told to go and find them.
+NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
+
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
@@ -140,6 +148,18 @@ check: all
 	grep -q '^1\.\.' out
 	for s in low medium high tt-medium tt-high; do \
 	  TOSEMU_SCREEN=$$s $(TOSEMU) test-c-screen $$s > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
+	# The two whose size is a rule rather than a number, with nothing to
+	# ask. A compositor is not something a test can arrange - this machine
+	# may have two displays and a build server none - so what is checked
+	# here is what they come to when there is none, and the arithmetic for
+	# when there is one is bin/screentest's to check. The planes are the
+	# half that holds either way, and they are what differs below.
+	for s in native-mono native-color; do \
+	  TOSEMU_SCREEN=$$s $(NO_DISPLAY) $(TOSEMU) test-c-screen $$s > out \
+	    || exit 1; \
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
