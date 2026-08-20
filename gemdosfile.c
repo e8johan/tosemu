@@ -357,10 +357,26 @@ uint32_t GEMDOS_Dgetpath()
             path = ubuf + n - 1;        /* standing on the root, so nothing */
     }
 
+    /*
+     * Spelled the way TOS spells a path, which is with backslashes.
+     *
+     * host_resolve takes either on the way in, because an application that got
+     * a path from somewhere else may hand back whichever was in it. Nothing
+     * takes either on the way out: what comes back here is a path the
+     * application will pick apart itself, and the code that does the picking
+     * knows one separator. The AES's own file selector is that code - it walks
+     * up a folder by looking for the last backslash - so a path handed to it
+     * with the host's separators in it is one it cannot read.
+     */
     i=0;
     do
     {
-        m68k_write_memory_8(addr+i, path[i]);
+        char c = path[i];
+
+        if (c == '/')
+            c = '\\';
+
+        m68k_write_memory_8(addr+i, (uint8_t)c);
         ++i;
     }
     while(path[i-1]!=0 && i<PATH_MAX);

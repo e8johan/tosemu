@@ -97,7 +97,7 @@ check: all
 	# what it did, and what Dgetpath hands out has to be a path on the
 	# drive rather than one on the host
 	TOS_BASE_PATH=$(CURDIR) $(TOSEMU) test-c-drives BASED > out; ! grep -q '^not ok' out
-	grep -q '^1\.\.17' out
+	grep -q '^1\.\.19' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out

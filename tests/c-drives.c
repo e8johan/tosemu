@@ -75,6 +75,21 @@ int main(int argc, char **argv)
      * relative one. This is what lets an application build a path out of the
      * current directory Dgetpath handed it. */
     check(Dgetpath(path, 0), 0, "Dgetpath reports the current directory");
+
+    /*
+     * Spelled the way TOS spells a path, which is with backslashes.
+     *
+     * Handing one back that can be opened again is not enough, because a path
+     * is opened by more than the file calls: an application takes it apart
+     * itself, and the code that does the taking apart knows one separator. The
+     * AES's own file selector is that code - walking up a folder is finding
+     * the last backslash - so a path with the host's separators in it goes in
+     * and never comes back out.
+     */
+    check(strchr(path, '/') == NULL, 1, "and spells it with backslashes");
+    check(path[0] == '\0' || path[0] == '\\', 1,
+          "starting at the root of the drive, or empty at the root itself");
+
     strcat(path, "\\DRVTEST");
 
     h = Fcreate("DRVTEST", 0);

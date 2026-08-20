@@ -128,13 +128,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* On the separator a TOS path uses, whichever one came back. Which one
-     * that is has nothing to do with the selector, and the selector only
-     * knows the one. */
-    for (i = 0; start[i]; i++)
-        if (start[i] == '/')
-            start[i] = '\\';
-
     strcat(start, "\\*.*");
 
     if (strlen(start) + 4 >= MAX_PATH)
