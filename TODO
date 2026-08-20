@@ -1,6 +1,3 @@
-- Looks as if many parts of this will have to be implemented:
-    http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
-    http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
 - Mode 7 of Pexec takes the program flags a program header carries, and tosemu
   acts on none of them, so it is mode 5 with an argument it ignores. Same for
   the flags in a program header itself.
@@ -48,48 +45,12 @@
   to decide from what the application handed over: rsrc_load fixes the chain
   up for the screen it finds, so what arrives here should already be the right
   one, and that wants checking against a resource file that has more than one.
-- The screens. TOSEMU_SCREEN picks one, and seven of them are there: the ST's
-  three, the TT's medium and high, and the two that are as large as the
-  display will hold. All seven are the same thing in different proportions -
-  interleaved planes, four or two or one - so each is a line in the table in
-  screen.c and, for the two that have to ask how large the display is, the
-  asking.
-
-  Three more were wanted and none of them is another line in that table:
-
-    TT low, 320x480 in 256 colours. Eight planes, so the layout is one the VDI
-    already draws in, but the palette is not: MAP_COL and REV_MAP_COL are
-    sixteen entries unless EXTENDED_PALETTE is on, and init_colors walks them
-    to numcolors either way. Asking for it today runs off the end of both
-    arrays and the colours come back as rubbish - a cleared screen reads as
-    254 rather than 0. EXTENDED_PALETTE is (CONF_WITH_VIDEL ||
-    CONF_WITH_TT_SHIFTER), so having it means building the VDI with hardware
-    support for a shifter that is not there, and deciding what the parts of
-    that which touch registers should do instead. Worth it: it is the only one
-    of the three that needs nothing new from the surface.
-
-    Falcon true colour, 640x480. Sixteen bits to a pixel rather than planes,
-    which wants CONF_WITH_VDI_16BIT and, before that, a surface that can hold
-    it. surface.h says what a surface is - an Atari bitmap, planes interleaved
-    a word at a time - and says why: keeping that shape is what lets the VDI
-    be EmuTOS's code rather than a rewrite of it. A second layout means the
-    surface, the raster copies, what gfx.c hands the compositor and the
-    line-length arithmetic in host_surface_select all learn there are two. The
-    18bpp in the original note is the Falcon's DAC; what is in memory is 16.
-
-    Native resolution at 24bpp. The resolution half of this is done -
-    native-mono and native-color are as large as the display will hold, in one
-    plane and in four, and screen.c asks the compositor for the size. The
-    24bpp half is the one left, and it wants the second surface layout above:
-    24 is not a shape the VDI has at all, which draws in one to eight planes
-    or in sixteen bits and nothing else.
-
-  None of them is needed by a GEM application of the era, which asks for
-  colours by index and gets them from a palette. They are for what an
-  application would draw with the extra colours rather than for GEM itself.
+- Investigate how to support non-planar modes (up to 16bpp currently) and 
+  planar modes without having to rewrite the entire VDI stack.
 - Add a configuration item (or command line option) to select the memory size 
   from what the various Atari models (ST, TT and Falcon) offered, and then the
-  maximum possible given the restrictions of the APIs.- wind_update takes no lock, and with a process per application there is
+  maximum possible given the restrictions of the APIs.- wind_update takes no
+  lock, and with a process per application there is
   nothing yet for it to protect: each has a screen of its own and what reaches
   the desktop are its windows, so two applications cannot reach each other's
   pixels. It was a lock because every application drew into one screen. It
