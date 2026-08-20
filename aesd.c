@@ -73,11 +73,15 @@
  */
 #define MAX_APPS (16)
 
-/* The screen every application shares, until there is a way to say otherwise.
- * See the note at the top: this is where a machine's graphics mode belongs. */
-#define SCREEN_WIDTH  (640)
-#define SCREEN_HEIGHT (400)
-#define SCREEN_PLANES (1)
+/*
+ * The screen every application shares, settled once when the session starts.
+ *
+ * See the note at the top: this is where a machine's graphics mode belongs. A
+ * person changing resolution turned the machine off and on again, and this is
+ * the same thing - an application is told what the screen is when it arrives
+ * and is never told again, so there is nowhere for a change to be sent.
+ */
+static int16_t screen_width, screen_height, screen_planes;
 
 static struct {
     int used;
@@ -304,9 +308,9 @@ static void app_hello(int fd, const struct aesd_packet *in)
 
     memset(&out, 0, sizeof out);
     out.kind = AESD_WELCOME;
-    out.screen_width = SCREEN_WIDTH;
-    out.screen_height = SCREEN_HEIGHT;
-    out.screen_planes = SCREEN_PLANES;
+    out.screen_width = screen_width;
+    out.screen_height = screen_height;
+    out.screen_planes = screen_planes;
     out.apps = MAX_APPS;
 
     if (slot >= MAX_APPS)
@@ -906,6 +910,9 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+
+    /* Which machine this session is, before anybody can arrive to be told */
+    aesd_screen_mode(&screen_width, &screen_height, &screen_planes);
 
     said = getenv("TOSEMU_AESD");
     if (said && *said)

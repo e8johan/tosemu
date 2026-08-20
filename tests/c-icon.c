@@ -35,7 +35,10 @@
  *
  * An icon is drawn twice over: the mask in the background colour and then the
  * image in the foreground colour, so the three colours the checks look for say
- * which of the two reached the screen where.
+ * which of the two reached the screen where. Three is more than the screen a
+ * GEM application usually runs on has, so the suite asks for the ST's low
+ * resolution one through TOSEMU_SCREEN: on a monochrome screen the mask and
+ * the image are both black and there is nothing to tell apart.
  *
  * A test that stops the emulator prints nothing further, so the count at the
  * end is what says the whole file ran.

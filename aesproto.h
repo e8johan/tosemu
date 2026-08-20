@@ -22,6 +22,9 @@
 #define AESPROTO_H
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /*
  * What the emulator says to the daemon, and the daemon back.
@@ -183,5 +186,65 @@ struct aesd_packet {
  * without touching the one the person is using.
  */
 #define AESD_SOCKET_NAME "tosaesd"
+
+/*
+ * Which screen the machine has, which is the one thing about it an application
+ * cannot be told twice.
+ *
+ * The three the ST had, named the way it named them. This is not a preference:
+ * a GEM application is laid out in characters and assumes how many of them fit
+ * across, because the resource editor it was drawn in had a screen in mind. A
+ * dialog forty-five characters wide is an ordinary dialog on a screen eighty
+ * characters across and does not fit at all on one that is forty, where the
+ * AES centres it at a negative coordinate and it hangs off both edges.
+ *
+ * So high is the default, being the one GEM applications were written for. Low
+ * is for the things that need colours to be worth testing - the AES draws in
+ * sixteen of them and a monochrome screen has two - and medium is here because
+ * the machine had it.
+ *
+ * It lives with the protocol because it is the daemon that decides: the screen
+ * has to be one screen for everything running, and two processes that read the
+ * environment separately are two processes that can disagree about it. Both
+ * ends read it the same way so that a session with no daemon in it gets the
+ * same machine as a session with one.
+ */
+static inline void aesd_screen_mode(int16_t *width, int16_t *height,
+                                    int16_t *planes)
+{
+    static const struct {
+        const char *name;
+        int16_t width, height, planes;
+    } modes[] = {
+        { "low",    320, 200, 4 },
+        { "medium", 640, 200, 2 },
+        { "high",   640, 400, 1 },
+    };
+    const int high = 2;
+    const char *want = getenv("TOSEMU_SCREEN");
+    int i;
+
+    for (i = 0; want && i < (int)(sizeof modes / sizeof modes[0]); i++)
+    {
+        if (strcmp(want, modes[i].name) != 0)
+            continue;
+
+        *width = modes[i].width;
+        *height = modes[i].height;
+        *planes = modes[i].planes;
+        return;
+    }
+
+    /* Said and not understood, which is worth a word: a misspelt resolution
+     * that quietly becomes the usual one is a machine that is not the one that
+     * was asked for, and everything drawn on it is the wrong size */
+    if (want)
+        fprintf(stderr, "TOSEMU_SCREEN: no screen is called '%s'. "
+                        "There is low, medium and high.\n", want);
+
+    *width = modes[high].width;
+    *height = modes[high].height;
+    *planes = modes[high].planes;
+}
 
 #endif /* AESPROTO_H */

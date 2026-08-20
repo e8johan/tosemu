@@ -33,6 +33,13 @@
  * v_get_pixel is what makes this a test rather than a demonstration: the
  * answer comes back out of the surface, so a call that quietly did nothing is
  * told apart from one that drew.
+ *
+ * On the ST's low resolution screen, which the suite asks for by setting
+ * TOSEMU_SCREEN. That is not the screen an application would want - it is
+ * forty characters across and a GEM dialog does not fit on it - but half of
+ * what the VDI does is decide which planes to light, and the screen a GEM
+ * application wants has one plane and two colours. The sizes below are that
+ * screen's, so they say which one this asked for as well as checking it.
  */
 
 #include <stdio.h>
@@ -78,8 +85,9 @@ int main(int argc, char **argv)
     v_opnwk(work_in, &handle, work_out);
     check(handle > 0, 1, "v_opnwk gives a workstation handle");
 
-    /* What the workstation says it is. The screen is 320x200 for now, and
-     * work_out holds the largest addressable pixel rather than the count. */
+    /* What the workstation says it is, which is the screen this was asked to
+     * run on. work_out holds the largest addressable pixel rather than the
+     * count of them. */
     check(work_out[0], 319, "the workstation is 320 pixels across");
     check(work_out[1], 199, "the workstation is 200 pixels down");
     check(work_out[13], 16, "the workstation has 16 colours");

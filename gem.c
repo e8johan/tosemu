@@ -42,6 +42,7 @@
 #include "surface.h"
 #include "aes_p.h"
 #include "aesclient.h"
+#include "aesproto.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
@@ -49,14 +50,10 @@
 /*
  * The screen, which both halves of GEM draw on and which neither owns.
  *
- * An ST low resolution screen, until there is somewhere for the choice to come
- * from. The VDI works out which resolution to report from how many planes this
- * has, so the two cannot disagree.
+ * Which of the ST's screens it is comes from aesd_screen_mode - see the note
+ * there - and the VDI works out which resolution to report from how many
+ * planes this has, so the two cannot disagree.
  */
-#define SCREEN_WIDTH  (320)
-#define SCREEN_HEIGHT (200)
-#define SCREEN_PLANES (4)
-
 static struct surface *screen;
 
 /*
@@ -76,6 +73,12 @@ static struct surface *dialog;
 
 static int started;
 
+/* The screen this session was asked for, for when there is no daemon to say */
+void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
+{
+    aesd_screen_mode(width, height, planes);
+}
+
 /*
  * Readies GEM, the first time anything asks for it.
  *
@@ -83,13 +86,6 @@ static int started;
  * a window reaches the VDI first, and one that opens a window reaches the AES
  * first, so neither can be the one to set the other up.
  */
-void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
-{
-    *width = SCREEN_WIDTH;
-    *height = SCREEN_HEIGHT;
-    *planes = SCREEN_PLANES;
-}
-
 int gem_start()
 {
     int16_t width, height, planes;

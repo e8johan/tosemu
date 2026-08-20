@@ -3,18 +3,27 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen
 
 CC=m68k-atari-mint-gcc
+
+# A socket that is not there, so that a session somebody is using is not what
+# these run against. A daemon decides things a test has an opinion about -
+# which application is which, and which screen the machine has - and it decides
+# them for every emulator that finds it, so one running in the background turns
+# the results into a matter of what else is on the computer. The tests that
+# want a daemon start one of their own and say where it is.
+NO_DAEMON=TOSEMU_AESD=$(CURDIR)/nosuch.socket
 
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 ../bin/tosemu
+TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
-# otherwise wait for ever rather than fail.
+# otherwise wait for ever rather than fail. Which daemon, if any, is left to
+# the caller: most of these are the tests that want a real one.
 TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu
 
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
@@ -51,6 +60,9 @@ test-c-watchbox: c-watchbox.c
 	$(CC) $< -lgem -o $@
 
 test-c-mkstate: c-mkstate.c
+	$(CC) $< -lgem -o $@
+
+test-c-screen: c-screen.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -106,17 +118,44 @@ check: all
 	# on the command line
 	TOSEMU_KEYS='\r\r\r' TOSEMU_CLICKS='60,116' $(TOSEMU) test-c-gem > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
-	$(TOSEMU) test-c-vdi > out; ! grep -q '^not ok' out
+	# On the screen with the colours, because half of what the VDI does is
+	# decide which planes to light and a monochrome screen has one. It is
+	# also the only test that names a screen for its own sake rather than
+	# because of what it draws.
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-vdi > out; ! grep -q '^not ok' out
 	# A GEM call that is not implemented stops the emulator, so the count at
 	# the end of the output is what says every check in the file ran
 	grep -q '^1\.\.' out
+	# Which screen the machine turned out to have, which an application is
+	# told once and lays everything out for. Each of the three, and then a
+	# fourth run where a daemon was asked for one screen and the emulator
+	# for another: the daemon is what decides, because the screen has to be
+	# one screen for everything sharing it.
+	$(TOSEMU) test-c-screen high > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-screen low > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=medium $(TOSEMU) test-c-screen medium > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium ../bin/tosaesd & \
+	  echo $$! > screen.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=low \
+	    $(TOSEMU_FOR_A_WHILE) test-c-screen medium > out; \
+	  kill `cat screen.pid`
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) screen.pid screen.socket
 	# An object the application draws itself, which is the AES calling back
 	# into the machine in the middle of a call out of it
 	$(TOSEMU) test-c-userdef > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# The objects that are pictures, which are the only ones whose ob_spec
-	# leads to a bitmap rather than to a word or a string
-	$(TOSEMU) test-c-icon > out; ! grep -q '^not ok' out
+	# leads to a bitmap rather than to a word or a string. On the screen
+	# with the colours, because an icon is a mask drawn in one and an image
+	# drawn over it in another, and telling them apart needs three.
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-icon > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# One character packed into the object itself rather than pointed at,
 	# which is every drive letter and every scroll bar arrow the AES draws
@@ -125,7 +164,8 @@ check: all
 	# Opening the file selector more than once, which has to be the same
 	# dialog every time. Three clicks to a pass: one the dialog throws
 	# away, then the close box, then Cancel - see the test for why.
-	TOSEMU_CLICKS='5,18 33,73 167,181 5,18 33,73 167,181 5,18 33,73 167,181' \
+	$(NO_DAEMON) \
+	TOSEMU_CLICKS='460,40 193,146 327,360 460,40 193,146 327,360 460,40 193,146 327,360' \
 	  $(TOSEMU_FOR_A_WHILE) test-c-fsel > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Watching a box, which waits for the button to come up and so needs

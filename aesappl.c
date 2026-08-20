@@ -82,23 +82,15 @@ uint32_t AES_appl_init()
 {
     uint32_t g = aes_global();
 
-    FUNC_TRACE_ENTER
-
-    /*
-     * The AES draws through a workstation of its own, which it opens here
-     * rather than when GEM starts: an application that only ever calls the VDI
-     * has no use for it, and opening one costs a screen's worth of state.
-     */
-    if (!gem_start())
-        return AES_ERROR;
-
     /* Calling appl_init twice is not an error worth failing over, and an
      * application that does it means to carry on with the identifier it
      * already has rather than to be given a second one. */
-    if (ap_id < 0)
-    {
-        emuvdi_aes_init();
+    int arriving = (ap_id < 0);
 
+    FUNC_TRACE_ENTER
+
+    if (arriving)
+    {
         /*
          * Who this application is, which the daemon says when there is one and
          * is nought when there is not.
@@ -108,6 +100,13 @@ uint32_t AES_appl_init()
          * either way. That is not a detail: a GEM program written for such a
          * machine tests whether appl_init answered nought and stops if it did
          * not, so answering one would have it give up before drawing anything.
+         *
+         * This is the first thing done rather than something done once the
+         * screen is ready, because the same answer says how large the screen
+         * is. The daemon is what decides that - it has to be one screen for
+         * every application sharing it - and a screen made before asking is a
+         * screen made from this build's own guess, with the daemon's answer
+         * arriving too late to be of any use.
          */
         ap_id = aes_client_hello(tos_program_name());
 
@@ -119,6 +118,17 @@ uint32_t AES_appl_init()
             return AES_ERROR;
         }
     }
+
+    /*
+     * The AES draws through a workstation of its own, which it opens here
+     * rather than when GEM starts: an application that only ever calls the VDI
+     * has no use for it, and opening one costs a screen's worth of state.
+     */
+    if (!gem_start())
+        return AES_ERROR;
+
+    if (arriving)
+        emuvdi_aes_init();
 
     m68k_write_memory_16(g + AES_GLOBAL_VERSION, AES_VERSION);
     m68k_write_memory_16(g + AES_GLOBAL_COUNT,

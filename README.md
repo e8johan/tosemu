@@ -59,6 +59,22 @@ picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
+Which screen it is comes from `TOSEMU_SCREEN`, and there are the three the ST
+had: `low` is 320x200 in sixteen colours, `medium` 640x200 in four, and `high`
+640x400 in two. `high` is the default because that is what GEM applications
+were written for. This is not a matter of taste: a resource is laid out in
+characters, and how many fit across the screen is what decides whether a dialog
+fits on it at all - an ordinary dialog is more than forty characters wide, so
+on the low resolution screen the AES centres it at a negative coordinate and it
+hangs off both edges with its side borders out of sight. Low resolution is
+useful for the colours and not for much else.
+
+When `tosaesd` is running it is what decides, and the variable is read from its
+environment rather than from each application's. The screen has to be one
+screen for everything sharing it - applications lay their windows out in it and
+are told where the others put theirs - so it belongs to the session, the way a
+resolution belonged to a machine rather than to a program running on it.
+
 `TOSEMU_KEYS` hands over keystrokes and `TOSEMU_CLICKS` places to click, for
 when there is nobody to type or click - a test suite, mostly. Keys are
 characters with `\r` for Return. Clicks are `x,y` to press and release there,

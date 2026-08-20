@@ -33,11 +33,10 @@
  *
  * There is nothing in the AES that tells an application where the selector's
  * parts are, so this asks by clicking. The close box is the gadget that moves
- * furthest for what it is - six pixels up the screen per extra laying out, in
- * a box twelve tall - and clicking it walks the path up one folder, which is
- * something the caller can see afterwards because it comes back in the buffer
- * it handed over. So each pass clicks where the close box belongs and then
- * Cancel, and the answer says whether the click found it.
+ * furthest for its own size, and clicking it walks the path up one folder,
+ * which is something the caller can see afterwards because it comes back in
+ * the buffer it handed over. So each pass clicks where the close box belongs
+ * and then Cancel, and the answer says whether the click found it.
  *
  * Cancel is what makes the failure a failure rather than a hang: it barely
  * moves, so it is hit whether or not the dialog has grown, and a pass whose
@@ -70,10 +69,11 @@
 /* A TOS path is short, and so is what the selector will take */
 #define MAX_PATH  (128)
 
-/* How many times the selector is opened. Three rather than two because the
- * first extra laying out moves the close box six pixels and the second twelve,
- * so a pass that only just found it and a pass that cannot possibly have found
- * it are both here. */
+/* How many times the selector is opened. Three rather than two because one
+ * extra laying out moves the close box by a fraction of its own height rather
+ * than clear of it, and how large a fraction depends on which screen the
+ * machine has. Three passes put a click that only just found the gadget and a
+ * click that cannot have found it on either side of the same test. */
 #define PASSES    (3)
 
 static int n;
