@@ -23,12 +23,14 @@
  * Screen and video functions.
  *
  * tosemu shows nothing on a screen, so there are two jobs here. An application
- * that draws needs somewhere to draw: Physbase and Logbase hand out a real,
- * writable buffer, so that painting into it neither crashes nor corrupts
- * anything. An application that configures the video hardware needs its
- * settings to hold: the palette and mode calls remember what was set and
- * report it back, so that code which sets a colour and reads it again sees its
- * own value rather than one it never chose.
+ * that draws needs somewhere to draw: Physbase and Logbase hand out the block
+ * the machine reserved for a screen, which is real, writable, and as large as
+ * the screen the machine has - so that painting into it neither crashes nor
+ * corrupts anything, however much of it the application paints. An application
+ * that configures the video hardware needs its settings to hold: the palette
+ * and mode calls remember what was set and report it back, so that code which
+ * sets a colour and reads it again sees its own value rather than one it never
+ * chose.
  *
  * What none of it does is take effect. Getrez deliberately reports a
  * resolution no ST has, so that code depending on the screen hardware fails
@@ -45,9 +47,6 @@
 #include "m68k.h"
 
 #include "xbios_p.h"
-
-/* A low resolution ST screen, 320x200 in 16 colours */
-#define SCREENSIZE (32000)
 
 #define PALETTE_ENTRIES (256)
 
@@ -72,7 +71,7 @@ static uint32_t screen_buffer(void)
 {
     if (!screen_phys)
     {
-        screen_phys = bios_static_alloc(SCREENSIZE);
+        screen_phys = tos_screen_base();
         screen_log = screen_phys;
     }
 
@@ -290,8 +289,10 @@ uint32_t XBIOS_VgetSize()
         printf("    mode: 0x%x\n", mode);
     }
 
-    /* There is one buffer whatever the mode, and this is how big it is */
-    return SCREENSIZE;
+    /* There is one buffer whatever the mode, being the screen this machine
+     * has rather than one of the modes it was asked about, and this is how
+     * big it is */
+    return tos_screen_size();
 }
 
 uint32_t XBIOS_Cursconf()

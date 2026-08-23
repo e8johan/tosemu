@@ -47,6 +47,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <gem.h>
+#include <mint/osbind.h>
+#include <mint/falcon.h>
 
 static int n;
 static int fails;
@@ -153,6 +155,35 @@ int main(int argc, char **argv)
     check(work_out[3], modes[which].wpixel, "its pixels are the right width");
     check(work_out[4], modes[which].hpixel, "and the right height");
     check(work_out[13], modes[which].colours, "with the colours that go with it");
+
+    /*
+     * And where an application that draws without the VDI is told the screen
+     * is. Nothing is shown there - what reaches a display is what the VDI drew
+     * on a surface of the host's - but a program that takes the screen over
+     * asks the XBIOS where it is and then writes a screen's worth into the
+     * answer, so what it is given has to be a screen's worth of this screen.
+     * A buffer the size of some other machine's screen is one such a program
+     * writes straight out of, and what is past the end of it is whatever the
+     * emulator keeps there.
+     */
+    {
+        long bytes;
+        short planes;
+        char *where;
+
+        for (planes = 0; (1 << planes) < modes[which].colours; planes++)
+            ;
+
+        bytes = (long)((modes[which].width + 15) / 16) * 2
+              * planes * modes[which].height;
+
+        check(VgetSize(0), bytes, "the screen buffer is this screen's size");
+
+        where = (char *)Physbase();
+        where[bytes - 1] = 0x5a;
+        check(where[bytes - 1] & 0xff, 0x5a,
+              "and its last byte is memory that is really there");
+    }
 
     v_clsvwk(vwk);
 

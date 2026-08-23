@@ -394,6 +394,35 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
     return 1;
 }
 
+/*
+ * The same question, asked once.
+ *
+ * The machine is worked out more than once in a run - the screen is reserved
+ * before a program is loaded, and GEM asks again when it starts and needs to
+ * know how large a surface to make - and a display is not unplugged in
+ * between. Remembering the answer keeps the round trip the one round trip the
+ * note above describes rather than one per caller.
+ */
+static int ask_the_compositor_once(int32_t *pixels_w, int32_t *pixels_h,
+                                   int32_t *out_scale)
+{
+    static int asked;
+    static int answered;
+    static int32_t was_w, was_h, was_scale;
+
+    if (!asked)
+    {
+        answered = ask_the_compositor(&was_w, &was_h, &was_scale);
+        asked = 1;
+    }
+
+    *pixels_w = was_w;
+    *pixels_h = was_h;
+    *out_scale = was_scale;
+
+    return answered;
+}
+
 void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 {
     const char *want = setting("TOSEMU_SCREEN");
@@ -419,7 +448,7 @@ void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 
         *planes = native[i].planes;
 
-        if (ask_the_compositor(&pixels_w, &pixels_h, &out_scale))
+        if (ask_the_compositor_once(&pixels_w, &pixels_h, &out_scale))
         {
             screen_from_display(pixels_w, pixels_h, out_scale, width, height);
             return;

@@ -102,7 +102,12 @@ int main(int argc, char **argv)
      * video hardware needs its settings to hold. */
     check(Physbase() != 0L, 1, "Physbase hands out a buffer");
     check((long)Logbase(), (long)Physbase(), "Logbase starts on the same buffer");
-    check(VgetSize(0), 32000, "VgetSize matches the buffer handed out");
+
+    /* The buffer is the screen this machine has, and this runs on the default
+     * one - 640x400 in a single plane, which comes to 32000 bytes. That the
+     * size follows the screen rather than being a number is c-screen's to
+     * check, it being the test that runs on every screen there is. */
+    check(VgetSize(0), 32000, "VgetSize is the size of the default screen");
 
     /* The buffer must really be writable, an application will paint into it */
     *(char *)Physbase() = 0x5a;

@@ -39,6 +39,7 @@
 #include "xbios.h"
 #include "bios.h"
 #include "gem.h"
+#include "screen.h"
 
 #include "m68k.h"
 
@@ -86,9 +87,16 @@ struct exec_header {
 /* RAM for structures the system owns rather than the application, see
  * bios_static_alloc. It sits in the cartridge ROM range of the memory map
  * below, which no ST ever has RAM in and which is clear of the TPA, so that
- * reserving a screen buffer does not shrink the memory the application gets. */
+ * what the system reserves does not come out of the application's memory. */
 #define BIOSRAMBASE (0xFA0000)
 #define BIOSRAMSIZE (0x10000)
+
+/* Where the machine's RAM stops, the cartridge range being what is above it */
+#define RAMTOP (0xF9FFFF)
+
+/* The least RAM worth handing a program, below which a screen has taken so
+ * much of the machine that there is no machine left */
+#define RAM_FOR_A_PROGRAM (0x100000)
 
 /* The stack an accessory is started on, which comes out of that RAM because it
  * is not the accessory's - see the stack field of a tos_environment. It only
@@ -97,6 +105,12 @@ struct exec_header {
 #define ACCESSORY_STACK (1024)
 
 static uint32_t biosram_free;
+
+/* Where the screen was put in the machine this time round, and how much of it
+ * there is. A machine built again for another program gets another one, the
+ * same way the BIOS RAM does. */
+static uint32_t screen_base;
+static uint32_t screen_size;
 
 int keepongoing;
 
@@ -146,6 +160,29 @@ void *map_tos_binary(const char *path, uint64_t *size)
 void unmap_tos_binary(void *binary, uint64_t size)
 {
     munmap(binary, size);
+}
+
+/*
+ * How many bytes a screen of this shape takes.
+ *
+ * A row of a plane is a whole number of words, so the width is rounded up to
+ * one rather than divided by sixteen - which every Atari screen was a multiple
+ * of, and a screen as large as a display need not be.
+ */
+static uint32_t screen_bytes(int16_t width, int16_t height, int16_t planes)
+{
+    return (uint32_t)((width + 15) / 16) * 2u
+         * (uint32_t)planes * (uint32_t)height;
+}
+
+uint32_t tos_screen_base(void)
+{
+    return screen_base;
+}
+
+uint32_t tos_screen_size(void)
+{
+    return screen_size;
 }
 
 uint32_t bios_static_alloc(uint32_t len)
@@ -434,7 +471,8 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
 {
     struct exec_header *header;
     const char *path;
-    
+    int16_t screen_w, screen_h, screen_planes;
+
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
     {
@@ -458,10 +496,45 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     te->biosram = calloc(1, BIOSRAMSIZE);
     biosram_free = BIOSRAMBASE;
     
-    /* Setup a maximum size user RAM */
-    te->size = 0xF9FFFF -0x000900;
+    /*
+     * The screen comes off the top of the machine's RAM, which is where the
+     * machine kept it: phystop was the top and the screen sat below it, so
+     * what a program was given stopped short of one.
+     *
+     * Nothing is shown here - what reaches a display is what the VDI drew on
+     * a surface of the host's, which has no address in the machine at all -
+     * but an application that draws without the VDI asks the XBIOS where the
+     * screen is and writes as much into the answer as it has been told the
+     * screen holds. So this has to be the size of the screen this machine
+     * has, and not of some screen: a buffer the size of one an ST had is a
+     * buffer such an application writes straight out of.
+     *
+     * Which screen that is comes from the settings, the same as everywhere
+     * else. A daemon deciding on a larger one is the case this can still fall
+     * short of, because the machine has to be laid out before there is a
+     * program to run, let alone one that has asked a daemon anything.
+     */
+    screen_mode(&screen_w, &screen_h, &screen_planes);
+    screen_size = screen_bytes(screen_w, screen_h, screen_planes);
+
+    if (screen_size == 0 || screen_size > RAMTOP - RAM_FOR_A_PROGRAM)
+    {
+        printf("Error: a %dx%d screen of %d planes leaves no machine to run "
+               "anything in\n", screen_w, screen_h, screen_planes);
+        return -1;
+    }
+
+    /* On a 256 byte boundary, which is where the hardware needed one. What
+     * that rounding leaves over is slack above the screen rather than below
+     * it, so an application writing the whole of what VgetSize reports has
+     * memory under its pen the whole way. */
+    screen_base = (RAMTOP - screen_size) & ~0xffu;
+    te->screenmem = calloc(1, RAMTOP - screen_base);
+
+    /* And the rest of it is the application's */
+    te->size = screen_base - 0x000900;
     te->appmem = calloc(1, te->size);
-    
+
     /* Copy segment sizes from header */
     header = (struct exec_header*)binary;
     te->tsize = endianize_32(header->tsize);
@@ -521,8 +594,11 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * 0x0007FF - 0x000000 OS RAM
      * 
      * Lay out data like this in USER RAM:
-     * 
-     * High addresses     HEAP
+     *
+     * High addresses    SCREEN, which is the machine's rather than the
+     *                           program's and is not in the TPA
+     *
+     *                    HEAP
      * 
      *                   STACK
      * 
@@ -557,6 +633,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x600-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
+    add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, RAMTOP - screen_base, te->screenmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
 
@@ -818,7 +895,10 @@ void free_tos_environment(struct tos_environment *te)
     
     free(te->appmem);
     te->appmem = 0;
-    
+
+    free(te->screenmem);
+    te->screenmem = 0;
+
     free(te->supermem);
     te->supermem = 0;
 
