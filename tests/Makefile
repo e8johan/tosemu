@@ -118,6 +118,14 @@ check: all
 	# drive rather than one on the host
 	TOS_BASE_PATH=$(CURDIR) $(TOSEMU) test-c-drives BASED > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.19' out
+	# And the same root spelled with a separator on the end, which is the
+	# natural way to write a directory in a settings file. It has to name
+	# the same drive: the base is what the front of every host path is
+	# compared against, and one ending in two separators is a base no path
+	# resolves to, so the whole drive reads as empty.
+	TOS_BASE_PATH=$(CURDIR)/ $(TOSEMU) test-c-drives BASED > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.19' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out

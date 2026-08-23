@@ -575,11 +575,23 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
         te->base_path = strdup("");
     else
     {
-        int n = strlen(path);
+        /*
+         * One separator on the end, and exactly one however the setting was
+         * spelled. Everything that decides whether a host path is on the drive
+         * does it by comparing this much of the front of that path, and no
+         * path the host resolves has two separators in a row - so a base
+         * written with a trailing one would end in two here and match nothing
+         * at all, which reads as every file in the world being missing.
+         */
+        size_t n = strlen(path);
+
+        while (n > 0 && path[n-1] == '/')
+            --n;
+
         te->base_path = malloc(n + 2);
         if (te->base_path != NULL)
         {
-            strcpy(te->base_path, path);
+            memcpy(te->base_path, path, n);
             te->base_path[n] = '/';
             te->base_path[n+1] = 0;
         }
