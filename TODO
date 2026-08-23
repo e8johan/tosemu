@@ -6,6 +6,26 @@
   it. An application that Mallocs before it Mshrinks gets nothing, where on
   TOS it would get what the parent released. The modes that load a program
   into the caller's memory do carve it out, and do not have this.
+- A child of Pexec has a copy of the machine's memory rather than the same
+  memory, because it is a forked host process, so nothing it writes is ever
+  seen by its parent. TOS had one address space and no fork, and the modes
+  that run a program the caller has already loaded - 4, 6 and their
+  asynchronous twins - are there so that the two can pass structures back and
+  forth through it. Reading works, the child having inherited everything as it
+  stood; it is the answer coming back that is lost.
+
+  Devpac 3 is the case that shows it. Its editor loads GEN.TTP resident with
+  mode 3, asks mode 5 for a basepage, points that basepage's text segment at
+  the resident copy and runs it with mode 4, handing it the address of a
+  structure of its own in an environment variable. The assembler reads the
+  source out of the editor's buffer and writes back what it found rather than
+  touching a file at all - and the editor gets back a buffer nothing wrote to.
+  It reports no errors and shows an empty document.
+
+  Closing it means the machine's memory being shared rather than copied -
+  MAP_SHARED rather than calloc for te->appmem and the areas beside it - for
+  the modes where the child keeps the machine it inherited. The modes that
+  load a program build one of their own and want no part of it.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.

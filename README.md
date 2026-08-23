@@ -476,6 +476,11 @@ That also settles what a child inherits, and it lands close to TOS:
   process has its own, as under MiNT.
 - Memory, the DTA and the screen do not carry over at all. The child gets a
   machine of its own, so an address the parent allocated means nothing to it.
+- The modes that run a program the caller has already loaded are the exception,
+  because there the child keeps the machine it inherited and every address in
+  it still means what it did. What it writes there is its own, though: a fork
+  copies memory rather than sharing it, so an answer a child leaves at an
+  agreed address is one the parent never sees. See the `TODO`.
 
 A program returns a word and `Pexec` reports it with the high word clear, which
 is more than the eight bits of a host exit status. The child writes the value
