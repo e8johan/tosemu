@@ -83,8 +83,16 @@ int screen_scale(void)
  * work with.
  *
  * The TT's third is not here, and neither are the Falcon's. Both want
- * something the VDI was not built with rather than another line in this table
- * - see the note in TODO.
+ * something the VDI was not built with rather than another line in this table.
+ * The TT's low resolution screen is eight planes, which the VDI draws in
+ * happily, but its palette is sixteen entries unless EXTENDED_PALETTE is on -
+ * init_colors walks MAP_COL and REV_MAP_COL to numcolors either way, so
+ * asking for it runs off the end of both and a cleared screen reads back as
+ * 254. EXTENDED_PALETTE is (CONF_WITH_VIDEL || CONF_WITH_TT_SHIFTER), which
+ * means building the VDI with support for hardware that is not there. The
+ * Falcon's is sixteen bits to a pixel rather than planes, and surface.h says
+ * why that is not a small change: planes interleaved a word at a time is the
+ * shape that lets the VDI be EmuTOS's code rather than a rewrite of it.
  */
 static const struct {
     const char *name;
