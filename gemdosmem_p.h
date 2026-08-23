@@ -32,6 +32,7 @@ void gemdos_mem_free();
 
 uint32_t GEMDOS_Mshrink();
 uint32_t GEMDOS_Malloc();
+uint32_t GEMDOS_Mxalloc();
 uint32_t GEMDOS_Mfree();
 
 /* The allocator behind them, for the parts of GEMDOS that have to make room

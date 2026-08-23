@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen
 
 CC=m68k-atari-mint-gcc
 
@@ -128,6 +128,10 @@ check: all
 	grep -q '^1\.\.19' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
+	# Asking for memory and saying which kind it has to be, which is the
+	# call every compiler of the period makes before anything else
+	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given
