@@ -93,7 +93,14 @@ static struct {
     short xc, yc, wc, hc;
     long parm;
     short flags_from_tree;
+    short sr;
+    short masked;
 } told;
+
+/* The supervisor bit of the status register, and the interrupt mask beside it.
+ * Reading the register is allowed either way on a 68000; changing it is not. */
+#define SR_SUPERVISOR (0x2000)
+#define SR_MASK_ALL   (0x0700)
 
 /*
  * The routine.
@@ -107,6 +114,37 @@ static short draw_it(PARMBLK *pb)
     short pxy[4];
 
     told.calls++;
+
+    /*
+     * Which mode the machine is in, before anything else can change it.
+     *
+     * An application reaches the AES through a trap, so everything the AES
+     * does for it happens in supervisor mode, and a routine of this kind is
+     * called from inside that. Routines were written knowing it: masking the
+     * interrupts out of the way while something is drawn is an ordinary thing
+     * for one to do, and touching the status register at all is privileged.
+     * Called in user mode it would be a privilege violation, into a vector
+     * table with nothing in it.
+     *
+     * So the mask is put on and taken off again here rather than only asked
+     * about, because the instruction that does it is the thing that has to
+     * work. It is only tried when the mode says it can be: taking a privilege
+     * violation instead would stop the machine, and a check that says which
+     * mode it was in is worth more than one that says nothing at all.
+     */
+    __asm__ volatile ("move.w %%sr,%0" : "=d" (told.sr));
+
+    if (told.sr & SR_SUPERVISOR)
+    {
+        short back = told.sr;
+
+        __asm__ volatile ("ori.w %0,%%sr\n\tmove.w %1,%%sr"
+                          :
+                          : "i" (SR_MASK_ALL), "d" (back)
+                          : "cc");
+        told.masked = 1;
+    }
+
     told.tree = pb->pb_tree;
     told.obj = pb->pb_obj;
     told.prevstate = pb->pb_prevstate;
@@ -178,6 +216,7 @@ int main(int argc, char **argv)
     short wchar, hchar, wbox, hbox;
     short pel, index;
     short x = 40 + OBJ_X, y = 40 + OBJ_Y;
+    short sr_before, sr_after;
 
     if (appl_init() < 0)
     {
@@ -191,8 +230,12 @@ int main(int argc, char **argv)
 
     memset(&told, 0, sizeof told);
 
+    __asm__ volatile ("move.w %%sr,%0" : "=d" (sr_before));
+
     objc_draw(tree, ROOT, 8, tree[ROOT].ob_x, tree[ROOT].ob_y,
               tree[ROOT].ob_width, tree[ROOT].ob_height);
+
+    __asm__ volatile ("move.w %%sr,%0" : "=d" (sr_after));
 
     check(told.calls, 1, "the routine is called once for one object");
     check((long)told.tree, (long)tree, "it is handed the application's tree");
@@ -200,6 +243,14 @@ int main(int argc, char **argv)
     check(told.parm, THE_PARM, "the long from the block comes back unchanged");
     check(told.flags_from_tree, FL_LASTOB,
           "the tree it is handed can be read");
+
+    /* The mode it runs in, which is the AES's rather than the application's */
+    check(told.sr & SR_SUPERVISOR, SR_SUPERVISOR,
+          "the routine runs in supervisor mode, the way GEM called one");
+    check(told.masked, 1,
+          "so it may mask the interrupts while it draws");
+    check(sr_after & SR_SUPERVISOR, sr_before & SR_SUPERVISOR,
+          "and the application is left in the mode it was in");
 
     /* The object's own place, in screen coordinates rather than relative to
      * the box it sits in - the AES has already added the parent's corner on */

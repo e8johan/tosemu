@@ -750,7 +750,7 @@ static void said(const char *why)
 
 int16_t host_userdef_draw(const struct host_userdef *call)
 {
-    uint32_t d[8], a[8], pc, sr;
+    uint32_t d[8], a[8], pc, sr, isp;
     uint32_t block;
     long steps;
     int16_t answer;
@@ -797,6 +797,27 @@ int16_t host_userdef_draw(const struct host_userdef *call)
         a[i] = m68k_get_reg(0, M68K_REG_A0 + i);
     pc = m68k_get_reg(0, M68K_REG_PC);
     sr = m68k_get_reg(0, M68K_REG_SR);
+    isp = m68k_get_reg(0, M68K_REG_ISP);
+
+    /*
+     * In supervisor mode, because that is the mode GEM called one of these in.
+     * An application reaches the AES through a trap, and everything the AES
+     * does on its behalf happens inside that trap - including coming back out
+     * to the application to draw an object of its own. So the routine ran with
+     * the machine still in the mode the trap put it in, and routines were
+     * written knowing that: masking interrupts around some drawing is an
+     * ordinary thing for one to do, and touching the status register at all is
+     * privileged. Called in user mode it takes a privilege violation instead,
+     * into a vector table with nothing in it, and the machine runs off into
+     * memory that was never anything.
+     *
+     * Changing the mode changes which stack pointer a7 is, so the application's
+     * own goes back into it: the supervisor stack here is a few hundred bytes
+     * for the short routines Supexec runs, and a routine that draws needs the
+     * room the application has.
+     */
+    enable_supervisor_mode();
+    m68k_set_reg(M68K_REG_A7, a[7]);
 
     /*
      * The block goes on the machine's stack, below whatever is there, which is
@@ -870,13 +891,20 @@ int16_t host_userdef_draw(const struct host_userdef *call)
      * Back to where the AES was. Restoring a7 is what takes the block and the
      * two longs pushed on top of it away again, and restoring the program
      * counter is what puts the machine back at the trap it is still inside.
+     *
+     * The status register goes back first, because that is what decides which
+     * of the two stack pointers a7 is: putting the mode back afterwards would
+     * file the restored a7 under the wrong one. The supervisor stack pointer
+     * is put back by hand for the same reason - the machine's own is not where
+     * the routine was left standing.
      */
+    m68k_set_reg(M68K_REG_SR, sr);
+    m68k_set_reg(M68K_REG_ISP, isp);
     for (i = 0; i < 8; i++)
         m68k_set_reg(M68K_REG_D0 + i, d[i]);
     for (i = 0; i < 8; i++)
         m68k_set_reg(M68K_REG_A0 + i, a[i]);
     m68k_set_reg(M68K_REG_PC, pc);
-    m68k_set_reg(M68K_REG_SR, sr);
 
     return answer;
 }
