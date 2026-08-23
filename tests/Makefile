@@ -127,6 +127,7 @@ check: all
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.19' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
 	# Asking for memory and saying which kind it has to be, which is the
 	# call every compiler of the period makes before anything else

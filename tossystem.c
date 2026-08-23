@@ -628,7 +628,13 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     memcpy(te->bp->p_cmdlin, cmdlin, TOS_CMDLIN_SIZE);
         
     reset_memory();
-    add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x1ff, te->staticmem0);
+    /* 0x200 rather than 0x1ff: the last argument is how many bytes there are
+     * and not the address of the last one, so a length one short leaves the
+     * top byte of the last exception vector outside every area there is. A
+     * program reading vector 127 - or copying the table, which is what a
+     * debugger does before it puts its own handlers in - would be reading
+     * memory the machine says it does not have. */
+    add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x200, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x600-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
