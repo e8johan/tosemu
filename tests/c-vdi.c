@@ -48,6 +48,7 @@
 
 #include <stdio.h>
 #include <gem.h>
+#include <mint/osbind.h>
 
 static int n;
 
@@ -262,6 +263,40 @@ int main(int argc, char **argv)
         vro_cpyfm(handle, S_ONLY, pxy2, &off, &screen_fdb);
         check(pixel(208, 108), 5, "and copied it back to the screen");
         check(pixel(216, 108), 0, "stopping where it was told to");
+
+        /*
+         * And once more with the screen named by its address rather than by a
+         * zero, which is the other way an application says the same thing:
+         * Physbase is where the screen is, so an MFDB pointing at it is the
+         * screen. A program that draws without a window has no other way to
+         * say it - it never opened one and has nothing to be told about - and
+         * an accessory taking the screen over to draw its own dialog is the
+         * case this was found in.
+         */
+        screen_fdb.fd_addr = Physbase();
+
+        pxy2[4] = 200; pxy2[5] = 140;
+        pxy2[6] = 215; pxy2[7] = 155;
+        vro_cpyfm(handle, S_ONLY, pxy2, &off, &screen_fdb);
+        check(pixel(208, 148), 5, "a bitmap at Physbase is the screen too");
+        check(pixel(216, 148), 0, "and stops where it is told the same way");
+
+        /*
+         * And the same going the other way. It reads back the patch v_bar
+         * drew rather than the one just copied, deliberately: a buffer that
+         * is not the screen still hands back whatever was last written to it,
+         * so copying somewhere and reading it again is a check that passes on
+         * the wrong memory. Only something the VDI drew is proof of which
+         * memory this is.
+         */
+        bits[1] = bits[2] = 0;
+        pxy2[0] = 64; pxy2[1] = 24;
+        pxy2[2] = 79; pxy2[3] = 39;
+        pxy2[4] = 0;  pxy2[5] = 0;
+        pxy2[6] = 15; pxy2[7] = 15;
+        vro_cpyfm(handle, S_ONLY, pxy2, &screen_fdb, &off);
+        check((unsigned short)bits[1], 0xffff, "and reads the bar back off it");
+        check((unsigned short)bits[2], 0xffff, "out of both the planes it lit");
     }
 
     v_clrwk(handle);

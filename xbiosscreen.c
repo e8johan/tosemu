@@ -79,6 +79,17 @@ static uint32_t screen_buffer(void)
     return screen_phys;
 }
 
+int xbios_screen_named(uint32_t address)
+{
+    /* Nothing is the screen until something has asked where it is. Zero is
+     * how an MFDB says "the screen" already, so answering yes to it before
+     * then would make every bitmap the screen. */
+    if (!screen_phys || !address)
+        return 0;
+
+    return address == screen_phys || address == screen_log;
+}
+
 uint32_t XBIOS_Getrez()
 {
     FUNC_TRACE_ENTER
