@@ -134,6 +134,24 @@
   look as though messages were arriving late when they were not. Whether an
   accessory should be told where to draw - or simply left to inherit, as now -
   is a question for when there is a desktop of our own to start them from.
+- The block Physbase hands out is reserved when the machine is laid out and
+  sized from the screen this process's own settings ask for, so a daemon
+  deciding on a larger one leaves it short. The daemon is not asked until GEM
+  starts, which is after the memory map is fixed, and an application then
+  hears about a screen bigger than the block it has been told to paint in - so
+  a program writing a screen's worth into it writes past the end, the way one
+  did before the block was sized from the screen at all. It reaches only a
+  program that draws without the VDI: a raster operation naming the screen,
+  by zero or by that address, is drawn on the surface the VDI keeps and never
+  touches the block.
+
+  Closing it means settling the screen before the machine is built, and that
+  means asking the daemon before there is an application to ask on behalf of.
+  A program that never opens a window would be joining a session it has no
+  business in, which is worse than the gap. The other way is to reserve at the
+  first Physbase instead, and that wants somewhere to take the memory from
+  that is not where the program is standing: the top of RAM is its own stack
+  until it Mshrinks.
 - GDOS and scalable fonts, which is the whole of the last milestone in the
   plan and is not started. The Atari system fonts are there, compiled in from
   EmuTOS, and they are what vst_font and v_gtext use. What is missing is
