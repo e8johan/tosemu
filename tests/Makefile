@@ -26,13 +26,13 @@ NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu
+TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
 # otherwise wait for ever rather than fail. Which daemon, if any, is left to
 # the caller: most of these are the tests that want a real one.
-TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu
+TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu --no-config
 
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 
@@ -163,7 +163,25 @@ check: all
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
-	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium ../bin/tosaesd & \
+	# And the same thing said in a file rather than in the environment,
+	# which is what a settings file is for. bin/settingstest checks the
+	# reading of one; this checks that what it read reaches the machine,
+	# and that the environment still wins over it.
+	printf '[screen]\nmode = tt-medium\n' > settings.tosemu
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c settings.tosemu \
+	  test-c-screen tt-medium > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=high TOSEMU_NO_WINDOW=1 $(NO_DAEMON) \
+	  ../bin/tosemu -c settings.tosemu test-c-screen high > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And a file named and not there is refused rather than ignored, since
+	# carrying on would be running on a machine nobody asked for
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c nosuch.tosemu \
+	  test-c-screen high > out 2>/dev/null; test "$$?" != 0
+	$(RM) settings.tosemu
+	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium \
+	  ../bin/tosaesd --no-config & \
 	  echo $$! > screen.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=low \
@@ -212,7 +230,7 @@ check: all
 	# nought, appl_find always answers -1, and a message posted comes back
 	# to the sender. The daemon gets a socket of its own so that a test run
 	# does not disturb a session somebody is using.
-	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd & \
+	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd --no-config & \
 	  echo $$! > aesd.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU_FOR_A_WHILE) test-c-aesd > out & \

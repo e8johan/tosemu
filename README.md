@@ -96,7 +96,9 @@ the display's width and never over it.
 it - `eDP-1`, `DP-1` and so on, which `wayland-info` will list. Without it, the
 first one the compositor mentions. With no compositor to ask at all the size
 falls back to 640x400 and the planes stay as asked, which is what happens on a
-machine with no desktop and in the test suite.
+machine with no desktop and in the test suite. A display named and not there -
+a monitor since unplugged, most likely - falls back the same way and says which
+displays it did find, rather than quietly measuring a different one.
 
 Asking costs one round trip at the moment the machine is decided, and no window:
 `wl_output` is a global like any other and says how large it is without anything
@@ -125,6 +127,81 @@ something says which happened.
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.
+
+
+Settings
+========
+
+Everything above can be said in a file instead, which is what most of it wants:
+which screen the machine has and where the drive is rooted do not change
+between one program and the next, and having to remember them on every command
+line is how they come to differ by accident.
+
+`~/.tosemu` is read when it is there, `-c <file>` reads another instead, and
+`--no-config` reads none at all. A file named with `-c` that cannot be read is
+an error rather than a shrug; the one in the home directory is a file that may
+be there rather than one that has to be.
+
+    # Everything is in a section. A remark is a whole line and only a whole
+    # line: a hash halfway along one is part of the value, because a path or a
+    # list of clicks may have a hash in it and losing its tail is worse than
+    # having to put the remark above.
+
+    [screen]
+    mode   = native-color
+    scale  = 3
+    window = yes
+    # output = DP-1
+
+    [input]
+    keys   = \r
+    clicks = 100,50 200,60
+
+    [files]
+    base = /home/me/tos
+
+    [session]
+    socket = /run/user/1000/tosaesd
+
+    [debug]
+    screenshot  = /tmp/screen.ppm
+    trace-input = no
+    trace-paths = no
+
+Which is which:
+
+| in the file            | in the environment   |
+| ---------------------- | -------------------- |
+| `[screen] mode`        | `TOSEMU_SCREEN`      |
+| `[screen] scale`       | `TOSEMU_SCALE`       |
+| `[screen] output`      | `TOSEMU_OUTPUT`      |
+| `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
+| `[input] keys`         | `TOSEMU_KEYS`        |
+| `[input] clicks`       | `TOSEMU_CLICKS`      |
+| `[files] base`         | `TOS_BASE_PATH`      |
+| `[session] socket`     | `TOSEMU_AESD`        |
+| `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  |
+| `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` |
+| `[debug] trace-paths`  | `TOSEMU_TRACE_PATHS` |
+
+An environment variable overrides what the file says, because saying something
+on a command line is saying it about that run in particular - a file that won
+would leave no way to try anything without editing it first. Said twice in one
+file, the later line is the one that meant it. A value keeps its spaces if it
+is in double quotes, and a name that is not one of these is complained about
+rather than ignored: a settings file quietly half read is worse than one
+refused.
+
+`window` is the only one that is not a rename. An environment variable is set
+or it is not, with no room in that for saying no, which is why it is called
+`TOSEMU_NO_WINDOW`; a file has room, and nobody should have to write
+`no-window = no`. For it and the two `trace-` settings, `no`, `0`, `off` and
+`false` mean no and anything else present means yes.
+
+`tosaesd` reads the same file and takes the same two arguments. That is where
+to put the settings for a session that has a daemon in it: the daemon is what
+says which screen the machine has, to every application that arrives and to the
+accessories it starts itself.
 
 `bin/tosaesd` is the daemon several emulator processes have in common. It is
 not needed to run one program: an application on its own has nobody to agree

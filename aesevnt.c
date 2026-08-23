@@ -39,6 +39,7 @@
  */
 
 #include "aes_p.h"
+#include "settings.h"
 
 #include <poll.h>
 #include <stdlib.h>
@@ -301,7 +302,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * waits asking the same question and one wait asking twice. The
              * two look identical from anywhere else.
              */
-            if (getenv("TOSEMU_TRACE_INPUT"))
+            if (setting_flag("TOSEMU_TRACE_INPUT"))
                 printf("tosemu: wait for buttons %x to be %x, they are %x%s\n",
                        bmask, bstate, now,
                        (buttons_are(now, bmask, bstate)

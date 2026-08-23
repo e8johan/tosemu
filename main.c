@@ -27,6 +27,7 @@
 #include "m68k.h"
 
 #include "tossystem.h"
+#include "settings.h"
 
 int verbose;
 
@@ -112,6 +113,23 @@ static int is_an_accessory(const char *path)
     return len >= 4 && strcasecmp(path + len - 4, ".acc") == 0;
 }
 
+static void usage(void)
+{
+    const char *where = settings_default_path();
+
+    printf("Usage: tosemu [-v] [-c <file>] [--no-config] <binary> [<args>]\n"
+           "\n"
+           "\t<binary>       name of binary to execute\n"
+           "\t-v             say what the emulated program is doing\n"
+           "\t-c <file>      read settings from <file>\n"
+           "\t--no-config    read no settings file at all\n"
+           "\n"
+           "Settings are read from %s when there is one, and an environment\n"
+           "variable overrides what it says. See README.md for the settings\n"
+           "there are.\n",
+           where ? where : "the settings file");
+}
+
 int main(int argc, char **argv)
 {
     void *binary_data;
@@ -120,23 +138,61 @@ int main(int argc, char **argv)
     char cmdlin[TOS_CMDLIN_SIZE];
     char *env;
     uint32_t env_len;
+    const char *config = 0;
     int argb = 1;
+    int no_config = 0;
 
     verbose = 0;
 
-    /* Program usage */
-    if (argc < 2)
+    /*
+     * The emulator's own arguments, which stop at the name of the binary.
+     * Everything after that is the application's, including anything that
+     * looks like one of these - a TOS program is entitled to be passed -v.
+     */
+    while (argb < argc && argv[argb][0] == '-' && argv[argb][1] != '\0')
     {
-        printf("Usage: tosemu [-v] <binary> [<args>]\n\n\t<binary> name of binary to execute\n");
+        const char *arg = argv[argb];
+
+        if (strcmp(arg, "-v") == 0)
+            verbose = -1;
+        else if (strcmp(arg, "--no-config") == 0)
+            no_config = 1;
+        else if (strcmp(arg, "-c") == 0 || strcmp(arg, "--config") == 0)
+        {
+            if (argb + 1 >= argc)
+            {
+                printf("tosemu: %s wants the name of a settings file\n", arg);
+                return -1;
+            }
+            config = argv[++argb];
+        }
+        else if (strncmp(arg, "--config=", 9) == 0)
+            config = arg + 9;
+        else
+        {
+            printf("tosemu: %s is not something this understands\n", arg);
+            usage();
+            return -1;
+        }
+
+        argb++;
+    }
+
+    if (argb >= argc)
+    {
+        usage();
         return -1;
     }
 
-    /* Check if we want to be verbose */
-    if (argc >= 3 && strcmp("-v", argv[1]) == 0)
-    {
-        verbose = -1;
-        argb++;
-    }
+    /*
+     * Before anything asks for a setting, which is nearly the first thing
+     * loading a program does: where the drive is rooted is a setting, and so
+     * is which screen the machine has.
+     */
+    if (no_config)
+        settings_ignore_file();
+    else if (!settings_load(config))
+        return -1;
 
     remember_program_name(argv[argb]);
     tos_load_as_accessory(is_an_accessory(argv[argb]));

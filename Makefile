@@ -2,7 +2,7 @@
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
-              gfx.c screen.c \
+              gfx.c screen.c settings.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -124,7 +124,7 @@ EMUTOSLDFLAGS = -no-pie
 all: bin/tosemu bin/tosaesd
 
 .PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check screen-check demos
+        emuvdi-check screen-check settings-check demos
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -208,7 +208,7 @@ rsc/tray-icon.h: rsc/tray.svg rsc/icon-to-c.py
 
 aesdtray.o: rsc/tray-icon.h
 
-bin/tosaesd: aesd.o aesdtray.o screen.o
+bin/tosaesd: aesd.o aesdtray.o screen.o settings.o
 	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) $(WAYLANDONLYLIBS) -o $@
 
 # Turning a display into a screen, checked without a display. Built for the
@@ -216,17 +216,31 @@ bin/tosaesd: aesd.o aesdtray.o screen.o
 # is: what is being checked is not something an application can reach. A
 # compositor's answer cannot be arranged by a test, so the asking is checked by
 # using it and the arithmetic is checked here.
-bin/screentest: screentest.c screen.o
+bin/screentest: screentest.c screen.o settings.o
 	@mkdir -p bin/
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(WAYLANDONLYLIBS) -o $@
 
 screen-check: bin/screentest
 	./bin/screentest
 
+# Reading a settings file, checked without one of somebody's own. Host-built
+# for the same reason as the two above: what is checked here - a remark
+# understood as a remark, a value said twice, a name spelled wrongly being
+# complained about - is not visible from inside the emulated machine.
+bin/settingstest: settingstest.c settings.o
+	@mkdir -p bin/
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+settings-check: bin/settingstest
+	./bin/settingstest
+
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
 # is being checked, not anything an application can reach yet.
-bin/vditest: emuvdi/vditest.c $(EMUTOSOBJECTS)
+#
+# settings.o comes along because hostfs.c asks whether it is to say which
+# directories were read, and that is a setting rather than a variable now.
+bin/vditest: emuvdi/vditest.c $(EMUTOSOBJECTS) settings.o
 	@mkdir -p bin/
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
 
@@ -283,7 +297,7 @@ bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: bin/tosemu bin/tosaesd screen-check
+check: bin/tosemu bin/tosaesd screen-check settings-check
 	$(MAKE) -C tests check
 
 devpac-check: bin/tosemu

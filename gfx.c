@@ -68,6 +68,7 @@
 
 #include "surface.h"
 #include "screen.h"
+#include "settings.h"
 #include "emuvdi/emuvdi.h"
 
 /* Told to the AES when a window's frame is used to close it, so that the
@@ -302,7 +303,7 @@ static void key_post(uint16_t key)
 static void keys_from_environment(void)
 {
     static int done;
-    const char *keys = getenv("TOSEMU_KEYS");
+    const char *keys = setting("TOSEMU_KEYS");
     int i;
 
     if (done || !keys)
@@ -447,7 +448,7 @@ uint16_t gfx_kstate()
 static void clicks_from_environment(void)
 {
     static int done;
-    const char *clicks = getenv("TOSEMU_CLICKS");
+    const char *clicks = setting("TOSEMU_CLICKS");
     int x, y, n;
 
     if (done || !clicks)
@@ -1321,7 +1322,7 @@ int gfx_open(struct surface *screen)
      * and closes windows on whoever's desktop happens to be logged in is a
      * nuisance rather than a feature.
      */
-    if (getenv("TOSEMU_NO_WINDOW"))
+    if (setting_flag("TOSEMU_NO_WINDOW"))
         return 0;
 
     w.screen = screen;

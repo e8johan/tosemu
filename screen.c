@@ -34,6 +34,7 @@
  */
 
 #include "screen.h"
+#include "settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,7 +51,7 @@ int screen_scale(void)
 {
     /* Said once rather than once a window, which is how often this is asked */
     static int complained;
-    const char *said = getenv("TOSEMU_SCALE");
+    const char *said = setting("TOSEMU_SCALE");
     int n;
 
     if (!said)
@@ -322,7 +323,7 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
 {
     struct wl_display *display;
     struct wl_registry *registry;
-    const char *wanted = getenv("TOSEMU_OUTPUT");
+    const char *wanted = setting("TOSEMU_OUTPUT");
     struct display *picked = 0;
     int i;
 
@@ -395,7 +396,7 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
 
 void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 {
-    const char *want = getenv("TOSEMU_SCREEN");
+    const char *want = setting("TOSEMU_SCREEN");
     size_t i;
 
     for (i = 0; want && i < sizeof modes / sizeof modes[0]; i++)

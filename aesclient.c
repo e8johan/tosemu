@@ -35,6 +35,7 @@
  */
 
 #include "aesclient.h"
+#include "settings.h"
 
 #include <errno.h>
 #include <poll.h>
@@ -71,7 +72,7 @@ static struct {
  * of its own without disturbing the one the person is using */
 const char *aes_client_socket_path(char *buffer, size_t size)
 {
-    const char *said = getenv("TOSEMU_AESD");
+    const char *said = setting("TOSEMU_AESD");
     const char *dir;
 
     if (said && *said)

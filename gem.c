@@ -43,6 +43,7 @@
 #include "aes_p.h"
 #include "aesclient.h"
 #include "screen.h"
+#include "settings.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
@@ -270,7 +271,7 @@ void gem_present()
     if (!started)
         return;
 
-    shot = getenv("TOSEMU_SCREENSHOT");
+    shot = setting("TOSEMU_SCREENSHOT");
     if (shot)
     {
         /* Whichever is being drawn into. A dialog's surface starts as a copy

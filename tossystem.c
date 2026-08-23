@@ -19,6 +19,7 @@
  *
  */
 #include "tossystem.h"
+#include "settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -432,7 +433,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                                 const char *env, uint32_t env_len)
 {
     struct exec_header *header;
-    char *path;
+    const char *path;
     
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
@@ -569,7 +570,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
 
     /* Always a string of its own, so that free_tos_environment can let go of
      * it without having to know where it came from */
-    path = getenv("TOS_BASE_PATH");
+    path = setting("TOS_BASE_PATH");
     if (path == NULL)
         te->base_path = strdup("");
     else

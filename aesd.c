@@ -63,6 +63,7 @@
 #include "aesproto.h"
 #include "aesdtray.h"
 #include "screen.h"
+#include "settings.h"
 
 /*
  * How many applications there can be.
@@ -888,17 +889,27 @@ int main(int argc, char **argv)
 {
     struct sockaddr_un where;
     const char *said;
+    const char *config = 0;
+    int no_config = 0;
     int i;
 
     for (i = 1; i < argc; i++)
     {
         if (!strcmp(argv[i], "-v"))
             talkative = 1;
+        else if (!strcmp(argv[i], "--no-config"))
+            no_config = 1;
+        else if ((!strcmp(argv[i], "-c") || !strcmp(argv[i], "--config"))
+                 && i + 1 < argc)
+            config = argv[++i];
+        else if (!strncmp(argv[i], "--config=", 9))
+            config = argv[i] + 9;
         else if (!accessory_directory && argv[i][0] != '-')
             accessory_directory = argv[i];
         else
         {
-            printf("Usage: tosaesd [-v] [directory]\n\n"
+            printf("Usage: tosaesd [-v] [-c <file>] [--no-config] "
+                   "[directory]\n\n"
                    "The daemon several tosemu processes have in common: which\n"
                    "application is which, what the screen looks like, and\n"
                    "messages one sends another.\n\n"
@@ -906,11 +917,28 @@ int main(int argc, char **argv)
                    "in .ACC - and each one is started in an emulator of its\n"
                    "own. They put themselves in the Desk menu of every\n"
                    "application that runs afterwards.\n\n"
-                   "TOSEMU_AESD says where to put the socket, and defaults to\n"
-                   "$XDG_RUNTIME_DIR/" AESD_SOCKET_NAME ".\n");
+                   "Settings come from %s when there is one, and an\n"
+                   "environment variable overrides what it says. This is\n"
+                   "where to set them for a session: the daemon is what says\n"
+                   "which screen the machine has, to every application that\n"
+                   "arrives and to the accessories it starts itself.\n\n"
+                   "TOSEMU_AESD, or [session] socket, says where to put the\n"
+                   "socket, and defaults to $XDG_RUNTIME_DIR/"
+                   AESD_SOCKET_NAME ".\n",
+                   settings_default_path() ? settings_default_path()
+                                           : "the settings file");
             return 1;
         }
     }
+
+    /*
+     * The settings before anything reads one, which here is the very next
+     * line: which screen this session has is one of them.
+     */
+    if (no_config)
+        settings_ignore_file();
+    else if (!settings_load(config))
+        return 1;
 
     /* Which machine this session is, before anybody can arrive to be told.
      * The screens that are as large as the display ask the compositor here,
@@ -919,7 +947,7 @@ int main(int argc, char **argv)
      * process that tells it. */
     screen_mode(&screen_width, &screen_height, &screen_planes);
 
-    said = getenv("TOSEMU_AESD");
+    said = setting("TOSEMU_AESD");
     if (said && *said)
         snprintf(socket_path, sizeof socket_path, "%s", said);
     else

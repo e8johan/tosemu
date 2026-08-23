@@ -19,6 +19,7 @@ runs through the whole program and most of the interesting bugs live on it.
     3rdparty/emutos/           the submodule. Read only. Never edited.
     gfx.c surface.c            the screen as memory, and as windows on Wayland
     screen.c                   which screen the machine has
+    settings.c                 everything tosemu can be told, and where from
     aesd.c aesclient.c         the daemon several emulators share, and the client
     tests/                     68000 programs run under the emulator
 
@@ -107,6 +108,17 @@ wants to be alone.
 
 **Never kill a running `tosaesd`.** It is probably the session someone is using.
 
+**A settings file in someone's home directory decides things the tests
+assert**, the same way a live daemon does. `~/.tosemu` is read unless
+`--no-config` says otherwise, which is why `$(TOSEMU)` in `tests/Makefile`
+passes it. Nothing that runs in the suite should read a file nobody put there
+for it.
+
+**Do not add a `getenv` for a new setting.** Add a line to the table in
+`settings.c` and call `setting()` or `setting_flag()`, which is what makes it
+sayable in a file as well as in the environment. The table is also what makes a
+misspelt name in a file get complained about instead of ignored.
+
 **A compositor is not something a test can arrange.** One machine has two
 displays and a build server has none, so anything that asks Wayland has to be
 checked with `$(NO_DISPLAY)` for what it does when there is nothing to ask, and
@@ -123,8 +135,11 @@ Two kinds, and they are built differently.
 
 **On the host**: `bin/vditest` (`make emuvdi-check`) draws with the ported VDI
 and diffs against `emuvdi/vditest.expected`; `bin/screentest`
-(`make screen-check`) checks the display arithmetic. These are for the things an
-application cannot reach.
+(`make screen-check`) checks the display arithmetic; `bin/settingstest`
+(`make settings-check`) checks the reading of a settings file. These are for
+the things an application cannot reach — what a compositor answers is not
+something a test can arrange, and neither is whether a remark in a file was
+understood as a remark.
 
 Both use the TAP idiom:
 
@@ -206,8 +221,8 @@ characters across. A dialog out of a resource is measured in characters, so how
 many fit is what decides whether it fits at all.
 
 The daemon decides when there is one, including for the accessories it starts,
-so `TOSEMU_SCREEN`, `TOSEMU_SCALE` and `TOSEMU_OUTPUT` go on `tosaesd` in a
-session that has one.
+so `TOSEMU_SCREEN`, `TOSEMU_SCALE` and `TOSEMU_OUTPUT` — or the `[screen]`
+section of a settings file — go on `tosaesd` in a session that has one.
 
 Adding a screen is a line in that table only when it is the same planes in
 another shape. The comment above the table says which of the machines' other
