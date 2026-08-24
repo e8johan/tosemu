@@ -42,6 +42,7 @@
 #include "gem_p.h"
 #include "gfx.h"
 #include "settings.h"
+#include "surface.h"
 #include "emuvdi/emuvdi.h"
 #include "tossystem.h"
 #include "m68k.h"
@@ -303,13 +304,33 @@ static void frame_of(struct window *win, struct aes_frame *frame)
 static void draw_frame(struct window *win)
 {
     struct aes_frame frame;
+    struct surface *was;
 
     if (!win->open)
         return;
 
     frame_of(win, &frame);
 
+    /*
+     * Onto the screen, whatever else is being drawn into.
+     *
+     * A dialog reserves the screen and everything drawn while it is up lands on
+     * a surface of the dialog's, which is what keeps a dialog out of the window
+     * behind it. A frame is not part of the dialog: it is drawn where its
+     * window is, and its window shows the screen. An application that opens a
+     * window while a dialog of its own is up - which is what ProCalc does with
+     * its information box - would otherwise have the frame appear inside the
+     * dialog and nowhere near the window.
+     */
+    was = surface_selected();
+
+    if (gem_screen_surface())
+        surface_select(gem_screen_surface());
+
     aes_frame_draw(&frame);
+
+    if (was)
+        surface_select(was);
 }
 
 /*

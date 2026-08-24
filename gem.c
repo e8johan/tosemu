@@ -298,6 +298,22 @@ struct surface *gem_menu_surface(void)
 }
 
 /*
+ * The screen, for the things that belong to it whatever else is being drawn
+ * into.
+ *
+ * Most of what the AES draws belongs wherever the drawing is going: a dialog
+ * reserves the screen, everything after that lands on the dialog's surface,
+ * and that is what keeps a dialog out of the window behind it. A window's
+ * frame is the exception. It is drawn where the window is and the window shows
+ * the screen, so a frame drawn while a dialog is up has to go past the dialog
+ * and onto the screen - see draw_frame in aeswind.c, which is what asks.
+ */
+struct surface *gem_screen_surface(void)
+{
+    return screen;
+}
+
+/*
  * What a child of fork has to do before it is a program of its own.
  *
  * It has a copy of everything this one had: a connection to the compositor

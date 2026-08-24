@@ -89,6 +89,11 @@ void gem_menu_begin(void);
 void gem_menu_end(void);
 struct surface *gem_menu_surface(void);
 
+/* The screen itself, for the things that belong to it whatever else is being
+ * drawn into - a window's frame is drawn where the window is, and the window
+ * shows the screen rather than whatever a dialog reserved */
+struct surface *gem_screen_surface(void);
+
 /* Puts what has been drawn where it can be seen: a window if there is a
  * compositor, and a file if TOSEMU_SCREENSHOT asked for one */
 void gem_present();

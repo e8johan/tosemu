@@ -69,6 +69,11 @@
 #define other_x       (450)
 #define other_w       (100)
 
+/* And where the one opened behind a dialog goes, which is a corner of the
+ * screen nothing else has drawn in */
+#define behind_x      (450)
+#define behind_y      (300)
+
 /* What wind_get and wind_set are asked about. gemlib names these already, so
  * only the numbers are wanted here, and it names them the same way. */
 
@@ -139,6 +144,7 @@ int main(int argc, char **argv)
     short inside_x, inside_w, inside_y, inside_h;
     short work_x, work_y, work_w;
     short far_x;
+    short behind;
     short others[WINDOWS + 1];
     int atari_frame = (argc < 2) || strcmp(argv[1], "desktop") != 0;
 
@@ -257,6 +263,53 @@ int main(int argc, char **argv)
     check(ink_in(handle, (short)(work_x + work_w), (short)(work_y + 4),
                  1, 4), 1,
           "and the scroll bar begins where the work area ends");
+
+    /*
+     * A window opened while a dialog is up, whose frame belongs to the window
+     * and not to the dialog.
+     *
+     * form_dial reserves the screen, and everything drawn while it is reserved
+     * goes onto a surface of the dialog's - which is what keeps a dialog out of
+     * the window behind it. A window's frame is not part of that: it is drawn
+     * where the window is, and the window shows the screen.
+     *
+     * Which surface it landed on is asked by asking twice. While the dialog is
+     * up, reading a pixel reads the dialog's surface, and the frame has to be
+     * absent from it; once the dialog is finished with, the same pixel is the
+     * screen's, and the frame has to be there.
+     */
+    intin[0] = 0;                                    /* FMD_START */
+    intin[5] = 40; intin[6] = 40; intin[7] = 200; intin[8] = 100;
+    call_aes(51, 9, 1, 0, 0);                        /* form_dial */
+
+    intin[0] = 0;                                    /* no gadgets but a name */
+    intin[0] = W_HAS_NAME|W_HAS_CLOSER;
+    intin[1] = behind_x; intin[2] = behind_y;
+    intin[3] = other_w; intin[4] = (short)(2 * hbox);
+    behind = call_aes(100, 5, 1, 0, 0);              /* wind_create */
+
+    intin[0] = behind;
+    intin[1] = behind_x; intin[2] = behind_y;
+    intin[3] = other_w; intin[4] = (short)(2 * hbox);
+    call_aes(101, 5, 1, 0, 0);                       /* wind_open */
+
+    check(ink_in(handle, (short)(behind_x + 2), (short)(behind_y + 2),
+                 (short)(other_w - 4), inside_h), 0,
+          "a window opened behind a dialog does not draw its frame on it");
+
+    intin[0] = 3;                                    /* FMD_FINISH */
+    intin[5] = 40; intin[6] = 40; intin[7] = 200; intin[8] = 100;
+    call_aes(51, 9, 1, 0, 0);                        /* form_dial */
+
+    check(ink_in(handle, (short)(behind_x + 2), (short)(behind_y + 2),
+                 (short)(other_w - 4), inside_h), atari_frame ? 1 : 0,
+          atari_frame ? "it draws it on the screen, where the window is"
+                      : "and there is none to draw when the desktop draws it");
+
+    intin[0] = behind;
+    call_aes(102, 1, 1, 0, 0);                       /* wind_close */
+    intin[0] = behind;
+    call_aes(103, 1, 1, 0, 0);                       /* wind_delete */
 
     /*
      * The eighth window, which is the last the AES allows.
