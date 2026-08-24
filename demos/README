@@ -86,11 +86,14 @@ message GEM sent when somebody pulled its size box about. The window becomes
 that size when the application sets its rectangle to what the message said; one
 that ignored the message would keep the window it had.
 
-Nothing happens inside the window until the drag ends, which is deliberate and
-is what an ST did: it dragged an outline and told the application once, when
-the button came up. Redrawing a document on every frame of a drag is slow
-enough to feel on a 68000, and it is more than any application built for GEM
-was ever asked to do.
+While the drag is running the window is the size the drag has reached and what
+is in it is a rubber band: an outline of alternate black and white pixels with
+the desktop showing through the middle, which is what an ST drew while a window
+was being sized. The application hears nothing until the button comes up and
+then redraws once. Redrawing a document on every frame of a drag is slow enough
+to feel on a 68000, and it is more than any application built for GEM was ever
+asked to do - so the feedback is the emulator's to give and the drawing is the
+application's, which is the division the rubber band was invented for.
 
 A window can only be made as large as the screen the AES lays it out on, which
 is 640x400 unless TOSEMU_SCREEN says otherwise - try `native-mono` for one as

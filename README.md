@@ -72,13 +72,15 @@ the other way round: the desktop's frame, and GEM's title bar left out of what
 is shown. Dialogs and the menu bar always take the desktop's, having no frame
 of their own to wear.
 
-Nothing inside the window changes until a resize drag ends, which is what an ST
-did with its rubber band: it dragged an outline and told the application once,
-when the button came up. The application is then sent GEM's own two messages -
-WM_SIZED, saying what rectangle to take, and WM_REDRAW, saying to paint what is
-now inside it - and one that answers them redraws its document once rather than
-on every frame of the drag, which on a 68000 is the difference between a resize
-and a wait.
+A resize drag shows a rubber band, which is what an ST did: the window becomes
+the size the drag has reached and what is in it is an outline of alternate black
+and white pixels with the desktop showing through. The application hears nothing
+until the button comes up, and is then sent GEM's own two messages - WM_SIZED,
+saying what rectangle to take, and WM_REDRAW, saying to paint what is now inside
+it - so it redraws its document once rather than on every frame of the drag,
+which on a 68000 is the difference between a resize and a wait. The feedback is
+the emulator's to give and the drawing is the application's, which is the
+division the rubber band was invented for.
 
 Which screen it is comes from `TOSEMU_SCREEN`. The ST's three are `low`,
 320x200 in sixteen colours, `medium`, 640x200 in four, and `high`, 640x400 in

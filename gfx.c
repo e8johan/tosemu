@@ -158,6 +158,10 @@ struct window {
     int16_t asked_sw, asked_sh;
     int16_t told_sw, told_sh;
 
+    /* Whether a drag is running on it, which is what makes the window show the
+     * outline of the size being chosen rather than what it is showing */
+    int dragging;
+
     /* Whether the compositor said this window is the one being worked in, as
      * of the last configure */
     int active;
@@ -1009,6 +1013,11 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     surface_configure
 };
 
+/* The two ways a window can be shown, and the one that is not the ordinary
+ * one - both written out below, and both wanted here */
+static void window_present(struct window *win);
+static int window_drag_preview(struct window *win, int width, int height);
+
 /*
  * The compositor saying how large a window is to be, which is how a window
  * comes to be resized: the person takes hold of the size box, the compositor
@@ -1075,7 +1084,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
     }
 
     /*
-     * Nothing at all while a drag is running.
+     * The application hears nothing at all while a drag is running.
      *
      * A compositor says how large the window is to be on every frame of one,
      * and acting on each of those means the application redrawing its document
@@ -1085,12 +1094,39 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * application once, when the button came up, and an application built for
      * that redraws once.
      *
-     * So the size is noted and the last one noted is the one that counts. What
-     * the person sees while dragging is whatever the desktop shows for a window
-     * that is not repainting, which is the outline in its own way round.
+     * So the size is noted, the last one noted is the one that counts, and what
+     * the window shows in the meantime is that outline - the window really is
+     * the size being chosen, and what is in it is a rubber band with the
+     * desktop showing through. Drawing that costs nothing the emulated machine
+     * pays for: it is a few thousand writes into a buffer, and the 68000 is not
+     * involved in any of it.
      */
+    if (width > 0 && height > 0 && dragging)
+    {
+        if (!win->dragging || width != win->width || height != win->height)
+            window_drag_preview(win, width, height);
+        return;
+    }
+
     if (dragging)
         return;
+
+    /*
+     * The drag has ended, so the outline goes and the window shows what it is
+     * showing again.
+     *
+     * Its buffer stays the size the drag arrived at rather than going back to
+     * the size the window was, because going back is a jump to the old size and
+     * then another to the new one - the application has not answered yet, and
+     * will not until it has been told. So the picture is put in the buffer as
+     * it stands, with the screen's background where it does not reach, and the
+     * moment it is asked for the rest is drawn.
+     */
+    if (win->dragging)
+    {
+        win->dragging = 0;
+        window_present(win);
+    }
 
     sw = win->asked_sw;
     sh = win->asked_sh;
@@ -1199,9 +1235,17 @@ static const struct wl_registry_listener registry_listener = {
     registry_remove
 };
 
-/* Memory both this and the compositor can see, which is how a picture is
- * handed over without copying it through the socket */
-static int window_buffer(struct window *win)
+/*
+ * Memory both this and the compositor can see, which is how a picture is
+ * handed over without copying it through the socket.
+ *
+ * The format is a choice because a window is two things at different moments.
+ * Showing part of the screen it is a picture with nothing behind it, and
+ * XRGB says so. Showing the outline of a resize it is mostly not there at
+ * all - what a rubber band is, is the desktop seen through it - and that needs
+ * the alpha byte to mean something.
+ */
+static int window_buffer(struct window *win, uint32_t format)
 {
     struct wl_shm_pool *pool;
     int fd;
@@ -1228,18 +1272,16 @@ static int window_buffer(struct window *win)
 
     pool = wl_shm_create_pool(w.shm, fd, (int32_t)win->bytes);
     win->buffer = wl_shm_pool_create_buffer(pool, 0, win->width, win->height,
-                                            win->width * 4,
-                                            WL_SHM_FORMAT_XRGB8888);
+                                            win->width * 4, format);
     wl_shm_pool_destroy(pool);
     close(fd);
 
     return win->buffer != 0;
 }
 
-static void window_present(struct window *win);
-
 /*
- * A window that has become a different size, which is a different buffer.
+ * A window whose buffer has to be a different size, which is a different
+ * buffer.
  *
  * The window itself stays. Tearing it down and opening another one at the new
  * size would work and is what this used to do, but not while somebody is
@@ -1252,23 +1294,19 @@ static void window_present(struct window *win);
  * take away, and destroying it first leaves a moment with nothing in the
  * window.
  */
-static int window_resize(struct window *win, int16_t sw, int16_t sh)
+static int window_rebuffer(struct window *win, int width, int height,
+                           uint32_t format)
 {
     struct wl_buffer *was = win->buffer;
     uint32_t *had = win->pixels;
     size_t held = win->bytes;
-    int16_t old_sw = win->sw, old_sh = win->sh;
     int old_width = win->width, old_height = win->height;
 
-    win->sw = sw;
-    win->sh = sh;
-    win->width = sw * win->scale;
-    win->height = sh * win->scale;
+    win->width = width;
+    win->height = height;
 
-    if (!window_buffer(win))
+    if (!window_buffer(win, format))
     {
-        win->sw = old_sw;
-        win->sh = old_sh;
         win->width = old_width;
         win->height = old_height;
         win->buffer = was;
@@ -1285,6 +1323,43 @@ static int window_resize(struct window *win, int16_t sw, int16_t sh)
         wl_buffer_destroy(was);
 
     return 1;
+}
+
+/* A window showing a different rectangle of the screen, which is the ordinary
+ * case: the buffer is that rectangle scaled up and the picture goes in it */
+static int window_resize(struct window *win, int16_t sw, int16_t sh)
+{
+    int16_t old_sw = win->sw, old_sh = win->sh;
+
+    win->sw = sw;
+    win->sh = sh;
+    win->dragging = 0;
+
+    if (window_rebuffer(win, sw * win->scale, sh * win->scale,
+                        WL_SHM_FORMAT_XRGB8888))
+        return 1;
+
+    win->sw = old_sw;
+    win->sh = old_sh;
+
+    return 0;
+}
+
+/*
+ * And the same window while somebody is dragging its corner.
+ *
+ * The buffer becomes the size the drag has arrived at, so the window really is
+ * that size and a person can see what they are choosing. What goes in it is not
+ * the window: it is the outline of one, with the desktop showing through, which
+ * is the rubber band an ST drew while a window was being sized. What the window
+ * is showing has not changed and will not until the application says so - see
+ * toplevel_configure, which says why the application is left out of the drag.
+ */
+static int window_drag_preview(struct window *win, int width, int height)
+{
+    win->dragging = 1;
+
+    return window_rebuffer(win, width, height, WL_SHM_FORMAT_ARGB8888);
 }
 
 /* Whichever GEM window is nearest the front, for a dialog to belong to */
@@ -1445,7 +1520,7 @@ static int window_create(struct window *win, const char *title,
     wl_surface_commit(win->surface);
     wl_display_roundtrip(w.display);    /* Waits for the first configure */
 
-    if (!window_buffer(win))
+    if (!window_buffer(win, WL_SHM_FORMAT_XRGB8888))
         return 0;
 
     win->used = 1;
@@ -1850,7 +1925,7 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
 
     win->used = 1;
 
-    if (!window_buffer(win))
+    if (!window_buffer(win, WL_SHM_FORMAT_XRGB8888))
     {
         window_destroy(win);
         return;
@@ -1959,19 +2034,55 @@ void gfx_dispatch_ready(void)
  * the part that changed: at ST sizes it is a few hundred thousand writes, and
  * knowing what changed is worth having only once there is something to spend
  * the saving on.
+ *
+ * The buffer is not always the size of that rectangle. A drag leaves the window
+ * the size the drag ended at, and what it shows only becomes that size when the
+ * application takes the new rectangle - so anything the picture does not reach
+ * is filled with the colour the screen's background is, and anything past the
+ * end of the buffer is left off. Neither lasts longer than the moment between
+ * the drag ending and the application answering it, and an application that
+ * never answers is honestly showing what it kept.
  */
-static void window_present(struct window *win)
+static void window_picture(struct window *win)
 {
+    uint32_t behind = emuvdi_palette_argb(0);
+    int rows = win->sh * win->scale;
+    int columns = win->sw * win->scale;
     int x, y, sx, sy;
 
-    if (!win->used || !win->configured)
-        return;
+    if (rows > win->height)
+        rows = win->height;
+    if (columns > win->width)
+        columns = win->width;
+
+    for (y = 0; y < win->height; y++)
+    {
+        uint32_t *row = win->pixels + (size_t)y * win->width;
+
+        if (y >= rows)
+        {
+            for (x = 0; x < win->width; x++)
+                row[x] = behind;
+            continue;
+        }
+
+        for (x = columns; x < win->width; x++)
+            row[x] = behind;
+    }
 
     for (y = 0; y < win->sh; y++)
     {
+        if (y * win->scale >= rows)
+            break;
+
         for (x = 0; x < win->sw; x++)
         {
-            uint32_t argb = emuvdi_palette_argb(
+            uint32_t argb;
+
+            if (x * win->scale >= columns)
+                break;
+
+            argb = emuvdi_palette_argb(
                 surface_pixel(win->shows, (uint16_t)(win->sx + x),
                               (uint16_t)(win->sy + y)));
 
@@ -1986,6 +2097,66 @@ static void window_present(struct window *win)
             }
         }
     }
+}
+
+/*
+ * And the rubber band, which is what a window shows while its corner is being
+ * dragged.
+ *
+ * An outline of the size the drag has arrived at and nothing else: the desktop
+ * shows through the middle of it, which is what a rubber band is. GEM drew the
+ * same thing on an ST while a window was being sized, and drew it exactly this
+ * way - a rectangle in a line style of alternate pixels, which comes out as a
+ * chequer of black and white and is legible against anything. See gsx_xline in
+ * EmuTOS, where the two patterns are 0x5555 and 0xaaaa chosen by the parity of
+ * the row: between them they light every pixel whose coordinates add up to an
+ * odd number, and this is that said directly.
+ *
+ * The chequer is worked out in the screen's pixels rather than the desktop's,
+ * so it stays a chequer of ST pixels however far the window is magnified.
+ *
+ * Its two colours are black and white said outright rather than taken from the
+ * machine's palette, because this is the emulator drawing and not the machine:
+ * an application that had set its first two colours to two greens would get a
+ * rubber band nobody could see, and there is nothing on the emulated screen for
+ * one to match anyway. Black against white is legible on any desktop.
+ */
+static void window_outline(struct window *win)
+{
+    uint32_t black = 0xff000000u;
+    uint32_t white = 0xffffffffu;
+
+    int thick = win->scale;
+    int x, y;
+
+    for (y = 0; y < win->height; y++)
+    {
+        uint32_t *row = win->pixels + (size_t)y * win->width;
+        int edge_row = y < thick || y >= win->height - thick;
+
+        for (x = 0; x < win->width; x++)
+        {
+            if (!edge_row && x >= thick && x < win->width - thick)
+            {
+                row[x] = 0;             /* nothing at all, so the desktop
+                                         * shows through */
+                continue;
+            }
+
+            row[x] = ((x / win->scale + y / win->scale) & 1) ? black : white;
+        }
+    }
+}
+
+static void window_present(struct window *win)
+{
+    if (!win->used || !win->configured || !win->pixels)
+        return;
+
+    if (win->dragging)
+        window_outline(win);
+    else
+        window_picture(win);
 
     wl_surface_attach(win->surface, win->buffer, 0, 0);
     wl_surface_damage_buffer(win->surface, 0, 0, win->width, win->height);
