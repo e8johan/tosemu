@@ -112,10 +112,6 @@
   it can be given - aesframe.c builds one and throws it away, so keeping it is
   what this needs.
 
-- A window's information line is not drawn. It is one more object in the tree
-  aesframe.c builds, and the only reason it is not there is that it is
-  G_BOXTEXT and so needs a TEDINFO across the seam, where every other gadget
-  needs only a colour word.
 - The boxes an application drags about follow the mouse correctly but can only
   be seen where a window is showing the screen they are drawn into. A rubber
   band pulled out inside a window works; one pulled across the desktop is

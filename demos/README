@@ -48,9 +48,9 @@ grey with an Atari logo on it.
 window
 ------
 
-A window with a title, a close box, a full box, a size box and a line of text,
-and the loop every GEM application has: wait for a message, redraw when told
-to, and stop when the close box is used.
+A window with a title, a close box, a full box, an information line, a size box
+and a line of text, and the loop every GEM application has: wait for a message,
+redraw when told to, and stop when the close box is used.
 
 The frame is GEM's own and the desktop puts nothing round the outside, so what
 is there to click on is what the application asked for. Every one of those
@@ -69,17 +69,22 @@ gadgets does what its equivalent on this desktop does:
                      unless TOSEMU_SCREEN asked for a screen that size
     the size box     runs the desktop's own resize drag
 
+The strip under the title bar is the information line, which is the one part of
+the frame the AES neither reads nor acts on: the application sets the words and
+the AES puts them there. This one says how large its work area is, so a drag on
+the size box is readable from the inside.
+
 `TOSEMU_DECORATIONS=desktop` puts it back the other way round, with the
-desktop's frame and GEM's title bar left out.
+desktop's frame and GEM's title bar left out. The information line stays either
+way - nothing a desktop puts round a window says what the application wanted
+said.
 
 Resizing works the way closing does. Take hold of the size box and the desktop
 runs the drag - with the outline and the edge snapping it would give any of its
 own windows - and what the application gets when the drag ends is WM_SIZED, the
 message GEM sent when somebody pulled its size box about. The window becomes
 that size when the application sets its rectangle to what the message said; one
-that ignored the message would keep the window it had. It prints the size of
-its work area in the window, so what the drag arrived at is readable from the
-inside.
+that ignored the message would keep the window it had.
 
 A window can only be made as large as the screen the AES lays it out on, which
 is 640x400 unless TOSEMU_SCREEN says otherwise - try `native-mono` for one as

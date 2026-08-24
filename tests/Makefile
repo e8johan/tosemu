@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame
 
 CC=m68k-atari-mint-gcc
 
@@ -74,6 +74,9 @@ test-c-screen: c-screen.c
 	$(CC) $< -lgem -o $@
 
 test-c-menu: c-menu.c
+	$(CC) $< -lgem -o $@
+
+test-c-frame: c-frame.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -230,6 +233,15 @@ check: all
 	# Watching a box, which waits for the button to come up and so needs
 	# one to have been pressed - twice, because it is watched twice
 	TOSEMU_CLICKS='72,64 72,64' $(TOSEMU) test-c-watchbox > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The two strips along the top of a window, and which of them is drawn
+	# where. Twice, because the title bar is GEM's when the decorations are
+	# and the desktop's when they are not, and the information line is
+	# drawn either way.
+	$(TOSEMU) test-c-frame > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_DECORATIONS=desktop $(TOSEMU) test-c-frame desktop > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Where a menu that has dropped down is drawn, which is not on the

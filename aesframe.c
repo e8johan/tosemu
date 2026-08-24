@@ -129,6 +129,7 @@ enum {
 
     F_BOX,
     F_TITLE, F_CLOSER, F_NAME, F_FULLER,
+    F_INFO,
     F_VBAR, F_UPARROW, F_DNARROW, F_VSLIDE, F_VELEV,
     F_HBAR, F_LFARROW, F_RTARROW, F_HSLIDE, F_HELEV,
     F_SIZER,
@@ -148,16 +149,17 @@ struct piece {
 static struct piece piece[F_COUNT];
 
 /*
- * The window's name, as the thing a G_BOXTEXT points at.
+ * The two boxes with words in them, as the thing a G_BOXTEXT points at.
  *
  * Every other gadget in the frame is a colour word packed into the object
  * itself; a box with words in it is the one kind that needs a structure of its
  * own, and it has to be one the AES can read, which means below the four
- * gigabyte line. One is made the first time a title bar is drawn and used for
- * every window afterwards: only one frame is ever being drawn at a time, and
- * nothing keeps a pointer to it once the drawing is done.
+ * gigabyte line. Two are made the first time they are wanted and used for every
+ * window afterwards: only one frame is ever being drawn at a time, and nothing
+ * keeps a pointer to either once the drawing is done.
  */
 static void *name_ted;
+static void *info_ted;
 
 static void add(int16_t parent, int16_t child, int16_t type, void *spec,
                 int16_t x, int16_t y, int16_t w, int16_t h)
@@ -208,34 +210,40 @@ static void elevator(int16_t along, int16_t least, int16_t size, int16_t where,
 }
 
 /*
- * The words in the title bar, as something the object renderer can draw.
+ * A box with words in it, as something the object renderer can draw.
  *
- * Answers with null when there is nowhere to put a TEDINFO, which leaves the
- * name out of the frame and everything else in it - a title bar with no words
- * on it is worth more than no title bar at all.
+ * The eight words are EmuTOS's, unchanged: the system font, the border a
+ * pixel thick, and lengths large enough for anything a window is called. What
+ * differs between the two boxes is where the words sit in them and what colour
+ * word they carry, so those are what is passed in.
+ *
+ * Answers with null when there is nowhere to put a TEDINFO, which leaves that
+ * one box out of the frame and everything else in it - a title bar with no
+ * words on it is worth more than no title bar at all.
  */
-static void *name_of(char *name, int active)
+static void *words_in(void **ted, char *text, int16_t just, int16_t colour)
 {
     static const int16_t words[8] = {
-        IBM, 0, TE_CNTR, UNTOPPED_COLOR, 0, 1, 80, 80
+        IBM, 0, TE_LEFT, UNTOPPED_COLOR, 0, 1, 80, 80
     };
     int16_t mine[8];
     int i;
 
-    if (!name_ted)
-        name_ted = emuvdi_tedinfo_alloc();
+    if (!*ted)
+        *ted = emuvdi_tedinfo_alloc();
 
-    if (!name_ted)
+    if (!*ted)
         return 0;
 
     for (i = 0; i < 8; i++)
         mine[i] = words[i];
 
-    mine[3] = active ? TOPPED_COLOR : UNTOPPED_COLOR;
+    mine[2] = just;
+    mine[3] = colour;
 
-    emuvdi_tedinfo_set(name_ted, name ? name : "", "", "", mine, 8);
+    emuvdi_tedinfo_set(*ted, text ? text : "", "", "", mine, 8);
 
-    return name_ted;
+    return *ted;
 }
 
 /*
@@ -255,19 +263,20 @@ static int lay_out(const struct aes_frame *f)
     int16_t handle, wchar, hchar, wbox, hbox;
     int16_t work_w, work_h;
     int16_t below;
-    int have_title, have_vbar, have_hbar;
+    int have_title, have_info, have_vbar, have_hbar;
     int i;
 
     if (w <= 0 || h <= 0)
         return 0;
 
     have_title = (kind & W_STRIP) != 0 && f->name != 0;
+    have_info = (kind & W_INFO) != 0;
     have_vbar = (kind & (W_UPARROW|W_DNARROW|W_VSLIDE|W_SIZE)) != 0;
     have_hbar = (kind & (W_LFARROW|W_RTARROW|W_HSLIDE|W_SIZE)) != 0;
 
     /* Nothing to draw. A window with no gadgets is its work area and the
      * desktop's frame round the outside, which is the whole of it. */
-    if (!have_title && !have_vbar && !have_hbar)
+    if (!have_title && !have_info && !have_vbar && !have_hbar)
         return 0;
 
     emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
@@ -322,13 +331,35 @@ static int lay_out(const struct aes_frame *f)
 
         if (kind & W_NAME)
         {
-            void *ted = name_of(f->name, f->active);
+            void *ted = words_in(&name_ted, f->name, TE_CNTR,
+                                 f->active ? TOPPED_COLOR : UNTOPPED_COLOR);
 
             if (ted)
                 add(F_TITLE, F_NAME, G_BOXTEXT, ted, left, 0, room, hbox);
         }
 
         below = hbox;
+    }
+
+    /*
+     * The information line, which is a strip under the title bar holding
+     * whatever the application put there - a page number, a file name, how
+     * many bytes are left. The AES neither reads it nor acts on it; the
+     * application sets the words and this puts them where it said.
+     *
+     * It is drawn whether or not there are any words yet, because the strip is
+     * taken off the work area from the moment the window is created and an
+     * empty line is what a window with nothing to say in it looks like.
+     */
+    if (have_info)
+    {
+        void *ted = words_in(&info_ted, f->info, TE_LEFT, UNTOPPED_COLOR);
+
+        if (ted)
+        {
+            add(F_BOX, F_INFO, G_BOXTEXT, ted, 0, below, w, hbox);
+            below += hbox;
+        }
     }
 
     /* The work area, which is not drawn but says how much room the bars have.
@@ -476,6 +507,7 @@ int aes_frame_hit(const struct aes_frame *frame,
 {
     static const int order[] = {
         F_CLOSER, F_FULLER, F_NAME, F_TITLE,
+        F_INFO,
         F_UPARROW, F_DNARROW, F_VELEV, F_VSLIDE,
         F_LFARROW, F_RTARROW, F_HELEV, F_HSLIDE,
         F_SIZER

@@ -101,6 +101,10 @@ struct aes_frame {
      * name. Not copied: it is drawn where it lies. */
     char *name;
 
+    /* And what its information line says, which is whatever the application
+     * put there and means nothing to the AES */
+    char *info;
+
     /* Whether the desktop says this is the window somebody is working in,
      * which is what the title bar is drawn light or dark to say */
     int active;

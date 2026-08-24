@@ -118,6 +118,10 @@ struct window {
      * desktop puts round the outside when it is drawing that */
     char title[64];
 
+    /* And the information line, likewise. Longer, because it holds a sentence
+     * about what the window is showing rather than a name for it. */
+    char information[128];
+
     /* Whether the desktop says this is the window somebody is working in,
      * which is what its title bar is drawn light or dark to say */
     int active;
@@ -238,6 +242,29 @@ static void window_on_show(int16_t kind, int16_t *x, int16_t *y,
 }
 
 /*
+ * A string out of the machine's memory and into one this side can read.
+ *
+ * A window's name and its information line both live where the application put
+ * them, because the application owns them and may change them without telling
+ * anyone; what the frame is drawn from is a copy, taken when the application
+ * says so. Anything longer than there is room for is cut rather than refused -
+ * a title bar shows what fits and no more anyway.
+ */
+static void text_of(uint32_t address, char *into, size_t room)
+{
+    size_t i;
+
+    for (i = 0; i + 1 < room; i++)
+    {
+        into[i] = (char)m68k_read_memory_8(address + i);
+        if (into[i] == 0)
+            return;
+    }
+
+    into[i] = 0;
+}
+
+/*
  * A window as the frame code needs to see it. Everything that draws a frame or
  * asks what a click landed on fills one of these in, so that the two can never
  * be looking at different windows.
@@ -260,6 +287,7 @@ static void frame_of(struct window *win, struct aes_frame *frame)
     /* Null when the desktop is drawing the title bar, which is what tells the
      * frame code not to draw a second one */
     frame->name = desktop_draws_the_frame(win->kind) ? 0 : win->title;
+    frame->info = win->information;
     frame->active = win->active;
 }
 
@@ -716,31 +744,33 @@ uint32_t AES_wind_set()
     switch (what)
     {
         case WF_NAME:
-        {
-            int i;
-
             /* The title, which stays where the application put it: it owns
              * the string and may change it without telling anyone */
             win->name = ((uint32_t)(uint16_t)aes_intin(2) << 16)
                       | (uint16_t)aes_intin(3);
 
-            /* And a copy, because the frame the desktop draws needs the text
-             * rather than an address in a machine it cannot read */
-            for (i = 0; i < (int)sizeof win->title - 1; i++)
-            {
-                win->title[i] = (char)m68k_read_memory_8(win->name + i);
-                if (win->title[i] == 0)
-                    break;
-            }
-            win->title[i] = 0;
+            /* And a copy, because a title bar needs the text rather than an
+             * address in a machine that cannot be read from this side */
+            text_of(win->name, win->title, sizeof win->title);
 
             gfx_window_title(handle, win->title);
+            draw_frame(win);
             break;
-        }
 
+        /*
+         * The information line, which is a strip under the title bar saying
+         * whatever the application wants it to say. The AES never reads it and
+         * has no opinion about it; setting it is the whole of what an
+         * application does with one, and drawing it again is the whole of what
+         * happens here.
+         */
         case WF_INFO:
             win->info = ((uint32_t)(uint16_t)aes_intin(2) << 16)
                       | (uint16_t)aes_intin(3);
+
+            text_of(win->info, win->information, sizeof win->information);
+
+            draw_frame(win);
             break;
 
         case WF_CURRXYWH:
@@ -974,6 +1004,7 @@ enum {
     HIT_NOTHING = -1,
     HIT_BOX,
     HIT_TITLE, HIT_CLOSER, HIT_NAME, HIT_FULLER,
+    HIT_INFO,
     HIT_VBAR, HIT_UPARROW, HIT_DNARROW, HIT_VSLIDE, HIT_VELEV,
     HIT_HBAR, HIT_LFARROW, HIT_RTARROW, HIT_HSLIDE, HIT_HELEV,
     HIT_SIZER
@@ -1181,6 +1212,16 @@ int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons)
                     gfx_window_menu(handle, x, y);
                 else
                     gfx_window_drag_move(handle);
+                return 1;
+
+            /*
+             * The information line, which is somewhere to read rather than
+             * somewhere to press. Nothing happens and the press goes no
+             * further: it landed on the frame, which is the AES's, and an
+             * application told about it would be told about a click in a place
+             * it was never given.
+             */
+            case HIT_INFO:
                 return 1;
             case HIT_UPARROW:
                 send_to_owner(WM_ARROWED, handle, WA_UPLINE, 0, 0, 0);
