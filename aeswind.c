@@ -930,7 +930,7 @@ uint32_t AES_wind_find()
             return (uint32_t)(uint16_t)topped;
     }
 
-    for (handle = 1; handle < WINDOWS; handle++)
+    for (handle = 1; handle <= WINDOWS; handle++)
     {
         struct window *win = window_at(handle);
 
@@ -960,7 +960,7 @@ uint32_t AES_wind_new()
 
     FUNC_TRACE_ENTER
 
-    for (handle = 1; handle < WINDOWS; handle++)
+    for (handle = 1; handle <= WINDOWS; handle++)
     {
         struct window *win = window_at(handle);
 
@@ -1155,7 +1155,7 @@ int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons)
 {
     int16_t handle;
 
-    for (handle = 1; handle < WINDOWS; handle++)
+    for (handle = 1; handle <= WINDOWS; handle++)
     {
         struct window *win = window_at(handle);
         struct aes_frame frame;

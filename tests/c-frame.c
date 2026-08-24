@@ -34,10 +34,16 @@
  * argument to this program says to expect. The information line is there
  * either way, because nothing on a desktop does that job.
  *
- * The last check is the one that matters most in use. The line is a box with
- * words in it, and a box that is not repainted before the words go in shows
- * the old ones underneath - so a long line replaced by a short one has to
- * leave nothing of the long one behind.
+ * One check is about the words rather than the strip, and it is the one that
+ * matters most in use. The line is a box with words in it, and a box that is
+ * not repainted before the words go in shows the old ones underneath - so a
+ * long line replaced by a short one has to leave nothing of the long one
+ * behind.
+ *
+ * The last two are about a window rather than about its frame, and are here
+ * because the frame is where the fault showed: the AES allows eight windows
+ * and the walks that decide which window a point is in, and whose frame a
+ * press landed on, are the same walk.
  *
  * A test that stops the emulator prints nothing further, so the count at the
  * end is what says the whole file ran.
@@ -54,6 +60,14 @@
 #define W_HAS_MOVER   (0x0008)
 #define W_HAS_INFO    (0x0010)
 #define W_HAS_SIZER   (0x0020)
+
+/* How many windows one application gets, http://toshyp.atari.org/en/008006.html */
+#define WINDOWS       (8)
+
+/* Where the seven extra windows go: a column beside the first one, each in a
+ * row of its own so that a point lands in exactly one of them */
+#define other_x       (450)
+#define other_w       (100)
 
 /* What wind_get and wind_set are asked about. gemlib names these already, so
  * only the numbers are wanted here, and it names them the same way. */
@@ -125,6 +139,7 @@ int main(int argc, char **argv)
     short inside_x, inside_w, inside_y, inside_h;
     short work_x, work_y, work_w;
     short far_x;
+    short others[WINDOWS + 1];
     int atari_frame = (argc < 2) || strcmp(argv[1], "desktop") != 0;
 
     if (appl_init() < 0)
@@ -243,7 +258,50 @@ int main(int argc, char **argv)
                  1, 4), 1,
           "and the scroll bar begins where the work area ends");
 
+    /*
+     * The eighth window, which is the last the AES allows.
+     *
+     * Seven more small ones are opened beside the first, each in a row of its
+     * own, and then the point in the last of them is asked about. The window
+     * in front is put back to the first one before asking, because a window
+     * that is in front is answered for before the walk starts and would say
+     * nothing about whether the walk reaches the end.
+     */
+    for (i = 2; i <= WINDOWS; i++)
+    {
+        intin[0] = 0;                                /* no gadgets at all */
+        intin[1] = other_x; intin[2] = (short)(wy + (i - 2) * 2 * hbox);
+        intin[3] = other_w; intin[4] = hbox;
+        others[i] = call_aes(100, 5, 1, 0, 0);       /* wind_create */
+
+        intin[0] = others[i];
+        intin[1] = other_x; intin[2] = (short)(wy + (i - 2) * 2 * hbox);
+        intin[3] = other_w; intin[4] = hbox;
+        call_aes(101, 5, 1, 0, 0);                   /* wind_open */
+    }
+
+    check(others[WINDOWS] > 0, 1, "the AES gave out all eight windows");
+
+    intin[0] = window;
+    intin[1] = 10;                                   /* WF_TOP */
+    intin[2] = 0; intin[3] = 0; intin[4] = 0; intin[5] = 0;
+    call_aes(105, 6, 1, 0, 0);                       /* wind_set */
+
+    intin[0] = (short)(other_x + other_w / 2);
+    intin[1] = (short)(wy + (WINDOWS - 2) * 2 * hbox + hbox / 2);
+
+    check(call_aes(106, 2, 1, 0, 0), others[WINDOWS], /* wind_find */
+          "and a point in the last of them is found in it");
+
     printf("1..%d\n", n);
+
+    for (i = WINDOWS; i >= 2; i--)
+    {
+        intin[0] = others[i];
+        call_aes(102, 1, 1, 0, 0);                   /* wind_close */
+        intin[0] = others[i];
+        call_aes(103, 1, 1, 0, 0);                   /* wind_delete */
+    }
 
     intin[0] = window;
     call_aes(102, 1, 1, 0, 0);                       /* wind_close */
