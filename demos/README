@@ -48,14 +48,29 @@ grey with an Atari logo on it.
 window
 ------
 
-A window with a title, a close box and a line of text, and the loop every GEM
-application has: wait for a message, redraw when told to, and stop when the
-close box is used.
+A window with a title, a close box, a size box and a line of text, and the loop
+every GEM application has: wait for a message, redraw when told to, and stop
+when the close box is used.
 
 The close box is the desktop's, standing in for the one GEM would have drawn.
 It does not close anything by itself - it sends the application the message it
 would have got from its own closer, and the application decides. That is what
 GEM does, and it is why an application can ask whether you meant it.
+
+Resizing works the same way round. Drag an edge of the window, or take hold of
+the size box in its bottom right corner, and the desktop runs the drag - with
+the outline and the edge snapping it would give any of its own windows. What
+the application gets when the drag ends is WM_SIZED, the message GEM sent when
+somebody pulled its size box about, and the window becomes that size when the
+application sets its rectangle to what the message said. It prints the size of
+its work area in the window, so what the drag arrived at is readable from the
+inside.
+
+A window can only be made as large as the screen the AES lays it out on, which
+is 640x400 unless TOSEMU_SCREEN says otherwise - try `native-mono` for one as
+large as the display. Grown against the bottom or the right of that screen it
+is moved back rather than cut short, which is why WM_SIZED carries where as
+well as how large.
 
 
 dialog

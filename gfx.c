@@ -75,6 +75,11 @@
  * application is sent the message it would have got from its own close box */
 void host_window_closed(int16_t handle);
 
+/* And when the desktop has made a window a different size, which the AES turns
+ * into the message its own size box would have sent. The size is what is shown
+ * of the window, in the screen's own pixels. */
+void host_window_resized(int16_t handle, int16_t w, int16_t h);
+
 /*
  * How much larger than an ST pixel one on the desktop is.
  *
@@ -128,6 +133,16 @@ struct window {
     /* And how large that rectangle is once scaled, which is what the
      * compositor sees */
     int width, height;
+
+    /*
+     * The largest and smallest the desktop may make it, in the screen's own
+     * pixels, or nought for a window that may not be resized at all.
+     *
+     * The largest is not a preference. A window is a rectangle of the screen
+     * the AES lays out and that screen is only so big, so a drag that arrived
+     * at a larger size would be asking for pixels there is no memory for.
+     */
+    int16_t min_w, min_h, max_w, max_h;
 
     /* The compositor dismissed it, which only happens to menus */
     int gone;
@@ -976,16 +991,52 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     surface_configure
 };
 
+/*
+ * The compositor saying how large a window is to be, which is how a window
+ * comes to be resized: the person takes hold of the size box, the compositor
+ * runs the drag and says the size it arrived at, over and over as it goes.
+ *
+ * Nothing is resized here. What the AES is told is the size in the screen's
+ * own pixels, and what it does with that is send the application the message
+ * its own size box would have sent - because the application is what decides
+ * whether the new shape suits what it is showing, exactly as it did on an ST.
+ * The window here becomes that size when the application says so, which is why
+ * an application that ignores the message keeps the window it had.
+ *
+ * A size of nought means the compositor has no opinion, which is what the
+ * first configure of a window's life usually says. So does a window that is
+ * not up yet: the first configure arrives inside window_create, before there
+ * is a handle to tell the AES about.
+ */
 static void toplevel_configure(void *data, struct xdg_toplevel *t,
                                int32_t width, int32_t height,
                                struct wl_array *states)
 {
-    /*
-     * The compositor is entitled to a say in how large the window is. What it
-     * is not entitled to is a stretched picture, so the size it asks for is
-     * noted and the picture stays the size it is.
-     */
-    (void)data; (void)t; (void)width; (void)height; (void)states;
+    struct window *win = data;
+    int16_t sw, sh;
+
+    (void)t; (void)states;
+
+    if (!win->used || win->handle < 1)
+        return;
+
+    if (width <= 0 || height <= 0)
+        return;
+
+    /* Back into the screen's pixels, which is the only size anything above
+     * here deals in. Rounding down rather than up: a window one pixel short of
+     * what was asked for is a gap at the edge, and one pixel over is a row of
+     * the screen that does not exist. */
+    sw = (int16_t)(width / win->scale);
+    sh = (int16_t)(height / win->scale);
+
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    if (sw == win->sw && sh == win->sh)
+        return;
+
+    host_window_resized(win->handle, sw, sh);
 }
 
 static void toplevel_close(void *data, struct xdg_toplevel *t)
@@ -1107,6 +1158,57 @@ static int window_buffer(struct window *win)
     return win->buffer != 0;
 }
 
+static void window_present(struct window *win);
+
+/*
+ * A window that has become a different size, which is a different buffer.
+ *
+ * The window itself stays. Tearing it down and opening another one at the new
+ * size would work and is what this used to do, but not while somebody is
+ * dragging a corner: the drag belongs to the window it started on, and taking
+ * that window away in the middle of one ends it. This is a few hundred
+ * kilobytes of memory changing hands and nothing the desktop has to hear about.
+ *
+ * The old buffer is let go of after the new one has been shown rather than
+ * before, because a buffer the compositor is still displaying is not ours to
+ * take away, and destroying it first leaves a moment with nothing in the
+ * window.
+ */
+static int window_resize(struct window *win, int16_t sw, int16_t sh)
+{
+    struct wl_buffer *was = win->buffer;
+    uint32_t *had = win->pixels;
+    size_t held = win->bytes;
+    int16_t old_sw = win->sw, old_sh = win->sh;
+    int old_width = win->width, old_height = win->height;
+
+    win->sw = sw;
+    win->sh = sh;
+    win->width = sw * win->scale;
+    win->height = sh * win->scale;
+
+    if (!window_buffer(win))
+    {
+        win->sw = old_sw;
+        win->sh = old_sh;
+        win->width = old_width;
+        win->height = old_height;
+        win->buffer = was;
+        win->pixels = had;
+        win->bytes = held;
+        return 0;
+    }
+
+    window_present(win);
+
+    if (had)
+        munmap(had, held);
+    if (was)
+        wl_buffer_destroy(was);
+
+    return 1;
+}
+
 /* Whichever GEM window is nearest the front, for a dialog to belong to */
 static struct window *window_topmost(void)
 {
@@ -1118,8 +1220,6 @@ static struct window *window_topmost(void)
 
     return 0;
 }
-
-static void window_present(struct window *win);
 
 static void popup_configure(void *data, struct xdg_popup *popup,
                             int32_t x, int32_t y, int32_t width, int32_t height)
@@ -1203,10 +1303,16 @@ static int window_create(struct window *win, const char *title,
     xdg_toplevel_set_app_id(win->toplevel, "se.e8johan.tosemu");
 
     /*
-     * Neither of these can be resized: the screen is the size the emulated
-     * machine's screen is, and a dialog is the size the application made it.
-     * Saying so both ways is what tells a desktop there is nothing for a
-     * maximise button to do, so it does not offer one.
+     * A window that has not said otherwise cannot be resized, which is the
+     * honest answer for most of them: a dialog is the size the application
+     * made it, and the menu bar is the width of the screen and one box tall.
+     * Saying the same number both ways is what tells a desktop there is
+     * nothing for a maximise button to do, so it does not offer one.
+     *
+     * A GEM window with a size box says otherwise the moment it is open - see
+     * gfx_window_limits, which is the AES handing over the two sizes only it
+     * knows: the smallest the frame will fit in, and what is left of the
+     * screen it lays windows out on.
      */
     xdg_toplevel_set_min_size(win->toplevel, win->width, win->height);
     xdg_toplevel_set_max_size(win->toplevel, win->width, win->height);
@@ -1416,15 +1522,84 @@ void gfx_window_move(int16_t handle, int16_t x, int16_t y,
      * person's to do. What does change is which part of the screen is shown,
      * and how large the window has to be to show it.
      */
-    if (sw == win->sw && sh == win->sh)
-    {
-        win->sx = x;
-        win->sy = y;
-        return;
-    }
+    win->sx = x;
+    win->sy = y;
 
-    /* A different size needs a different buffer, which is a new window */
-    gfx_window_open(handle, "", x, y, sw, sh);
+    if (sw == win->sw && sh == win->sh)
+        return;
+
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    if (!window_resize(win, sw, sh))
+        window_destroy(win);
+}
+
+/*
+ * The two sizes only the AES knows, in the screen's own pixels: the smallest a
+ * window's frame will fit in and the largest the screen leaves room for.
+ *
+ * Saying them is what makes a window resizable at all. Until this is called a
+ * window is pinned to the size it opened at, which is right for one without a
+ * size box - GEM had no way for such a window to be resized and neither should
+ * a desktop.
+ *
+ * The largest is a real limit rather than a preference. A window is a
+ * rectangle of the screen the AES lays out, and a drag arriving at a size
+ * larger than that screen is asking for pixels there is no memory for.
+ */
+void gfx_window_limits(int16_t handle, int16_t min_w, int16_t min_h,
+                       int16_t max_w, int16_t max_h)
+{
+    struct window *win;
+
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    win = &w.windows[handle];
+    if (!win->used || !win->toplevel)
+        return;
+
+    win->min_w = min_w;
+    win->min_h = min_h;
+    win->max_w = max_w;
+    win->max_h = max_h;
+
+    xdg_toplevel_set_min_size(win->toplevel, min_w * win->scale,
+                              min_h * win->scale);
+    xdg_toplevel_set_max_size(win->toplevel, max_w * win->scale,
+                              max_h * win->scale);
+
+    wl_surface_commit(win->surface);
+}
+
+/*
+ * Taking hold of a window by its size box, which is the desktop resizing it.
+ *
+ * On an ST the AES drew a rubber band and worked out the new size when the
+ * button came up. Here the window is a window of the desktop's, and a desktop
+ * resizes one by running a drag of its own - so the size box asks for exactly
+ * the drag the person would have got by taking hold of a corner, and what
+ * comes back is a configure saying how large the window has become.
+ *
+ * It has to be answering something the person did, and the serial of that is
+ * what proves it. There is nothing to answer when the input was made up rather
+ * than done, which is what happens under a test.
+ */
+void gfx_window_drag_size(int16_t handle)
+{
+    struct window *win;
+
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    win = &w.windows[handle];
+    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+        return;
+
+    xdg_toplevel_resize(win->toplevel, w.seat, w.serial,
+                        XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT);
+    wl_display_flush(w.display);
 }
 
 void gfx_window_title(int16_t handle, const char *title)

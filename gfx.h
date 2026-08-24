@@ -71,6 +71,26 @@ void gfx_window_title(int16_t handle, const char *title);
 void gfx_window_close(int16_t handle);
 
 /*
+ * How large the desktop may make a window, in the screen's own pixels. Until
+ * this is said a window is pinned to the size it opened at, which is what a
+ * window without a size box is: GEM gave no way to resize one and neither
+ * should a desktop.
+ *
+ * The largest is what is left of the screen the AES lays windows out on, and
+ * is a limit rather than a preference - a window larger than that screen is a
+ * rectangle there are no pixels for.
+ */
+void gfx_window_limits(int16_t handle, int16_t min_w, int16_t min_h,
+                       int16_t max_w, int16_t max_h);
+
+/*
+ * Taking hold of a window by its size box, which asks the desktop for the drag
+ * a person would have got by taking hold of a corner. What comes back is the
+ * size the drag arrived at, said as a message to the application.
+ */
+void gfx_window_drag_size(int16_t handle);
+
+/*
  * A dialog: a window of its own showing a rectangle of the surface a dialog
  * draws into, marked modal and belonging to whichever GEM window is on top, so
  * that the desktop gives it the treatment a dialog gets - kept above that

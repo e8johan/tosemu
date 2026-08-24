@@ -271,6 +271,49 @@ static void work_to_border(int16_t kind, int16_t *x, int16_t *y,
         *h += hbox;
 }
 
+/*
+ * How large the desktop may make this window, which it is told once when the
+ * window opens.
+ *
+ * Two things decide it and neither is the desktop's to know. The smallest is
+ * whatever the frame itself takes up plus one box of work area, because a
+ * window smaller than its own gadgets is not a window. The largest is the
+ * desktop area of the emulated screen: a GEM window is a rectangle of that
+ * screen, and there are no pixels beyond it to hand a compositor.
+ *
+ * Both are said in what is shown of the window rather than in the whole of it,
+ * because that is what the desktop's window is, and both go through
+ * window_on_show for that reason rather than by subtracting a title bar here.
+ *
+ * A window without a size box is told nothing, which leaves it pinned to the
+ * size it opened at. GEM gave no way to resize such a window and neither
+ * should a desktop.
+ */
+static void window_limits(int16_t handle, struct window *win)
+{
+    int16_t vdi, wchar, hchar, wbox, hbox;
+    int16_t x, y, wide, high;
+
+    if (!(win->kind & W_SIZER))
+        return;
+
+    emuvdi_graf_handle(&vdi, &wchar, &hchar, &wbox, &hbox);
+    desk_area();
+
+    /* One box of work area with the frame built back round it, which is the
+     * smallest rectangle that still has room for everything the AES draws */
+    x = 0; y = 0; wide = wbox; high = hbox;
+    work_to_border(win->kind, &x, &y, &wide, &high);
+    window_on_show(win->kind, &x, &y, &wide, &high);
+
+    {
+        int16_t fx = desk_x, fy = desk_y, fw = desk_w, fh = desk_h;
+
+        window_on_show(win->kind, &fx, &fy, &fw, &fh);
+        gfx_window_limits(handle, wide, high, fw, fh);
+    }
+}
+
 /* Four words of an answer, which is what most of wind_get is */
 static void answer_rect(int16_t x, int16_t y, int16_t w, int16_t h)
 {
@@ -364,6 +407,7 @@ uint32_t AES_wind_open()
 
         window_on_show(win->kind, &sx, &sy, &sw, &sh);
         gfx_window_open(aes_intin(0), win->title, sx, sy, sw, sh);
+        window_limits(aes_intin(0), win);
     }
 
     /*
@@ -885,6 +929,65 @@ static void send_to_owner(int16_t what, int16_t handle, int16_t a, int16_t b,
 }
 
 /*
+ * The desktop has made a window a different size, which is the other half of
+ * host_window_closed: the desktop's frame standing in for one of GEM's.
+ *
+ * Nothing is resized here, and that is not a shortcut - GEM's own size box
+ * worked this way. The AES worked out the rectangle the drag arrived at and
+ * told the application; the application decided, being what knows what it is
+ * showing and whether the new shape suits it, and it says so by setting the
+ * window's rectangle. An application that ignores the message keeps the window
+ * it had, on a desktop as on an ST.
+ *
+ * What arrives is what is shown of the window, so the strip the desktop's own
+ * title bar stands in for goes back on before anything else. What goes out is
+ * a whole window rectangle inside the screen the AES lays out: one that would
+ * run off an edge is moved back rather than cut short, because WM_SIZED
+ * carries where as well as how large and an application acts on all four.
+ */
+void host_window_resized(int16_t handle, int16_t sw, int16_t sh)
+{
+    struct window *win = window_at(handle);
+    int16_t x, y, wide, high;
+    int16_t sx, sy, shown_w, shown_h;
+
+    if (!win || !win->open || !(win->kind & W_SIZER))
+        return;
+
+    desk_area();
+
+    /* What window_on_show leaves out, taken off the window as it stands rather
+     * than written down a second time here */
+    sx = win->x; sy = win->y; shown_w = win->w; shown_h = win->h;
+    window_on_show(win->kind, &sx, &sy, &shown_w, &shown_h);
+
+    wide = (int16_t)(sw + (win->w - shown_w));
+    high = (int16_t)(sh + (win->h - shown_h));
+
+    if (wide > desk_w)
+        wide = desk_w;
+    if (high > desk_h)
+        high = desk_h;
+
+    x = win->x;
+    y = win->y;
+
+    if (x + wide > desk_x + desk_w)
+        x = (int16_t)(desk_x + desk_w - wide);
+    if (y + high > desk_y + desk_h)
+        y = (int16_t)(desk_y + desk_h - high);
+    if (x < desk_x)
+        x = desk_x;
+    if (y < desk_y)
+        y = desk_y;
+
+    if (x == win->x && y == win->y && wide == win->w && high == win->h)
+        return;
+
+    send_to_owner(WM_SIZED, handle, x, y, wide, high);
+}
+
+/*
  * A press somewhere, which may have been on a window's frame.
  *
  * The AES does not scroll anything itself and never did: it works out which
@@ -969,14 +1072,18 @@ int aes_wind_frame_press(int16_t x, int16_t y)
 
             case HIT_SIZER:
                 /*
-                 * Resizing is the desktop's here - a window is a window of its
-                 * own and is resized by its edges - so this says the size it
-                 * already has rather than a new one. An application that
-                 * redraws for it loses nothing; one that ignores it loses
-                 * nothing either.
+                 * The size box, which is what a person takes hold of to resize
+                 * a window and is the reason there is one drawn.
+                 *
+                 * GEM tracked the drag itself and sent WM_SIZED when the
+                 * button came up. Here the window is a window of the desktop's
+                 * and a desktop has its own way of running that drag - with
+                 * the outline, the edge snapping and the size read-out a
+                 * person expects - so the desktop is asked to run it. What
+                 * comes back is a configure, and host_window_resized turns
+                 * that into the message GEM would have sent.
                  */
-                send_to_owner(WM_SIZED, handle, win->x, win->y,
-                              win->w, win->h);
+                gfx_window_drag_size(handle);
                 return 1;
 
             default:
