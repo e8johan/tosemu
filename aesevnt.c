@@ -249,7 +249,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             int16_t b, bx, by;
 
             if (gfx_button_peek(&b, &bx, &by) && b
-                && aes_wind_frame_press(bx, by))
+                && aes_wind_frame_press(bx, by, b))
             {
                 gfx_button_take(&b, &bx, &by);
                 state_answered = 0;

@@ -41,6 +41,7 @@
 
 #include "gem_p.h"
 #include "gfx.h"
+#include "settings.h"
 #include "emuvdi/emuvdi.h"
 #include "tossystem.h"
 #include "m68k.h"
@@ -113,8 +114,13 @@ struct window {
     uint32_t name;      /* The title and the information line, as addresses */
     uint32_t info;      /* in the machine, because that is where they live */
 
-    /* The title again, as text, for the frame the desktop puts round it */
+    /* The title again, as text, for the title bar - GEM's own and the one the
+     * desktop puts round the outside when it is drawing that */
     char title[64];
+
+    /* Whether the desktop says this is the window somebody is working in,
+     * which is what its title bar is drawn light or dark to say */
+    int active;
 };
 
 static struct window windows[WINDOWS];
@@ -159,28 +165,53 @@ static struct window *window_at(int16_t handle)
 }
 
 /*
- * Between the whole of a window and the part the application draws in.
+ * Whose title bar a window gets: GEM's own, or the desktop's.
  *
- * Each decoration takes a strip off one edge, and which strips depends on what
- * the window was created with. A window with no decorations at all is its own
- * work area, which is how a GEM application draws on the desktop without a
- * frame around it.
+ * A GEM window carries a frame - a title bar to drag it by, a close box, a
+ * full box, sliders - and the window of the desktop's that it is shown in can
+ * carry one too. Two of them is a title bar inside a title bar, which is
+ * exactly the picture of another computer that having real windows was meant
+ * to avoid, so one of them has to go.
+ *
+ * GEM's is the one worth keeping, and not out of nostalgia: it is the frame the
+ * application asked for, gadget by gadget, and it is the one whose close box
+ * means "ask the application" rather than "take the window away". So the
+ * desktop is asked to draw nothing and GEM's frame is the whole of it, with the
+ * close box, the full box and the title strip wired to what a desktop does with
+ * those - see aes_wind_frame_press.
+ *
+ * Two windows keep the desktop's frame anyway. One created without a title
+ * strip has nothing of GEM's to take hold of, and a window with no frame at all
+ * cannot be moved, closed or found; and a person who would rather have their
+ * own desktop's frames can say so with the decorations setting, which is also
+ * the way out if a compositor refuses to let a client draw its own.
  */
+static int desktop_draws_the_frame(int16_t kind)
+{
+    static int asked;
+    static int wanted;
+
+    if (!asked)
+    {
+        const char *said = setting("TOSEMU_DECORATIONS");
+
+        wanted = said && strcmp(said, "desktop") == 0;
+        asked = 1;
+    }
+
+    return wanted || !(kind & W_TITLE);
+}
+
 /*
  * The part of a window the desktop shows.
  *
- * Not the whole of it. A GEM window carries its own frame - a title bar to
- * drag it by, a close box, sliders - and the desktop this one is shown on
- * carries a frame of its own round the outside. Showing both means a title bar
- * inside a title bar, which is exactly the picture of another computer that
- * having real windows was meant to avoid.
- *
- * So the title bar is left out and the desktop's stands in for it: it drags
- * the window, it closes it, and it says what the window is called, which are
- * the three things GEM's did. Everything else in the frame stays, because
- * nothing on the desktop does those jobs - an information line says what the
- * application wants it to say, and sliders scroll a document rather than a
- * window.
+ * The whole of it when GEM's frame is the only one, and the window less its
+ * title bar when the desktop is drawing one of its own - in which case the
+ * desktop's stands in for GEM's: it drags the window, it closes it, and it says
+ * what the window is called, which are the three things GEM's did. Everything
+ * else in the frame stays either way, because nothing on the desktop does those
+ * jobs - an information line says what the application wants it to say, and
+ * sliders scroll a document rather than a window.
  *
  * Nothing here changes what the application sees. It asked for a window of a
  * certain size at a certain place in the screen the AES keeps, and that is
@@ -197,10 +228,39 @@ static void window_on_show(int16_t kind, int16_t *x, int16_t *y,
     if (!(kind & W_TITLE))
         return;
 
+    if (!desktop_draws_the_frame(kind))
+        return;
+
     emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
 
     *y += hbox;
     *h -= hbox;
+}
+
+/*
+ * A window as the frame code needs to see it. Everything that draws a frame or
+ * asks what a click landed on fills one of these in, so that the two can never
+ * be looking at different windows.
+ */
+static void frame_of(struct window *win, struct aes_frame *frame)
+{
+    frame->kind = win->kind;
+    frame->x = win->x;
+    frame->y = win->y;
+    frame->w = win->w;
+    frame->h = win->h;
+
+    window_on_show(win->kind, &frame->x, &frame->y, &frame->w, &frame->h);
+
+    frame->hslide = win->hslide;
+    frame->hslsize = win->hslsize;
+    frame->vslide = win->vslide;
+    frame->vslsize = win->vslsize;
+
+    /* Null when the desktop is drawing the title bar, which is what tells the
+     * frame code not to draw a second one */
+    frame->name = desktop_draws_the_frame(win->kind) ? 0 : win->title;
+    frame->active = win->active;
 }
 
 /* Draws a window's frame where it is now, with the sliders where they are
@@ -208,17 +268,24 @@ static void window_on_show(int16_t kind, int16_t *x, int16_t *y,
  * that what is on the screen and what the window says are never two answers. */
 static void draw_frame(struct window *win)
 {
-    int16_t x = win->x, y = win->y, w = win->w, h = win->h;
+    struct aes_frame frame;
 
     if (!win->open)
         return;
 
-    window_on_show(win->kind, &x, &y, &w, &h);
+    frame_of(win, &frame);
 
-    aes_frame_draw(win->kind, x, y, w, h,
-                   win->hslide, win->hslsize, win->vslide, win->vslsize);
+    aes_frame_draw(&frame);
 }
 
+/*
+ * Between the whole of a window and the part the application draws in.
+ *
+ * Each decoration takes a strip off one edge, and which strips depends on what
+ * the window was created with. A window with no decorations at all is its own
+ * work area, which is how a GEM application draws on the desktop without a
+ * frame around it.
+ */
 static void border_to_work(int16_t kind, int16_t *x, int16_t *y,
                            int16_t *w, int16_t *h)
 {
@@ -406,7 +473,8 @@ uint32_t AES_wind_open()
         int16_t sx = win->x, sy = win->y, sw = win->w, sh = win->h;
 
         window_on_show(win->kind, &sx, &sy, &sw, &sh);
-        gfx_window_open(aes_intin(0), win->title, sx, sy, sw, sh);
+        gfx_window_open(aes_intin(0), win->title, sx, sy, sw, sh,
+                        !desktop_draws_the_frame(win->kind));
         window_limits(aes_intin(0), win);
     }
 
@@ -885,6 +953,7 @@ uint32_t AES_wind_new()
  * apart is what lets the frame be drawn differently one day without the
  * meaning of clicking on it changing.
  */
+#define WM_FULLED  (23)
 #define WM_ARROWED (24)
 #define WM_HSLID   (25)
 #define WM_VSLID   (26)
@@ -904,6 +973,7 @@ uint32_t AES_wind_new()
 enum {
     HIT_NOTHING = -1,
     HIT_BOX,
+    HIT_TITLE, HIT_CLOSER, HIT_NAME, HIT_FULLER,
     HIT_VBAR, HIT_UPARROW, HIT_DNARROW, HIT_VSLIDE, HIT_VELEV,
     HIT_HBAR, HIT_LFARROW, HIT_RTARROW, HIT_HSLIDE, HIT_HELEV,
     HIT_SIZER
@@ -988,41 +1058,130 @@ void host_window_resized(int16_t handle, int16_t sw, int16_t sh)
 }
 
 /*
+ * The desktop saying which window somebody is working in.
+ *
+ * A GEM title bar is drawn two ways, and which of them says whether this is
+ * the window in front. On an ST the AES decided that, because it owned the
+ * whole screen and the order the windows were in; here the person decides it
+ * by clicking on a window, and the compositor is the only one that knows.
+ *
+ * It is also what the AES calls topped. An application asks which of its
+ * windows that is and expects the answer to be the one being used, so the
+ * desktop's answer becomes the AES's - which is more nearly true than what was
+ * there before, that being whichever window was opened last.
+ *
+ * The frame is drawn again and put on the screen at once rather than left for
+ * the next time anything is drawn. Nothing else is going to happen: the
+ * application is sitting in a wait, and a title bar that goes light a second
+ * after the window is clicked looks like something is stuck.
+ */
+void host_window_activated(int16_t handle, int16_t active)
+{
+    struct window *win = window_at(handle);
+
+    if (!win || !win->open)
+        return;
+
+    if (win->active == (active != 0))
+        return;
+
+    win->active = (active != 0);
+
+    if (win->active)
+        topped = handle;
+
+    draw_frame(win);
+    gem_present();
+}
+
+/*
  * A press somewhere, which may have been on a window's frame.
  *
- * The AES does not scroll anything itself and never did: it works out which
- * gadget was pressed and tells the application, which knows what its document
- * is and how far a line of it goes. So all of this ends in a message.
+ * Most of it ends in a message, because that is what the AES did: it works out
+ * which gadget was pressed and tells the application, which knows what its
+ * document is and how far a line of it goes. The AES does not scroll anything
+ * itself and never did.
  *
- * The one thing it does do is move the elevator, because an application that
- * is told where the slider went expects to see it there - and it would
- * otherwise have to set it back itself in answer to every drag.
+ * The title bar is the exception, and only because of where the window is. A
+ * close box is still a message - closing is the application's to agree to - but
+ * dragging a window and making it as large as it will go are things the desktop
+ * does here rather than the AES, so those two are asked of the desktop instead.
+ * What an application sees is the same either way: it never hears about a
+ * window being dragged, because where its windows are on the desktop was never
+ * anything it could observe.
+ *
+ * The one thing that changes something directly is the elevator, because an
+ * application that is told where the slider went expects to see it there - and
+ * it would otherwise have to set it back itself in answer to every drag.
  */
-int aes_wind_frame_press(int16_t x, int16_t y)
+int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons)
 {
     int16_t handle;
 
     for (handle = 1; handle < WINDOWS; handle++)
     {
         struct window *win = window_at(handle);
-        int16_t sx, sy, sw, sh, along = 0;
+        struct aes_frame frame;
+        int16_t along = 0;
         int hit;
 
         if (!win || !win->open)
             continue;
 
-        sx = win->x; sy = win->y; sw = win->w; sh = win->h;
-        window_on_show(win->kind, &sx, &sy, &sw, &sh);
+        frame_of(win, &frame);
 
-        if (x < sx || x >= sx + sw || y < sy || y >= sy + sh)
+        if (x < frame.x || x >= frame.x + frame.w
+            || y < frame.y || y >= frame.y + frame.h)
             continue;
 
-        hit = aes_frame_hit(win->kind, sx, sy, sw, sh,
-                            win->hslide, win->hslsize,
-                            win->vslide, win->vslsize, x, y, &along);
+        hit = aes_frame_hit(&frame, x, y, &along);
 
         switch (hit)
         {
+            /*
+             * The close box, which sends the application what it would have
+             * been sent had the desktop's own closer been used. Nothing closes
+             * here: a GEM window is closed by the application asking for it,
+             * and an application is entitled to ask something first.
+             */
+            case HIT_CLOSER:
+                send_to_owner(WM_CLOSED, handle, 0, 0, 0, 0);
+                return 1;
+
+            /*
+             * The full box, which is GEM's maximise: the application makes the
+             * window as large as the desktop area and back again, and it is
+             * told to rather than made to. As large as the desktop area means
+             * as large as the emulated screen, which is not the same as filling
+             * the display unless the screen was asked to be that size.
+             */
+            case HIT_FULLER:
+                send_to_owner(WM_FULLED, handle, 0, 0, 0, 0);
+                return 1;
+
+            /*
+             * The title bar, which is what a window is dragged by.
+             *
+             * The desktop is asked to run the drag, because the desktop is
+             * what knows where its windows are and is the only thing that can
+             * move one. The AES's own idea of where the window is does not
+             * change and must not: an application asked for a rectangle of the
+             * screen the AES lays out, and which corner of somebody's monitor
+             * that rectangle is being shown in is not part of the bargain.
+             *
+             * The right button asks for the desktop's window menu instead,
+             * which is where minimising lives. GEM has no gadget for it - a
+             * window went away or it did not - so there is nothing to draw and
+             * nowhere obvious to put it, and the window menu is where a person
+             * on this desktop already looks.
+             */
+            case HIT_TITLE:
+            case HIT_NAME:
+                if (buttons & 2)
+                    gfx_window_menu(handle, x, y);
+                else
+                    gfx_window_drag_move(handle);
+                return 1;
             case HIT_UPARROW:
                 send_to_owner(WM_ARROWED, handle, WA_UPLINE, 0, 0, 0);
                 return 1;

@@ -46,8 +46,12 @@
  */
 #define W_HAS_NAME    (0x0001)
 #define W_HAS_CLOSER  (0x0002)
+#define W_HAS_FULLER  (0x0004)
 #define W_HAS_MOVER   (0x0008)
 #define W_HAS_SIZER   (0x0020)
+
+/* Which of the two rectangles the full box last put the window in */
+static short full;
 
 static short control[5], global[15], intin[16], intout[7];
 static long addrin[3], addrout[1];
@@ -113,9 +117,9 @@ int main(int argc, char **argv)
     work_in[10] = 2;
     v_opnvwk(work_in, &handle, work_out);
 
-    /* A window with a title, a closer, something to drag it by and a size box
-     * to pull it about with */
-    intin[0] = W_HAS_NAME|W_HAS_CLOSER|W_HAS_MOVER|W_HAS_SIZER;
+    /* A window with a title, a closer, a full box, something to drag it by and
+     * a size box to pull it about with */
+    intin[0] = W_HAS_NAME|W_HAS_CLOSER|W_HAS_FULLER|W_HAS_MOVER|W_HAS_SIZER;
     intin[1] = 0; intin[2] = 0; intin[3] = 320; intin[4] = 200;
     window = call_aes(100, 5, 1, 0, 0);              /* wind_create */
 
@@ -158,6 +162,27 @@ int main(int argc, char **argv)
             intin[1] = 5;                            /* WF_CURRXYWH */
             intin[2] = message[4]; intin[3] = message[5];
             intin[4] = message[6]; intin[5] = message[7];
+            call_aes(105, 6, 1, 0, 0);               /* wind_set */
+            draw();
+            break;
+
+        /*
+         * The full box, which is GEM's way of saying "as large as it goes" and
+         * "back the way it was". Neither rectangle comes with the message: the
+         * application asks the AES for whichever of the two it wants next, and
+         * as large as it goes means as large as the screen the AES lays windows
+         * out on rather than as large as the display.
+         */
+        case WM_FULLED:
+            intin[0] = window;
+            intin[1] = full ? 6 : 7;                 /* PREVXYWH or FULLXYWH */
+            call_aes(104, 6, 5, 0, 0);               /* wind_get */
+            full = !full;
+
+            intin[0] = window;
+            intin[1] = 5;                            /* WF_CURRXYWH */
+            intin[2] = intout[1]; intin[3] = intout[2];
+            intin[4] = intout[3]; intin[5] = intout[4];
             call_aes(105, 6, 1, 0, 0);               /* wind_set */
             draw();
             break;

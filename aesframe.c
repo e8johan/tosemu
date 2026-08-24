@@ -31,12 +31,13 @@
  * code and would not look like GEM; this way the pixels come out of the code
  * that drew them on an ST.
  *
- * The title bar is not in it. The desktop's own frame stands in for that one -
- * it drags the window, closes it and says what it is called - and a second
- * title bar inside the first is the picture of another computer that having
- * real windows was meant to avoid. What is here is the part nothing on the
- * desktop does: sliders scroll a document rather than a window, and an
- * information line says whatever the application wants it to say.
+ * The title bar is in it, and whether it is drawn is not this file's to decide.
+ * A window is shown in a window of the desktop's, and either the desktop puts
+ * its own frame round the outside - in which case a second title bar inside the
+ * first is the picture of another computer that having real windows was meant
+ * to avoid - or it does not, and GEM's own is the only one there is. aeswind.c
+ * knows which and hands over the rectangle that is actually being shown; this
+ * draws a frame to fit it.
  *
  * EmuTOS builds this tree too, in gemwmlib.c, and it was not reused. Not
  * because of the drawing, which is what is being borrowed anyway, but because
@@ -65,10 +66,34 @@
 #define W_RTARROW  (0x0400)
 #define W_HSLIDE   (0x0800)
 
+/* Anything that puts a strip along the top, which is the title bar */
+#define W_STRIP (W_NAME|W_CLOSE|W_FULL|W_MOVE)
+
 /* The object types, obdefs.h */
 #define G_BOX      (20)
 #define G_IBOX     (25)
+#define G_BOXTEXT  (22)
 #define G_BOXCHAR  (27)
+
+/* What a TEDINFO says about the words in a box, obdefs.h. The font is the one
+ * the system draws everything else in, and centred is where a window's name
+ * goes. */
+#define IBM        (3)
+#define TE_LEFT    (0)
+#define TE_CNTR    (2)
+
+/*
+ * The colours of a window's name, which is the one part of the frame that says
+ * whether this is the window somebody is working in.
+ *
+ * Both are a black border and black text. The topped one is opaque and filled
+ * with the second pattern, which is what makes the light hatching behind the
+ * name of the window in front; the untopped one is drawn through, so the name
+ * sits on the bar with nothing behind it. These are EmuTOS's two words
+ * unchanged - see gemwmlib.c - so a title bar looks like a title bar.
+ */
+#define TOPPED_COLOR   (0x11a1)
+#define UNTOPPED_COLOR (0x1100)
 
 #define NONE       (-1)
 
@@ -86,8 +111,11 @@
  * a window rather than nearly like one.
  */
 #define SPEC_BAR      (0x00011101L)
+#define SPEC_TITLE    (0x00011101L)
 #define SPEC_SLIDE    (0x00011111L)
 #define SPEC_ELEV     (0x00011101L)
+#define SPEC_CLOSER   (0x05011101L)
+#define SPEC_FULLER   (0x07011101L)
 #define SPEC_UPARROW  (0x01011101L)
 #define SPEC_DNARROW  (0x02011101L)
 #define SPEC_RTARROW  (0x03011101L)
@@ -100,6 +128,7 @@ enum {
     FRAME_NOTHING = -1,
 
     F_BOX,
+    F_TITLE, F_CLOSER, F_NAME, F_FULLER,
     F_VBAR, F_UPARROW, F_DNARROW, F_VSLIDE, F_VELEV,
     F_HBAR, F_LFARROW, F_RTARROW, F_HSLIDE, F_HELEV,
     F_SIZER,
@@ -111,14 +140,26 @@ struct piece {
     int16_t next, head, tail;
     int16_t parent;
     int16_t type;
-    int32_t spec;
+    void *spec;
     int16_t x, y, w, h;         /* Where it is inside its parent */
     int used;
 };
 
 static struct piece piece[F_COUNT];
 
-static void add(int16_t parent, int16_t child, int16_t type, int32_t spec,
+/*
+ * The window's name, as the thing a G_BOXTEXT points at.
+ *
+ * Every other gadget in the frame is a colour word packed into the object
+ * itself; a box with words in it is the one kind that needs a structure of its
+ * own, and it has to be one the AES can read, which means below the four
+ * gigabyte line. One is made the first time a title bar is drawn and used for
+ * every window afterwards: only one frame is ever being drawn at a time, and
+ * nothing keeps a pointer to it once the drawing is done.
+ */
+static void *name_ted;
+
+static void add(int16_t parent, int16_t child, int16_t type, void *spec,
                 int16_t x, int16_t y, int16_t w, int16_t h)
 {
     piece[child].used = 1;
@@ -167,30 +208,66 @@ static void elevator(int16_t along, int16_t least, int16_t size, int16_t where,
 }
 
 /*
- * Draws the frame of a window that is being shown without its title bar.
+ * The words in the title bar, as something the object renderer can draw.
  *
- * The rectangle is the one being shown - the window less the title bar - and
- * everything is worked out inside it, so the gadgets land where the
- * application was told its work area was not.
+ * Answers with null when there is nowhere to put a TEDINFO, which leaves the
+ * name out of the frame and everything else in it - a title bar with no words
+ * on it is worth more than no title bar at all.
  */
-static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                   int16_t hslide, int16_t hslsize,
-                   int16_t vslide, int16_t vslsize)
+static void *name_of(char *name, int active)
 {
+    static const int16_t words[8] = {
+        IBM, 0, TE_CNTR, UNTOPPED_COLOR, 0, 1, 80, 80
+    };
+    int16_t mine[8];
+    int i;
+
+    if (!name_ted)
+        name_ted = emuvdi_tedinfo_alloc();
+
+    if (!name_ted)
+        return 0;
+
+    for (i = 0; i < 8; i++)
+        mine[i] = words[i];
+
+    mine[3] = active ? TOPPED_COLOR : UNTOPPED_COLOR;
+
+    emuvdi_tedinfo_set(name_ted, name ? name : "", "", "", mine, 8);
+
+    return name_ted;
+}
+
+/*
+ * Lays out the frame inside the rectangle of the window that is being shown.
+ *
+ * Everything is worked out inside that rectangle, so the gadgets land where
+ * the application was told its work area was not. What is in it depends on
+ * what the window was created with and on how much of the window the desktop
+ * is showing: a title bar is only drawn when the caller says the rectangle
+ * still has room for one, which it has when the desktop is not drawing a frame
+ * of its own round the outside.
+ */
+static int lay_out(const struct aes_frame *f)
+{
+    int16_t kind = f->kind;
+    int16_t w = f->w, h = f->h;
     int16_t handle, wchar, hchar, wbox, hbox;
     int16_t work_w, work_h;
-    int have_vbar, have_hbar;
+    int16_t below;
+    int have_title, have_vbar, have_hbar;
     int i;
 
     if (w <= 0 || h <= 0)
         return 0;
 
+    have_title = (kind & W_STRIP) != 0 && f->name != 0;
     have_vbar = (kind & (W_UPARROW|W_DNARROW|W_VSLIDE|W_SIZE)) != 0;
     have_hbar = (kind & (W_LFARROW|W_RTARROW|W_HSLIDE|W_SIZE)) != 0;
 
     /* Nothing to draw. A window with no gadgets is its work area and the
      * desktop's frame round the outside, which is the whole of it. */
-    if (!have_vbar && !have_hbar)
+    if (!have_title && !have_vbar && !have_hbar)
         return 0;
 
     emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
@@ -202,16 +279,62 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     /* The whole of what is shown, which is the parent of everything else */
     piece[F_BOX].used = 1;
     piece[F_BOX].type = G_IBOX;
-    piece[F_BOX].spec = SPEC_BAR;
-    piece[F_BOX].x = x;
-    piece[F_BOX].y = y;
+    piece[F_BOX].spec = (void *)(uintptr_t)SPEC_TITLE;
+    piece[F_BOX].x = f->x;
+    piece[F_BOX].y = f->y;
     piece[F_BOX].w = w;
     piece[F_BOX].h = h;
+
+    /*
+     * The title bar: a strip across the top with a close box at its left end,
+     * a full box at its right and the window's name between them.
+     *
+     * Both boxes are drawn whether or not this is the window in front, where
+     * GEM drew them on the topped window alone. On an ST that was the honest
+     * answer - only the top window could be closed, and clicking anywhere in
+     * another one topped it first - and here it is not: every window is one of
+     * the desktop's and a click lands in the one it was aimed at, so a close
+     * box that is there but not drawn would be a trap.
+     */
+    below = 0;
+
+    if (have_title)
+    {
+        int16_t left = 0, room = w;
+
+        add(F_BOX, F_TITLE, G_BOX, (void *)(uintptr_t)SPEC_TITLE,
+            0, 0, w, hbox);
+
+        if (kind & W_CLOSE)
+        {
+            add(F_TITLE, F_CLOSER, G_BOXCHAR, (void *)(uintptr_t)SPEC_CLOSER,
+                left, 0, wbox, hbox);
+            left += wbox;
+            room -= wbox;
+        }
+
+        if (kind & W_FULL)
+        {
+            room -= wbox;
+            add(F_TITLE, F_FULLER, G_BOXCHAR, (void *)(uintptr_t)SPEC_FULLER,
+                (int16_t)(left + room), 0, wbox, hbox);
+        }
+
+        if (kind & W_NAME)
+        {
+            void *ted = name_of(f->name, f->active);
+
+            if (ted)
+                add(F_TITLE, F_NAME, G_BOXTEXT, ted, left, 0, room, hbox);
+        }
+
+        below = hbox;
+    }
 
     /* The work area, which is not drawn but says how much room the bars have.
      * A pixel of border all round, and then whichever bars there are. */
     work_w = w - 2;
-    work_h = h - 2;
+    work_h = (int16_t)(h - below) - 2;
     if (have_vbar)
         work_w -= wbox - 1;
     if (have_hbar)
@@ -221,12 +344,13 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     {
         int16_t top = 0, room = work_h + 2;
 
-        add(F_BOX, F_VBAR, G_BOX, SPEC_BAR,
-            (int16_t)(1 + work_w), 0, wbox, room);
+        add(F_BOX, F_VBAR, G_BOX, (void *)(uintptr_t)SPEC_BAR,
+            (int16_t)(1 + work_w), below, wbox, room);
 
         if (kind & W_UPARROW)
         {
-            add(F_VBAR, F_UPARROW, G_BOXCHAR, SPEC_UPARROW, 0, top, wbox, hbox);
+            add(F_VBAR, F_UPARROW, G_BOXCHAR, (void *)(uintptr_t)SPEC_UPARROW,
+                0, top, wbox, hbox);
             top += hbox - 1;
             room -= hbox - 1;
         }
@@ -234,7 +358,7 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
         if (kind & W_DNARROW)
         {
             room -= hbox - 1;
-            add(F_VBAR, F_DNARROW, G_BOXCHAR, SPEC_DNARROW,
+            add(F_VBAR, F_DNARROW, G_BOXCHAR, (void *)(uintptr_t)SPEC_DNARROW,
                 0, (int16_t)(top + room - 1), wbox, hbox);
         }
 
@@ -242,10 +366,12 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
         {
             int16_t size, where;
 
-            add(F_VBAR, F_VSLIDE, G_BOX, SPEC_SLIDE, 0, top, wbox, room);
+            add(F_VBAR, F_VSLIDE, G_BOX, (void *)(uintptr_t)SPEC_SLIDE,
+                0, top, wbox, room);
 
-            elevator(room, hbox, vslsize, vslide, &size, &where);
-            add(F_VSLIDE, F_VELEV, G_BOX, SPEC_ELEV, 0, where, wbox, size);
+            elevator(room, hbox, f->vslsize, f->vslide, &size, &where);
+            add(F_VSLIDE, F_VELEV, G_BOX, (void *)(uintptr_t)SPEC_ELEV,
+                0, where, wbox, size);
         }
     }
 
@@ -253,12 +379,13 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     {
         int16_t left = 0, room = work_w + 2;
 
-        add(F_BOX, F_HBAR, G_BOX, SPEC_BAR,
-            0, (int16_t)(1 + work_h), room, hbox);
+        add(F_BOX, F_HBAR, G_BOX, (void *)(uintptr_t)SPEC_BAR,
+            0, (int16_t)(below + 1 + work_h), room, hbox);
 
         if (kind & W_LFARROW)
         {
-            add(F_HBAR, F_LFARROW, G_BOXCHAR, SPEC_LFARROW, 0, 0, wbox, hbox);
+            add(F_HBAR, F_LFARROW, G_BOXCHAR, (void *)(uintptr_t)SPEC_LFARROW,
+                0, 0, wbox, hbox);
             left += wbox - 1;
             room -= wbox - 1;
         }
@@ -266,7 +393,7 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
         if (kind & W_RTARROW)
         {
             room -= wbox - 1;
-            add(F_HBAR, F_RTARROW, G_BOXCHAR, SPEC_RTARROW,
+            add(F_HBAR, F_RTARROW, G_BOXCHAR, (void *)(uintptr_t)SPEC_RTARROW,
                 (int16_t)(left + room - 1), 0, wbox, hbox);
         }
 
@@ -274,10 +401,12 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
         {
             int16_t size, where;
 
-            add(F_HBAR, F_HSLIDE, G_BOX, SPEC_SLIDE, left, 0, room, hbox);
+            add(F_HBAR, F_HSLIDE, G_BOX, (void *)(uintptr_t)SPEC_SLIDE,
+                left, 0, room, hbox);
 
-            elevator(room, wbox, hslsize, hslide, &size, &where);
-            add(F_HSLIDE, F_HELEV, G_BOX, SPEC_ELEV, where, 0, size, hbox);
+            elevator(room, wbox, f->hslsize, f->hslide, &size, &where);
+            add(F_HSLIDE, F_HELEV, G_BOX, (void *)(uintptr_t)SPEC_ELEV,
+                where, 0, size, hbox);
         }
     }
 
@@ -286,7 +415,7 @@ static int lay_out(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
      * here is in front of itself. */
     if (have_vbar && have_hbar)
         add(F_BOX, F_SIZER, G_BOXCHAR,
-            (kind & W_SIZE) ? SPEC_SIZER : SPEC_BAR,
+            (void *)(uintptr_t)((kind & W_SIZE) ? SPEC_SIZER : SPEC_BAR),
             (int16_t)(w - wbox), (int16_t)(h - hbox), wbox, hbox);
 
     return 1;
@@ -338,15 +467,15 @@ static int inside(int which, int16_t px, int16_t py)
 /*
  * Which part of the frame a point is in, and where along a slider it fell.
  *
- * The elevator is looked at before the slide it sits in, and the arrows before
- * the bar they are on, because the smaller thing is the one that was meant.
+ * The elevator is looked at before the slide it sits in, the arrows before the
+ * bar they are on, and the two boxes in the title bar before the title bar
+ * itself, because the smaller thing is the one that was meant.
  */
-int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                  int16_t hslide, int16_t hslsize,
-                  int16_t vslide, int16_t vslsize,
+int aes_frame_hit(const struct aes_frame *frame,
                   int16_t px, int16_t py, int16_t *along)
 {
     static const int order[] = {
+        F_CLOSER, F_FULLER, F_NAME, F_TITLE,
         F_UPARROW, F_DNARROW, F_VELEV, F_VSLIDE,
         F_LFARROW, F_RTARROW, F_HELEV, F_HSLIDE,
         F_SIZER
@@ -356,7 +485,7 @@ int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     if (along)
         *along = 0;
 
-    if (!lay_out(kind, x, y, w, h, hslide, hslsize, vslide, vslsize))
+    if (!lay_out(frame))
         return FRAME_NOTHING;
 
     for (i = 0; i < (int)(sizeof order / sizeof order[0]); i++)
@@ -422,14 +551,12 @@ int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
     return FRAME_NOTHING;
 }
 
-void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                    int16_t hslide, int16_t hslsize,
-                    int16_t vslide, int16_t vslsize)
+void aes_frame_draw(const struct aes_frame *frame)
 {
     void *tree;
     int i;
 
-    if (!lay_out(kind, x, y, w, h, hslide, hslsize, vslide, vslsize))
+    if (!lay_out(frame))
         return;
 
     /* And across it goes, in the order it was built, which is the order the
@@ -451,11 +578,11 @@ void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
 
         emuvdi_tree_set(tree, i, piece[i].next, piece[i].head, piece[i].tail,
                         piece[i].type, (i == F_COUNT - 1) ? 0x20 : 0, 0,
-                        (void *)(uintptr_t)piece[i].spec,
+                        piece[i].spec,
                         piece[i].x, piece[i].y, piece[i].w, piece[i].h);
     }
 
-    emuvdi_objc_draw(tree, F_BOX, 8, x, y, w, h);
+    emuvdi_objc_draw(tree, F_BOX, 8, frame->x, frame->y, frame->w, frame->h);
 
     emuvdi_tree_free(tree);
 }

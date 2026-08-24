@@ -80,6 +80,10 @@ void host_window_closed(int16_t handle);
  * of the window, in the screen's own pixels. */
 void host_window_resized(int16_t handle, int16_t w, int16_t h);
 
+/* And when it says which window somebody is working in, which is what a GEM
+ * title bar is drawn light or dark to show */
+void host_window_activated(int16_t handle, int16_t active);
+
 /*
  * How much larger than an ST pixel one on the desktop is.
  *
@@ -143,6 +147,10 @@ struct window {
      * at a larger size would be asking for pixels there is no memory for.
      */
     int16_t min_w, min_h, max_w, max_h;
+
+    /* Whether the compositor said this window is the one being worked in, as
+     * of the last configure */
+    int active;
 
     /* The compositor dismissed it, which only happens to menus */
     int gone;
@@ -1014,11 +1022,29 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
 {
     struct window *win = data;
     int16_t sw, sh;
+    uint32_t *state;
+    int active = 0;
 
-    (void)t; (void)states;
+    (void)t;
 
     if (!win->used || win->handle < 1)
         return;
+
+    /*
+     * Which window somebody is working in, which the compositor says as one of
+     * the states rather than as an event of its own. It matters here because a
+     * window draws its own title bar: with nothing of the desktop's round the
+     * outside, that bar is the only thing saying which window is in front.
+     */
+    wl_array_for_each(state, states)
+        if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
+            active = 1;
+
+    if (active != win->active)
+    {
+        win->active = active;
+        host_window_activated(win->handle, (int16_t)active);
+    }
 
     if (width <= 0 || height <= 0)
         return;
@@ -1280,7 +1306,7 @@ static const struct xdg_popup_listener popup_listener = {
 static int window_create(struct window *win, const char *title,
                          struct surface *shows,
                          int16_t sx, int16_t sy, int16_t sw, int16_t sh,
-                         struct window *parent)
+                         struct window *parent, int own_frame)
 {
     memset(win, 0, sizeof *win);
 
@@ -1318,20 +1344,29 @@ static int window_create(struct window *win, const char *title,
     xdg_toplevel_set_max_size(win->toplevel, win->width, win->height);
 
     /*
-     * Ask the desktop to put its own frame round it.
+     * Whose frame goes round it.
      *
-     * Without this a compositor is entitled to assume the window draws its own,
-     * and a window with no frame has nothing to take hold of: there is no title
-     * bar to drag it by and no buttons to close it with. GEM draws frames round
-     * its own windows, but these are not those - these are the windows GEM's
-     * screen and its dialogs are shown in, and they belong to the desktop.
+     * A window that draws its own says so, and gets nothing from the desktop:
+     * no title bar, no buttons, no border. That is what a GEM window wants,
+     * because GEM draws all of those itself and two sets is a title bar inside
+     * a title bar - and it is worth having rather than merely tidy, because
+     * GEM's close box means "ask the application" where a desktop's means
+     * "take the window away".
+     *
+     * Everything else asks the desktop for one. A dialog, the menu bar and a
+     * window created without a title strip draw no frame of their own, and a
+     * window with no frame at all has nothing to take hold of: nothing to drag
+     * it by and nothing to close it with. Saying so is not a formality either -
+     * without it a compositor is entitled to assume the window draws its own.
      */
     if (w.decorations)
     {
         win->decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(
             w.decorations, win->toplevel);
         zxdg_toplevel_decoration_v1_set_mode(
-            win->decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+            win->decoration,
+            own_frame ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                      : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
     }
 
     /*
@@ -1487,7 +1522,7 @@ int gfx_showing()
 }
 
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
-                     int16_t sw, int16_t sh)
+                     int16_t sw, int16_t sh, int own_frame)
 {
     if (!gfx_showing() || handle < 1 || handle >= WINDOWS)
         return;
@@ -1497,7 +1532,8 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
 
     gfx_window_close(handle);
 
-    if (window_create(&w.windows[handle], title, w.screen, x, y, sw, sh, 0))
+    if (window_create(&w.windows[handle], title, w.screen, x, y, sw, sh, 0,
+                      own_frame))
         w.windows[handle].handle = handle;
     else
         window_destroy(&w.windows[handle]);
@@ -1599,6 +1635,60 @@ void gfx_window_drag_size(int16_t handle)
 
     xdg_toplevel_resize(win->toplevel, w.seat, w.serial,
                         XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT);
+    wl_display_flush(w.display);
+}
+
+/*
+ * And by its title bar, which is the desktop moving it.
+ *
+ * Nothing here or anywhere above it learns where the window ends up. Where a
+ * window is on the desktop is the desktop's business - a client is not allowed
+ * to know it, let alone choose it - and the AES has a coordinate space of its
+ * own that does not change, which is what lets an application go on getting
+ * answers that agree with each other while somebody drags its window about.
+ */
+void gfx_window_drag_move(int16_t handle)
+{
+    struct window *win;
+
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    win = &w.windows[handle];
+    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+        return;
+
+    xdg_toplevel_move(win->toplevel, w.seat, w.serial);
+    wl_display_flush(w.display);
+}
+
+/*
+ * The desktop's own menu for a window - minimise, move, close, whatever this
+ * desktop puts in one.
+ *
+ * It is here because minimising is not a thing GEM has. A window went away or
+ * it did not; there was nowhere for one to go and so no gadget for sending it
+ * there, which leaves nothing to draw in the title bar and nothing obvious to
+ * click. What a person on this desktop already does for the things a title bar
+ * has no button for is press the other mouse button on it, and this is that.
+ *
+ * The point is said in the screen's pixels, being where the press was, and has
+ * to be handed over in the window's own.
+ */
+void gfx_window_menu(int16_t handle, int16_t x, int16_t y)
+{
+    struct window *win;
+
+    if (handle < 1 || handle >= WINDOWS)
+        return;
+
+    win = &w.windows[handle];
+    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+        return;
+
+    xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.serial,
+                                  (x - win->sx) * win->scale,
+                                  (y - win->sy) * win->scale);
     wl_display_flush(w.display);
 }
 
@@ -1741,7 +1831,7 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
      * belongs to rather than on its own.
      */
     if (!window_create(&w.windows[DIALOG], "Dialog", shows, x, y, sw, sh,
-                       window_topmost()))
+                       window_topmost(), 0))
         window_destroy(&w.windows[DIALOG]);
 }
 

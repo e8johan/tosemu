@@ -316,8 +316,10 @@ uint32_t AES_menu_bar()
             bar_tree = address;
             bar_shown = 1;
 
+            /* The desktop's frame round it: the bar is a strip of GEM's own
+             * drawing with nothing in it to take hold of */
             gfx_window_open(BAR_WINDOW, "Menu", 0, 0, emuvdi_screen_width(),
-                            emuvdi_menu_height());
+                            emuvdi_menu_height(), 0);
 
             aes_tree_out();
             aes_tree_done();

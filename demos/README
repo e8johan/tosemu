@@ -48,21 +48,36 @@ grey with an Atari logo on it.
 window
 ------
 
-A window with a title, a close box, a size box and a line of text, and the loop
-every GEM application has: wait for a message, redraw when told to, and stop
-when the close box is used.
+A window with a title, a close box, a full box, a size box and a line of text,
+and the loop every GEM application has: wait for a message, redraw when told
+to, and stop when the close box is used.
 
-The close box is the desktop's, standing in for the one GEM would have drawn.
-It does not close anything by itself - it sends the application the message it
-would have got from its own closer, and the application decides. That is what
-GEM does, and it is why an application can ask whether you meant it.
+The frame is GEM's own and the desktop puts nothing round the outside, so what
+is there to click on is what the application asked for. Every one of those
+gadgets does what its equivalent on this desktop does:
 
-Resizing works the same way round. Drag an edge of the window, or take hold of
-the size box in its bottom right corner, and the desktop runs the drag - with
-the outline and the edge snapping it would give any of its own windows. What
-the application gets when the drag ends is WM_SIZED, the message GEM sent when
-somebody pulled its size box about, and the window becomes that size when the
-application sets its rectangle to what the message said. It prints the size of
+    the title bar    drag it to move the window; the other mouse button
+                     brings up the desktop's own window menu, which is where
+                     minimising lives - GEM has no gadget for it, a window
+                     having had nowhere to go
+    the close box    asks the application to close. It does not close anything
+                     by itself: it sends the message GEM sent, and the
+                     application decides, which is why one can ask whether you
+                     meant it
+    the full box     as large as the screen the AES lays windows out on, and
+                     back again. That is not the same as filling the display
+                     unless TOSEMU_SCREEN asked for a screen that size
+    the size box     runs the desktop's own resize drag
+
+`TOSEMU_DECORATIONS=desktop` puts it back the other way round, with the
+desktop's frame and GEM's title bar left out.
+
+Resizing works the way closing does. Take hold of the size box and the desktop
+runs the drag - with the outline and the edge snapping it would give any of its
+own windows - and what the application gets when the drag ends is WM_SIZED, the
+message GEM sent when somebody pulled its size box about. The window becomes
+that size when the application sets its rectangle to what the message said; one
+that ignored the message would keep the window it had. It prints the size of
 its work area in the window, so what the drag arrived at is readable from the
 inside.
 

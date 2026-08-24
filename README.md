@@ -59,6 +59,19 @@ picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
+A GEM window wears its own frame. The title bar, the close box, the full box
+and the size box are the ones the AES draws, and they do what a desktop's do:
+the title bar drags the window and its other button brings up the desktop's
+window menu, the close box asks the application to close - which is what GEM's
+always did, and is why an application can ask whether you meant it - the full
+box makes the window as large as the screen the AES lays windows out on, and
+the size box runs the desktop's own resize drag. The desktop is asked to put
+nothing round the outside, because a title bar inside a title bar is the
+picture of another computer again. Say `TOSEMU_DECORATIONS=desktop` to have it
+the other way round: the desktop's frame, and GEM's title bar left out of what
+is shown. Dialogs and the menu bar always take the desktop's, having no frame
+of their own to wear.
+
 Which screen it is comes from `TOSEMU_SCREEN`. The ST's three are `low`,
 320x200 in sixteen colours, `medium`, 640x200 in four, and `high`, 640x400 in
 two; the TT's are `tt-medium`, 640x480 in sixteen, and `tt-high`, 1280x960 in
@@ -148,9 +161,10 @@ be there rather than one that has to be.
     # having to put the remark above.
 
     [screen]
-    mode   = native-color
-    scale  = 3
-    window = yes
+    mode        = native-color
+    scale       = 3
+    window      = yes
+    decorations = atari
     # output = DP-1
 
     [input]
@@ -176,6 +190,7 @@ Which is which:
 | `[screen] scale`       | `TOSEMU_SCALE`       |
 | `[screen] output`      | `TOSEMU_OUTPUT`      |
 | `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
+| `[screen] decorations` | `TOSEMU_DECORATIONS` |
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |
 | `[files] base`         | `TOS_BASE_PATH`      |

@@ -63,6 +63,7 @@ static const struct {
     { "TOSEMU_SCALE",       "screen",  "scale",       0 },
     { "TOSEMU_OUTPUT",      "screen",  "output",      0 },
     { "TOSEMU_NO_WINDOW",   "screen",  "window",      1 },
+    { "TOSEMU_DECORATIONS", "screen",  "decorations", 0 },
 
     { "TOSEMU_KEYS",        "input",   "keys",        0 },
     { "TOSEMU_CLICKS",      "input",   "clicks",      0 },
