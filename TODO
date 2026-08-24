@@ -112,6 +112,38 @@
   it can be given - aesframe.c builds one and throws it away, so keeping it is
   what this needs.
 
+- A window resized by the desktop whose application does not answer WM_SIZED
+  stays the size it was, and the compositor goes on thinking it is the size it
+  asked for. That is GEM's own arrangement - the application decides, and one
+  that ignores the message keeps its window - but on a desktop it shows,
+  because what is left over is drawn by the compositor rather than by nobody.
+  Only a window created with a size box can get into it, so an application that
+  asked to be resizable and then declined to resize is the whole of the
+  exposure.
+
+- Minimising a window has no gadget of its own, because GEM has no such thing:
+  a window went away or it did not, there being nowhere for one to go. It lives
+  on the desktop's window menu, which the other mouse button on the title bar
+  brings up. The gadget it would want is AES 4.1's iconifier, W_SMALLER, and
+  nothing written for the AES this reports being would ever ask for one - so
+  drawing it would be drawing a button no application knows about.
+
+- The full box makes a window as large as the screen the AES lays windows out
+  on and does not put the desktop's window into its maximised state, so on a
+  640x400 screen the full box and the desktop's maximise mean different sizes.
+  Asking the compositor to maximise instead would mean the two deciding the
+  size in turn - it configures, the application answers, which configures again
+  - and the window that came out of that would be neither of the two things
+  somebody asked for. A screen the size of the display, which is what
+  TOSEMU_SCREEN=native-mono is for, makes them the same thing.
+
+- Nothing in make check reaches the parts of a window's frame that ask the
+  desktop for something: dragging it by the title bar, pulling the size box,
+  and the window menu on the other button. All three want the serial of an
+  input event to prove they are answering something a person did, and injected
+  input has none - a compositor is not something a test can arrange, and this
+  is the far end of that. They were watched working against kwin instead.
+
 - The boxes an application drags about follow the mouse correctly but can only
   be seen where a window is showing the screen they are drawn into. A rubber
   band pulled out inside a window works; one pulled across the desktop is
