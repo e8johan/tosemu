@@ -123,18 +123,28 @@ static int talkative;
 static const char *accessory_directory;
 
 /*
- * The accessories this daemon started, so that it can stop them again.
+ * The accessories to see off when the session ends.
  *
  * By process rather than by connection, because stopping one is a thing to do
  * to a process: an accessory never exits on its own - that is what makes it an
  * accessory - so being asked nicely may not be enough.
+ *
+ * As many as there can be applications rather than as many as fit in a packet.
+ * Six is how many the daemon can name to anybody, and a seventh in the
+ * directory was started and then not written down, which made it exactly the
+ * one nothing would ever stop.
  */
 static struct {
     pid_t pid;
+
+    /* Whether this daemon started it, which decides how to ask whether it is
+     * still there: waitpid answers about a child and about nothing else */
+    int ours;
+
     char from[64];              /* What to call it when saying something */
     char path[PATH_MAX];        /* And where it came from, so that looking
                                  * again can tell a new one from this one */
-} started[AESD_MAX_ACCS];
+} started[MAX_APPS];
 
 static int started_count;
 
@@ -588,6 +598,7 @@ static void start_accessory(const char *emulator, const char *path)
         const char *leaf = strrchr(path, '/');
 
         started[started_count].pid = child;
+        started[started_count].ours = 1;
         snprintf(started[started_count].from, sizeof started[started_count].from,
                  "%s", leaf ? leaf + 1 : path);
         snprintf(started[started_count].path, sizeof started[started_count].path,
@@ -764,13 +775,73 @@ static int still_here(void)
         if (started[i].pid <= 0)
             continue;
 
-        if (waitpid(started[i].pid, 0, WNOHANG) != 0)
-            started[i].pid = 0;         /* gone, or never ours */
+        /*
+         * Asked one way of a child and another of anything else, and the
+         * difference matters: waitpid says "no such thing" about a process
+         * this daemon did not start, which would read as "it has gone" for one
+         * that is sitting right there. A child is asked with waitpid all the
+         * same, because that is also what collects it.
+         */
+        if (started[i].ours)
+        {
+            if (waitpid(started[i].pid, 0, WNOHANG) != 0)
+                started[i].pid = 0;     /* gone, and collected */
+            else
+                left++;
+        }
+        else if (kill(started[i].pid, 0) < 0 && errno == ESRCH)
+            started[i].pid = 0;
         else
             left++;
     }
 
     return left;
+}
+
+/*
+ * The accessories this daemon did not start, added to the ones it did.
+ *
+ * One can be started by hand against the socket, which is how a new one gets
+ * tried before it is dropped in the directory, and it registers itself the
+ * same way any other does. It is still an accessory, and that is the whole
+ * argument for stopping it: an application left running when the daemon has
+ * gone is somebody's work with a window on the screen, but an accessory is
+ * reached only by being told to open, and there is nothing left to tell it. It
+ * would sit there for ever with no way in and no way out.
+ *
+ * They go in the same list so that the closing below is one loop and not two,
+ * and the only thing that differs about them is that they are not children.
+ */
+static void also_the_ones_started_by_hand(void)
+{
+    int i, j;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory || apps[i].pid <= 0)
+            continue;
+
+        for (j = 0; j < started_count; j++)
+            if (started[j].pid == apps[i].pid)
+                break;
+
+        if (j < started_count)
+            continue;
+
+        if (started_count >= (int)(sizeof started / sizeof started[0]))
+            return;
+
+        started[started_count].pid = apps[i].pid;
+        started[started_count].ours = 0;
+        started[started_count].path[0] = 0;
+
+        /* Only ever used if it stops answering before it is named, since one
+         * that registered is named by what it calls itself */
+        snprintf(started[started_count].from,
+                 sizeof started[started_count].from, "%.*s", AESD_NAME_LEN,
+                 apps[i].name);
+        started_count++;
+    }
 }
 
 /* Waits a while for one to go, and says whether it did */
@@ -797,13 +868,15 @@ static int gone_within(int which, int tenths)
  * Ending the session.
  *
  * Everybody is asked first, with the message GEM has for exactly this, and
- * given a moment to go of their own accord. Then whatever this daemon started
- * and is still there is stopped, because an accessory that does not handle
- * being asked would otherwise outlive the session that started it.
+ * given a moment to go of their own accord. Then every accessory that is still
+ * there is stopped, because one that does not handle being asked would
+ * otherwise outlive the session it belongs to.
  *
  * Applications are asked and not stopped. One that ignores the message is
  * somebody's work with unsaved changes in it, and a program the person started
- * themselves is theirs to close.
+ * themselves is theirs to close. An accessory is not that, whoever started it:
+ * it has no window and is reached only by being told to open one, so a daemon
+ * going away leaves it with nothing that could ever ask.
  */
 static void everybody_out(void)
 {
@@ -818,6 +891,8 @@ static void everybody_out(void)
         if (apps[i].used)
             send_to(apps[i].fd, &out);
 
+    also_the_ones_started_by_hand();
+
     /*
      * What each is called, taken now rather than when its turn comes.
      *
@@ -827,7 +902,7 @@ static void everybody_out(void)
      * accessories and one line was the first thing this got wrong.
      */
     {
-        static char names[AESD_MAX_ACCS][64];
+        static char names[MAX_APPS][64];
 
         for (i = 0; i < started_count; i++)
             snprintf(names[i], sizeof names[i], "%s", name_of(i));
@@ -874,7 +949,13 @@ static void everybody_out(void)
         }
 
         kill(started[i].pid, SIGKILL);
-        waitpid(started[i].pid, 0, 0);
+
+        /* Waited for only if it is a child, because that is the only kind of
+         * process there is anything to wait for. One that is not is gone all
+         * the same - nothing survives this - and somebody else collects it. */
+        if (started[i].ours)
+            waitpid(started[i].pid, 0, 0);
+
         started[i].pid = 0;
 
         printf(" [ killed ]\n");

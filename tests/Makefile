@@ -330,6 +330,40 @@ check: all
 	! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) -r accs out accsaid accwas accd.pid acc.socket
+	#
+	# And one started by hand rather than out of a directory, which the
+	# daemon never forked and so has nothing to wait for. It is seen off all
+	# the same, because what makes an accessory worth stopping is not who
+	# started it: it has no window and is reached only by being told to open
+	# one, so a daemon going away leaves it with nothing that could ever
+	# ask. Started from a subshell that then goes, so that what is looked
+	# for afterwards is nobody's child - one that is would still answer
+	# while it waited to be collected, and read as alive.
+	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	  ../bin/tosaesd --no-config > accsaid 2>&1 & \
+	  echo $$! > accd.pid; \
+	  sleep 1; \
+	  ( TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	      ../bin/tosemu --no-config test-c-acc & \
+	    echo $$! > accwas ); \
+	  sleep 3; \
+	  kill -INT `cat accd.pid`; \
+	  wait `cat accd.pid` || true; \
+	  { if kill -0 `cat accwas` 2>/dev/null; then \
+	      echo "not ok 1 - one started by hand went too (got still running, want gone)"; \
+	    else \
+	      echo "ok 1 - one started by hand went too"; \
+	    fi; \
+	    if grep -q '^Asking ' accsaid; then \
+	      echo "ok 2 - and the daemon reached past its own children to do it"; \
+	    else \
+	      echo "not ok 2 - and the daemon reached past its own children to do it (got silence, want a line naming it)"; \
+	    fi; \
+	    echo "1..2"; } > out; \
+	  kill `cat accwas` 2>/dev/null; true
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out accsaid accwas accd.pid acc.socket
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))
