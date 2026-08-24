@@ -345,16 +345,29 @@ uint32_t AES_menu_bar()
     return AES_E_OK;
 }
 
-/* Where a menu has dropped down, which is the AES telling us through the one
- * place that knows: see emuvdi/gemmnlib.c */
+/*
+ * A menu going up and coming down, which is the AES telling us through the one
+ * place that knows: see emuvdi/gemmnlib.c.
+ *
+ * Somewhere to draw comes first and the window second, because until the menu
+ * has been drawn there is nothing in it to show. They are separate calls for
+ * that reason and not for tidiness: the surface has to be in hand before the
+ * first pixel of the menu goes anywhere.
+ */
+void host_menu_surface(void)
+{
+    gem_menu_begin();
+}
+
 void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
-    gfx_menu_open(x, y, width, height);
+    gfx_menu_open(gem_menu_surface(), x, y, width, height);
 }
 
 void host_menu_end(void)
 {
     gfx_menu_close();
+    gem_menu_end();
 }
 
 /* The three that change one entry ******************************************/

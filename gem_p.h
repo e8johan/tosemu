@@ -77,6 +77,18 @@ void gem_forget(void);
 void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
 void gem_dialog_end();
 
+/*
+ * The same for a menu that has dropped down, and for the same reason. The
+ * surface is asked for before the menu is drawn and let go of when it goes
+ * away; the window it is shown in is gfx.c's, and gem_menu_surface is what
+ * says which surface that window shows.
+ */
+struct surface;
+
+void gem_menu_begin(void);
+void gem_menu_end(void);
+struct surface *gem_menu_surface(void);
+
 /* Puts what has been drawn where it can be seen: a window if there is a
  * compositor, and a file if TOSEMU_SCREENSHOT asked for one */
 void gem_present();

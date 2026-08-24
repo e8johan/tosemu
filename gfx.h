@@ -83,10 +83,16 @@ void gfx_window_close(int16_t handle);
  */
 /*
  * A menu that has dropped down: a popup belonging to the bar, showing that
- * rectangle of the screen. It has no frame, cannot be moved and is not a
- * window as far as the desktop is concerned, which is what a menu should be.
+ * rectangle of a surface of the menu's own. It has no frame, cannot be moved
+ * and is not a window as far as the desktop is concerned, which is what a menu
+ * should be.
+ *
+ * The surface is the menu's rather than the screen's for the same reason a
+ * dialog's is: a menu drawn into the screen would appear inside every window
+ * showing that part of it. See gem_menu_begin.
  */
-void gfx_menu_open(int16_t x, int16_t y, int16_t w, int16_t h);
+void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
+                   int16_t w, int16_t h);
 void gfx_menu_close(void);
 
 void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,

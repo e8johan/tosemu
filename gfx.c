@@ -1456,7 +1456,8 @@ void gfx_window_close(int16_t handle)
  * loss here: the menu belongs directly under its title, and where that is on
  * the bar is exactly what we do know.
  */
-void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
+void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
+                   int16_t sw, int16_t sh)
 {
     struct window *win = &w.windows[MENU];
     struct window *bar = &w.windows[MENUBAR];
@@ -1469,7 +1470,11 @@ void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
 
     memset(win, 0, sizeof *win);
 
-    win->shows = w.screen;
+    /* The screen when there is no surface of the menu's own, which is what
+     * being unable to make one comes to: the menu is drawn where it always
+     * was, and shows through the windows, which is worse than the alternative
+     * only in that somebody notices */
+    win->shows = shows ? shows : w.screen;
     win->sx = x;
     win->sy = y;
     win->sw = sw;

@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu
 
 CC=m68k-atari-mint-gcc
 
@@ -71,6 +71,9 @@ test-c-mkstate: c-mkstate.c
 	$(CC) $< -lgem -o $@
 
 test-c-screen: c-screen.c
+	$(CC) $< -lgem -o $@
+
+test-c-menu: c-menu.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -227,6 +230,16 @@ check: all
 	# Watching a box, which waits for the button to come up and so needs
 	# one to have been pressed - twice, because it is watched twice
 	TOSEMU_CLICKS='72,64 72,64' $(TOSEMU) test-c-watchbox > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Where a menu that has dropped down is drawn, which is not on the
+	# screen: a window under it goes on showing what it was showing. The
+	# pointer goes into the Desk title, on to the File title and down on to
+	# the first entry, which is three moves because a GEM menu opens on the
+	# pointer arriving and the title left behind is half of what this
+	# checks. The coordinates are the high resolution screen's, which is
+	# what these run on.
+	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27' $(TOSEMU) test-c-menu > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Asking where the mouse is rather than waiting for it, which is what an
