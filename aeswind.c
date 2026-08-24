@@ -71,8 +71,14 @@
 
 /* Anything that puts a strip along the top */
 #define W_TITLE (W_NAME|W_CLOSER|W_FULLER|W_MOVER)
-/* Anything that puts one down the right */
-#define W_RIGHT (W_UPARROW|W_DNARROW|W_VSLIDE)
+/*
+ * Anything that puts one down the right, the size box included: it sits in the
+ * corner where the two bars meet, so a window with one has both of them
+ * whether or not it has anything to scroll. That is what aesframe.c draws and
+ * these two have to say the same, or an application is told about a column of
+ * its window that the frame is standing in.
+ */
+#define W_RIGHT (W_UPARROW|W_DNARROW|W_VSLIDE|W_SIZER)
 /* Anything that puts one along the bottom */
 #define W_BOTTOM (W_SIZER|W_LFARROW|W_RTARROW|W_HSLIDE)
 

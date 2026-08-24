@@ -123,6 +123,7 @@ int main(int argc, char **argv)
     short wx, wy;
     short wide = 400, high = 200;
     short inside_x, inside_w, inside_y, inside_h;
+    short work_x, work_y, work_w;
     short far_x;
     int atari_frame = (argc < 2) || strcmp(argv[1], "desktop") != 0;
 
@@ -165,6 +166,10 @@ int main(int argc, char **argv)
 
     check(intout[2], (short)(wy + 2 * hbox),
           "the work area starts below both strips");
+
+    work_x = intout[1];
+    work_y = intout[2];
+    work_w = intout[3];
 
     set_words(window, WF_NAME, "Title");
     set_words(window, WF_INFO, "Information");
@@ -218,6 +223,25 @@ int main(int argc, char **argv)
 
     check(ink_in(handle, far_x, inside_y, wchar, inside_h), 0,
           "and a short one afterwards leaves none of it behind");
+
+    /*
+     * Where the work area ends and the scroll bar begins.
+     *
+     * A window with a size box has a bar down its right hand side for the box
+     * to sit at the bottom of, whether or not there is anything to scroll, so
+     * that strip is not the application's. Nothing has been drawn in the work
+     * area here, so the last column of it has to be blank and the one after it
+     * has to be the bar - and the AES has to agree with itself about which is
+     * which, or an application draws in a column that the frame paints over
+     * the moment anything redraws it.
+     */
+    check(ink_in(handle, (short)(work_x + work_w - 1), (short)(work_y + 4),
+                 1, 4), 0,
+          "the last column of the work area is the application's");
+
+    check(ink_in(handle, (short)(work_x + work_w), (short)(work_y + 4),
+                 1, 4), 1,
+          "and the scroll bar begins where the work area ends");
 
     printf("1..%d\n", n);
 
