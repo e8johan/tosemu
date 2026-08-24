@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize
 
 CC=m68k-atari-mint-gcc
 
@@ -50,6 +50,9 @@ test-c-vdi: c-vdi.c
 	$(CC) $< -lgem -o $@
 
 test-c-aesd: c-aesd.c
+	$(CC) $< -lgem -o $@
+
+test-c-acc: c-acc.c
 	$(CC) $< -lgem -o $@
 
 test-c-userdef: c-userdef.c
@@ -292,6 +295,41 @@ check: all
 	grep -q '^1\.\.' out
 	grep -q '^1\.\.' out2
 	$(RM) out out2 aesd.pid waiter.pid aesd.socket
+	#
+	# An accessory outliving the daemon that started it, which is the one
+	# thing it must not do: nothing can reach it afterwards, because being
+	# reached is something an accessory only ever does by being told to.
+	# Quit in the panel closed the session properly and a signal did not, so
+	# this asks the daemon to stop the way a person at a terminal does and
+	# then looks for what it left. The accessory is copied into a directory
+	# of its own rather than pointed at, since the daemon starts everything
+	# in the one it is given.
+	mkdir -p accs
+	cp test-c-acc accs/TEST.ACC
+	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	  ../bin/tosaesd --no-config accs > accsaid 2>&1 & \
+	  echo $$! > accd.pid; \
+	  sleep 3; \
+	  pgrep -P `cat accd.pid` > accwas || true; \
+	  kill -INT `cat accd.pid`; \
+	  wait `cat accd.pid` || true; \
+	  { if ! test -s accwas; then \
+	      echo "not ok 1 - the daemon started the accessory (got no process, want one)"; \
+	    elif kill -0 `cat accwas` 2>/dev/null; then \
+	      echo "not ok 1 - the accessory went with the daemon (got still running, want gone)"; \
+	    else \
+	      echo "ok 1 - the accessory went with the daemon"; \
+	    fi; \
+	    if grep -q '^Asking ' accsaid; then \
+	      echo "ok 2 - and the daemon said what it did with it"; \
+	    else \
+	      echo "not ok 2 - and the daemon said what it did with it (got silence, want a line naming it)"; \
+	    fi; \
+	    echo "1..2"; } > out; \
+	  test -s accwas && kill `cat accwas` 2>/dev/null; true
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -r accs out accsaid accwas accd.pid acc.socket
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

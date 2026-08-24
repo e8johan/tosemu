@@ -47,6 +47,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -137,10 +138,25 @@ static struct {
 
 static int started_count;
 
-/* Set when somebody picks Quit, which is noticed at the top of the loop
- * rather than acted on where it happens: tearing the daemon down inside a
- * message from the panel would leave the panel waiting for a reply. */
-static int time_to_go;
+/*
+ * Set when somebody picks Quit or sends a signal, which is noticed at the top
+ * of the loop rather than acted on where it happens: tearing the daemon down
+ * inside a message from the panel would leave the panel waiting for a reply,
+ * and doing it inside a signal handler is not something a handler is allowed
+ * to do - closing the session waits for processes and says what it is doing.
+ */
+static volatile sig_atomic_t time_to_go;
+
+/*
+ * How a signal reaches the loop.
+ *
+ * Writing a byte to one end wakes a poll waiting on the other, and writing to
+ * a pipe is one of the few things a signal handler may do. The flag on its own
+ * would not be enough: a signal arriving between the test at the top of the
+ * loop and the poll below it would be set and then slept through, and the
+ * daemon would sit there until something else happened to say anything.
+ */
+static int woken[2] = { -1, -1 };
 
 static void say_of(const char *what, const char *name)
 {
@@ -877,12 +893,31 @@ static void tidy_up(void)
         unlink(socket_path);
 }
 
+/*
+ * Interrupted, which is asked for here rather than done here.
+ *
+ * Leaving at once looks like the tidy thing and is not: the socket goes, the
+ * daemon goes, and every accessory it started is still sitting there talking
+ * to nothing. An accessory does not stop on its own - that is what makes it an
+ * accessory - so it has to be stopped, and stopping it is the loop's job. This
+ * says so and gets out of the way, which makes Ctrl-C the same door as Quit in
+ * the panel rather than a second one that skips the closing.
+ */
 static void asked_to_stop(int signal)
 {
     (void)signal;
 
-    tidy_up();
-    _exit(0);
+    time_to_go = 1;
+
+    if (woken[1] >= 0)
+    {
+        /* What is in the byte does not matter, only that something arrived. A
+         * pipe already holding one wakes the poll just as well, so there is
+         * nothing to do about a write that does not fit. */
+        ssize_t said = write(woken[1], "", 1);
+
+        (void)said;
+    }
 }
 
 int main(int argc, char **argv)
@@ -1023,6 +1058,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /*
+     * The way a signal gets a word in, made before anything can send one.
+     *
+     * Nothing else may have it: an accessory is started by forking, so a write
+     * end left open in the child would be a second daemon as far as the pipe
+     * is concerned. And the handler must not be able to wait, which is what a
+     * pipe nobody is emptying would otherwise make it do.
+     */
+    if (pipe2(woken, O_CLOEXEC | O_NONBLOCK) < 0)
+    {
+        perror("tosaesd: pipe");
+        tidy_up();
+        return 1;
+    }
+
     signal(SIGINT, asked_to_stop);
     signal(SIGTERM, asked_to_stop);
     signal(SIGPIPE, SIG_IGN);   /* An application going away mid-write */
@@ -1047,15 +1097,24 @@ int main(int argc, char **argv)
 
     for (;;)
     {
-        struct pollfd fds[MAX_APPS + 2];
-        int slots[MAX_APPS + 2];
+        struct pollfd fds[MAX_APPS + 3];
+        int slots[MAX_APPS + 3];
         int panel_slot = -1;
+        int wake_slot;
         int panel = tray_fd();
         int n = 0;
 
         fds[n].fd = listening;
         fds[n].events = POLLIN;
         slots[n] = -1;
+        n++;
+
+        /* The end a signal is heard on, so that one arriving while this is
+         * asleep is what wakes it rather than the next thing anybody says */
+        wake_slot = n;
+        fds[n].fd = woken[0];
+        fds[n].events = POLLIN;
+        slots[n] = -3;
         n++;
 
         /* The panel, when there is one to talk to */
@@ -1103,7 +1162,10 @@ int main(int argc, char **argv)
             struct aesd_packet in;
             ssize_t got;
 
-            if (i == panel_slot)
+            /* The panel is pumped above, and the byte a signal wrote has done
+             * its work by getting this far: the flag it set is read at the top
+             * of the loop, which is the next thing to happen. */
+            if (i == panel_slot || i == wake_slot)
                 continue;
 
             if (!(fds[i].revents & (POLLIN|POLLHUP|POLLERR)))
