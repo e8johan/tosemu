@@ -55,6 +55,12 @@
 #define WM_REDRAW (20)
 #define WM_CLOSED (22)
 
+/* Putting one of them where the window's application will find it. It is
+ * written out down among the rest of the messages, which are named where the
+ * frame that sends them is dealt with. */
+static void send_to_owner(int16_t what, int16_t handle, int16_t a, int16_t b,
+                          int16_t c, int16_t d);
+
 /* What a window can have around it, which is what wind_create is told
  * http://toshyp.atari.org/en/008009.html */
 #define W_NAME     (0x0001)
@@ -801,6 +807,9 @@ uint32_t AES_wind_set()
             break;
 
         case WF_CURRXYWH:
+        {
+            int16_t changed;
+
             win->px = win->x;
             win->py = win->y;
             win->pw = win->w;
@@ -811,6 +820,9 @@ uint32_t AES_wind_set()
             win->w = aes_intin(4);
             win->h = aes_intin(5);
 
+            changed = win->x != win->px || win->y != win->py
+                   || win->w != win->pw || win->h != win->ph;
+
             draw_frame(win);
 
             {
@@ -819,7 +831,29 @@ uint32_t AES_wind_set()
                 window_on_show(win->kind, &sx, &sy, &sw, &sh);
                 gfx_window_move(handle, sx, sy, sw, sh);
             }
+
+            /*
+             * And the application is told to paint what is now inside it.
+             *
+             * A window that has changed shape has parts nobody has drawn in.
+             * Some of them were outside it a moment ago; the rest are where the
+             * frame used to be, because a scroll bar that has moved to the new
+             * edge leaves the pixels of the old one standing in the middle of
+             * the work area. Neither is the AES's to paint - the work area
+             * belongs to the application, and what an application does with a
+             * window it has just resized is exactly what it does with one that
+             * has just been uncovered.
+             *
+             * Only when something actually changed. An application that sets a
+             * window to the rectangle it already has - which is what answering
+             * WM_SIZED with nothing new amounts to - is not asking for its
+             * document to be drawn again.
+             */
+            if (changed && win->open)
+                send_to_owner(WM_REDRAW, handle, win->x, win->y,
+                              win->w, win->h);
             break;
+        }
 
         /* The four that move a slider or change how large it is. Each one
          * changes what the frame looks like, so each one redraws it. */

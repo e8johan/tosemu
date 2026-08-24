@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize
 
 CC=m68k-atari-mint-gcc
 
@@ -77,6 +77,9 @@ test-c-menu: c-menu.c
 	$(CC) $< -lgem -o $@
 
 test-c-frame: c-frame.c
+	$(CC) $< -lgem -o $@
+
+test-c-resize: c-resize.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -243,6 +246,13 @@ check: all
 	grep -q '^1\.\.' out
 	TOSEMU_DECORATIONS=desktop $(TOSEMU) test-c-frame desktop > out; \
 	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# A window given a new rectangle, which is what an application does with
+	# the four words WM_SIZED carries. The frame has to move with it and the
+	# application has to be told to paint what is now inside - the drag that
+	# produced the rectangle is the compositor's and is not something a test
+	# can arrange, but everything after it is.
+	$(TOSEMU) test-c-resize > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Where a menu that has dropped down is drawn, which is not on the
 	# screen: a window under it goes on showing what it was showing. The
