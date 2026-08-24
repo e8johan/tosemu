@@ -989,6 +989,7 @@ uint32_t AES_wind_new()
  * apart is what lets the frame be drawn differently one day without the
  * meaning of clicking on it changing.
  */
+#define WM_TOPPED  (21)
 #define WM_FULLED  (23)
 #define WM_ARROWED (24)
 #define WM_HSLID   (25)
@@ -1105,7 +1106,10 @@ void host_window_resized(int16_t handle, int16_t sw, int16_t sh)
  * It is also what the AES calls topped. An application asks which of its
  * windows that is and expects the answer to be the one being used, so the
  * desktop's answer becomes the AES's - which is more nearly true than what was
- * there before, that being whichever window was opened last.
+ * there before, that being whichever window was opened last. It is told as
+ * well as recorded, because an application that keeps its own idea of which
+ * of its windows is in front learns of the change no other way, and WM_TOPPED
+ * is what GEM sent when somebody clicked a window that was not.
  *
  * The frame is drawn again and put on the screen at once rather than left for
  * the next time anything is drawn. Nothing else is going to happen: the
@@ -1125,7 +1129,10 @@ void host_window_activated(int16_t handle, int16_t active)
     win->active = (active != 0);
 
     if (win->active)
+    {
         topped = handle;
+        send_to_owner(WM_TOPPED, handle, 0, 0, 0, 0);
+    }
 
     draw_frame(win);
     gem_present();
