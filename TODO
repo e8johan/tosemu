@@ -142,7 +142,8 @@
   and the window menu on the other button. All three want the serial of an
   input event to prove they are answering something a person did, and injected
   input has none - a compositor is not something a test can arrange, and this
-  is the far end of that. They were watched working against kwin instead.
+  is the far end of that. They were watched working against kwin instead, the
+  configures driven through its scripting interface rather than by hand.
 
 - The boxes an application drags about follow the mouse correctly but can only
   be seen where a window is showing the screen they are drawn into. A rubber

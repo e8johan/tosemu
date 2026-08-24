@@ -148,6 +148,16 @@ struct window {
      */
     int16_t min_w, min_h, max_w, max_h;
 
+    /*
+     * The size the compositor last asked for and the size the AES was last
+     * told about, both in the screen's own pixels.
+     *
+     * They are two numbers because a drag asks on every frame and is answered
+     * once, when it ends - see toplevel_configure, which says why.
+     */
+    int16_t asked_sw, asked_sh;
+    int16_t told_sw, told_sh;
+
     /* Whether the compositor said this window is the one being worked in, as
      * of the last configure */
     int active;
@@ -1024,6 +1034,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
     int16_t sw, sh;
     uint32_t *state;
     int active = 0;
+    int dragging = 0;
 
     (void)t;
 
@@ -1031,14 +1042,21 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
         return;
 
     /*
-     * Which window somebody is working in, which the compositor says as one of
-     * the states rather than as an event of its own. It matters here because a
-     * window draws its own title bar: with nothing of the desktop's round the
-     * outside, that bar is the only thing saying which window is in front.
+     * What the compositor says about the window besides how large it is, both
+     * of which arrive as states rather than as events of their own.
+     *
+     * Which window somebody is working in matters because a window draws its
+     * own title bar: with nothing of the desktop's round the outside, that bar
+     * is the only thing saying which window is in front. Whether a drag is
+     * running matters for the size, below.
      */
     wl_array_for_each(state, states)
+    {
         if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
             active = 1;
+        if (*state == XDG_TOPLEVEL_STATE_RESIZING)
+            dragging = 1;
+    }
 
     if (active != win->active)
     {
@@ -1046,21 +1064,55 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
         host_window_activated(win->handle, (int16_t)active);
     }
 
-    if (width <= 0 || height <= 0)
-        return;
-
     /* Back into the screen's pixels, which is the only size anything above
      * here deals in. Rounding down rather than up: a window one pixel short of
      * what was asked for is a gap at the edge, and one pixel over is a row of
      * the screen that does not exist. */
-    sw = (int16_t)(width / win->scale);
-    sh = (int16_t)(height / win->scale);
+    if (width > 0 && height > 0)
+    {
+        win->asked_sw = (int16_t)(width / win->scale);
+        win->asked_sh = (int16_t)(height / win->scale);
+    }
+
+    /*
+     * Nothing at all while a drag is running.
+     *
+     * A compositor says how large the window is to be on every frame of one,
+     * and acting on each of those means the application redrawing its document
+     * dozens of times a second on a 68000 - which is slow enough to feel, and
+     * to make the drag itself lag behind the pointer. It is also more than was
+     * ever asked for: what an ST did was drag an outline and tell the
+     * application once, when the button came up, and an application built for
+     * that redraws once.
+     *
+     * So the size is noted and the last one noted is the one that counts. What
+     * the person sees while dragging is whatever the desktop shows for a window
+     * that is not repainting, which is the outline in its own way round.
+     */
+    if (dragging)
+        return;
+
+    sw = win->asked_sw;
+    sh = win->asked_sh;
 
     if (sw <= 0 || sh <= 0)
         return;
 
     if (sw == win->sw && sh == win->sh)
         return;
+
+    /*
+     * And not twice for the same answer. An application is entitled to ignore
+     * WM_SIZED and keep the window it had, and a compositor repeats the size
+     * it wants in every configure - including the ones that are really about
+     * something else, like the window being clicked on. Without this, such an
+     * application would be asked again on every one of those, for ever.
+     */
+    if (sw == win->told_sw && sh == win->told_sh)
+        return;
+
+    win->told_sw = sw;
+    win->told_sh = sh;
 
     host_window_resized(win->handle, sw, sh);
 }

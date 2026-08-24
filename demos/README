@@ -86,6 +86,12 @@ message GEM sent when somebody pulled its size box about. The window becomes
 that size when the application sets its rectangle to what the message said; one
 that ignored the message would keep the window it had.
 
+Nothing happens inside the window until the drag ends, which is deliberate and
+is what an ST did: it dragged an outline and told the application once, when
+the button came up. Redrawing a document on every frame of a drag is slow
+enough to feel on a 68000, and it is more than any application built for GEM
+was ever asked to do.
+
 A window can only be made as large as the screen the AES lays it out on, which
 is 640x400 unless TOSEMU_SCREEN says otherwise - try `native-mono` for one as
 large as the display. Grown against the bottom or the right of that screen it
