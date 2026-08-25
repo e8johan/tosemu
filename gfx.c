@@ -185,18 +185,6 @@ struct window {
      * of the last configure */
     int active;
 
-    /*
-     * And whether it said the window is maximised.
-     *
-     * What the compositor last said rather than what was last asked of it,
-     * because the full box is not the only thing that maximises a window - the
-     * desktop's own window menu offers it, and a person who used that has left
-     * the window in a state nothing here asked for. Asking for the state it is
-     * already in does nothing, so the record has to be the true one or the
-     * full box stops working after the menu has been used once.
-     */
-    int maximized;
-
     /* The compositor dismissed it, which only happens to menus */
     int gone;
 };
@@ -1089,8 +1077,8 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * Which window somebody is working in matters because a window draws its
      * own title bar: with nothing of the desktop's round the outside, that bar
      * is the only thing saying which window is in front. Whether a drag is
-     * running matters for the size, below. Whether the window is maximised is
-     * noted rather than acted on, and window_maximize says what for.
+     * running matters for the size, below, and so does whether the window is
+     * maximised - see window_maximize, which is what asks for that.
      */
     wl_array_for_each(state, states)
     {
@@ -1102,8 +1090,6 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
             maximized = 1;
     }
 
-    win->maximized = maximized;
-
     if (active != win->active)
     {
         win->active = active;
@@ -1114,7 +1100,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * here deals in. Rounding down rather than up: a window one pixel short of
      * what was asked for is a gap at the edge, and one pixel over is a row of
      * the screen that does not exist. */
-    if (width > 0 && height > 0)
+    if (width > 0 && height > 0 && !maximized)
     {
         int16_t asked_sw = (int16_t)(width / win->scale);
         int16_t asked_sh = (int16_t)(height / win->scale);
@@ -1178,6 +1164,28 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
         win->dragging = 0;
         window_present(win);
     }
+
+    /*
+     * A maximised window is told nothing about how large it is, because the
+     * size that arrives with the maximising is the display's and the window is
+     * the emulated screen's.
+     *
+     * The work area is the display less whatever the desktop keeps for itself,
+     * and the screen the AES lays windows out on is worked out from the whole
+     * display. Neither is reliably the larger: a desktop with a panel on it
+     * leaves a work area shorter than a window as large as the AES allows, and
+     * one without leaves it longer. Either way the number is about the display
+     * and answering it is the application resizing the window to something
+     * that is no longer as large as it goes - which takes the maximising off
+     * again, and the window jumps out to the corner and straight back.
+     *
+     * There is nothing that needs saying anyway. Being maximised is a thing
+     * that happened because the window was already as large as the AES allows,
+     * and it is still that size: what was wanted from the compositor was the
+     * corner and not the rectangle.
+     */
+    if (maximized)
+        return;
 
     sw = win->asked_sw;
     sh = win->asked_sh;
@@ -1793,12 +1801,21 @@ static void window_maximize(struct window *win, int maximized)
     if (!win->toplevel)
         return;
 
-    /* Against what the compositor last said and not against what was last
-     * asked, so that a window somebody maximised from the desktop's own menu
-     * is known to be maximised here too */
-    if (win->maximized == (maximized != 0))
-        return;
-
+    /*
+     * Said every time rather than only when it changes, and nothing here
+     * remembers which way the window was left.
+     *
+     * A record of that cannot be kept honestly. What the compositor last said
+     * is behind: a request and the configure answering it cross in flight, so
+     * the state at the moment a rectangle is set is not the state the window
+     * is about to be in, and a full box pressed twice quickly would find the
+     * old answer and do nothing. What was last asked for is no better, because
+     * the desktop's own window menu maximises a window too and nothing here is
+     * asked about it.
+     *
+     * Asking for the state a window is already in costs a configure saying so,
+     * and this is reached only when an application sets a window's rectangle.
+     */
     if (maximized)
         xdg_toplevel_set_maximized(win->toplevel);
     else
