@@ -158,6 +158,25 @@ struct window {
     int16_t asked_sw, asked_sh;
     int16_t told_sw, told_sh;
 
+    /*
+     * The size the window was before it was last resized here, and a sync
+     * waiting for the compositor to have seen that resize.
+     *
+     * A window is resized here the moment the application sets its rectangle,
+     * without waiting to be told to. The compositor knows nothing of that
+     * until the commit reaches it, and anything it had already sent describes
+     * the window as it was - so a configure can arrive saying the old size
+     * when the window is no longer that size and nobody is asking for it to
+     * be. Told to the AES it becomes WM_SIZED, and an application doing as it
+     * is told undoes the resize it had just made.
+     *
+     * The sync is what says when that has stopped being possible. Everything
+     * the compositor sends before it answers was decided before it saw the new
+     * size; after it, what arrives is about the window as it now is.
+     */
+    struct wl_callback *settling;
+    int16_t was_sw, was_sh;
+
     /* Whether a drag is running on it, which is what makes the window show the
      * outline of the size being chosen rather than what it is showing */
     int dragging;
@@ -1097,8 +1116,22 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * the screen that does not exist. */
     if (width > 0 && height > 0)
     {
-        win->asked_sw = (int16_t)(width / win->scale);
-        win->asked_sh = (int16_t)(height / win->scale);
+        int16_t asked_sw = (int16_t)(width / win->scale);
+        int16_t asked_sh = (int16_t)(height / win->scale);
+
+        /*
+         * Unless it is the size the window has just stopped being, said by a
+         * compositor that had not yet seen it change - see the settling field.
+         * That is not asking for anything and is not written down either: kept
+         * here it would be handed on the next time a configure arrives without
+         * a size of its own.
+         */
+        if (!win->settling
+            || asked_sw != win->was_sw || asked_sh != win->was_sh)
+        {
+            win->asked_sw = asked_sw;
+            win->asked_sh = asked_sh;
+        }
     }
 
     /*
@@ -1343,6 +1376,25 @@ static int window_rebuffer(struct window *win, int width, int height,
     return 1;
 }
 
+/* The compositor has answered the sync, so everything it sends from here on
+ * was decided knowing how large the window now is - see the settling field */
+static void window_settled(void *data, struct wl_callback *callback,
+                           uint32_t stamp)
+{
+    struct window *win = data;
+
+    (void)stamp;
+
+    if (win->settling == callback)
+        win->settling = 0;
+
+    wl_callback_destroy(callback);
+}
+
+static const struct wl_callback_listener settled_listener = {
+    window_settled
+};
+
 /* A window showing a different rectangle of the screen, which is the ordinary
  * case: the buffer is that rectangle scaled up and the picture goes in it */
 static int window_resize(struct window *win, int16_t sw, int16_t sh)
@@ -1353,14 +1405,36 @@ static int window_resize(struct window *win, int16_t sw, int16_t sh)
     win->sh = sh;
     win->dragging = 0;
 
-    if (window_rebuffer(win, sw * win->scale, sh * win->scale,
-                        WL_SHM_FORMAT_XRGB8888))
-        return 1;
+    if (!window_rebuffer(win, sw * win->scale, sh * win->scale,
+                         WL_SHM_FORMAT_XRGB8888))
+    {
+        win->sw = old_sw;
+        win->sh = old_sh;
 
-    win->sw = old_sw;
-    win->sh = old_sh;
+        return 0;
+    }
 
-    return 0;
+    /*
+     * The new size is committed, so ask the compositor to say when it has seen
+     * it. Until it answers, a configure saying the window is the size it just
+     * stopped being is one it decided before the commit arrived and not a
+     * request for that size back.
+     *
+     * The sync goes after the commit rather than before, because what is being
+     * waited for is the commit having been dealt with. Any sync still in
+     * flight from an earlier resize is dropped: it would answer for a size
+     * that has since been left behind, and the one that matters is the last.
+     */
+    win->was_sw = old_sw;
+    win->was_sh = old_sh;
+
+    if (win->settling)
+        wl_callback_destroy(win->settling);
+
+    win->settling = wl_display_sync(w.display);
+    wl_callback_add_listener(win->settling, &settled_listener, win);
+
+    return 1;
 }
 
 /*
@@ -1556,6 +1630,11 @@ static void window_destroy(struct window *win)
      * is the one that has gone. */
     if (w.pointer_in == win)
         pointer_gone();
+
+    /* Before the window goes, because the answer would be delivered to a
+     * listener holding a pointer to it */
+    if (win->settling)
+        wl_callback_destroy(win->settling);
 
     if (win->pixels)
         munmap(win->pixels, win->bytes);
