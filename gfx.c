@@ -2086,13 +2086,21 @@ static void window_picture(struct window *win)
                 surface_pixel(win->shows, (uint16_t)(win->sx + x),
                               (uint16_t)(win->sy + y)));
 
-            for (sy = 0; sy < win->scale; sy++)
+            /* The two tests above ask where a magnified pixel begins, and it
+             * is scale pixels wide and scale pixels tall. The buffer's size is
+             * whatever the compositor last sent and owes nothing to the scale,
+             * so it can end part of the way through one of them - and then the
+             * rest of that pixel is written past where the buffer stops. On
+             * the last row that is past the end of the mapping, which is a
+             * fault rather than a smear. So each of them is drawn as far as
+             * the buffer reaches and no further. */
+            for (sy = 0; sy < win->scale && y*win->scale + sy < rows; sy++)
             {
                 uint32_t *row = win->pixels
                               + (size_t)(y*win->scale + sy) * win->width
                               + x*win->scale;
 
-                for (sx = 0; sx < win->scale; sx++)
+                for (sx = 0; sx < win->scale && x*win->scale + sx < columns; sx++)
                     row[sx] = argb;
             }
         }
