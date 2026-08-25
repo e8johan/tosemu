@@ -166,6 +166,18 @@ struct window {
      * of the last configure */
     int active;
 
+    /*
+     * And whether it said the window is maximised.
+     *
+     * What the compositor last said rather than what was last asked of it,
+     * because the full box is not the only thing that maximises a window - the
+     * desktop's own window menu offers it, and a person who used that has left
+     * the window in a state nothing here asked for. Asking for the state it is
+     * already in does nothing, so the record has to be the true one or the
+     * full box stops working after the menu has been used once.
+     */
+    int maximized;
+
     /* The compositor dismissed it, which only happens to menus */
     int gone;
 };
@@ -1044,6 +1056,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
     uint32_t *state;
     int active = 0;
     int dragging = 0;
+    int maximized = 0;
 
     (void)t;
 
@@ -1057,7 +1070,8 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * Which window somebody is working in matters because a window draws its
      * own title bar: with nothing of the desktop's round the outside, that bar
      * is the only thing saying which window is in front. Whether a drag is
-     * running matters for the size, below.
+     * running matters for the size, below. Whether the window is maximised is
+     * noted rather than acted on, and window_maximize says what for.
      */
     wl_array_for_each(state, states)
     {
@@ -1065,7 +1079,11 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
             active = 1;
         if (*state == XDG_TOPLEVEL_STATE_RESIZING)
             dragging = 1;
+        if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED)
+            maximized = 1;
     }
+
+    win->maximized = maximized;
 
     if (active != win->active)
     {
@@ -1666,6 +1684,48 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
         window_destroy(&w.windows[handle]);
 }
 
+/*
+ * A window as large as the desktop area, said to the compositor.
+ *
+ * This is the one place that decides where a window sits on the desktop rather
+ * than leaving it to the person, and it is the full box that earns the
+ * exception. A window made as large as it goes and left wherever it happened
+ * to be hangs off the bottom and the right of the display, which is not what
+ * anybody clicking that box was asking for - it is the one GEM gadget whose
+ * whole meaning is about position as well as size.
+ *
+ * Maximising is how that is asked for, because it is the only way of asking
+ * for a position that Wayland has. There is no request that moves a window: a
+ * client is not told where its windows are and cannot put them anywhere, and
+ * the nearest thing is to say the window is maximised and let the desktop put
+ * it in the corner it puts maximised windows in.
+ *
+ * The size that comes back of it is not used, and must not be. A compositor
+ * maximises to the whole of the work area and takes no notice of the largest
+ * size the window said it could be - it answers with the display's rectangle,
+ * which is larger than the screen the AES lays windows out on, and the window
+ * is that screen's and not the display's. So the corner is what is taken from
+ * this and the size is still the AES's. The configure is answered like any
+ * other, and host_window_resized cuts it down to the desktop area before the
+ * application is told anything.
+ */
+static void window_maximize(struct window *win, int maximized)
+{
+    if (!win->toplevel)
+        return;
+
+    /* Against what the compositor last said and not against what was last
+     * asked, so that a window somebody maximised from the desktop's own menu
+     * is known to be maximised here too */
+    if (win->maximized == (maximized != 0))
+        return;
+
+    if (maximized)
+        xdg_toplevel_set_maximized(win->toplevel);
+    else
+        xdg_toplevel_unset_maximized(win->toplevel);
+}
+
 void gfx_window_move(int16_t handle, int16_t x, int16_t y,
                      int16_t sw, int16_t sh)
 {
@@ -1687,6 +1747,22 @@ void gfx_window_move(int16_t handle, int16_t x, int16_t y,
      */
     win->sx = x;
     win->sy = y;
+
+    /*
+     * Except when it has been made as large as the desktop area, which is the
+     * full box however it was arrived at. There is no message saying the full
+     * box was used - the application answers WM_FULLED by setting a rectangle
+     * like any other - so the rectangle is what it is recognised by, and an
+     * application setting that one by hand meant the same thing anyway.
+     *
+     * The size is the whole of the test. A window that large fits nowhere else
+     * on the screen the AES lays windows out on, and host_window_resized keeps
+     * every window inside it, so being that size and being in the corner are
+     * the same thing. A window with no size box has no largest size, and there
+     * is nothing for the full box to do to one.
+     */
+    window_maximize(win, win->max_w > 0 && win->max_h > 0
+                         && sw >= win->max_w && sh >= win->max_h);
 
     if (sw == win->sw && sh == win->sh)
         return;
