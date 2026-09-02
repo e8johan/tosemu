@@ -47,6 +47,14 @@ against what it should have drawn; unlike the other tests it builds for the
 host rather than for the emulated machine, because what it is checking is the
 port.
 
+A few of the files it is built from are generated rather than carried: the
+AES's resource and the mouse forms are kept as a `.rsc` and a `.def` and turned
+into C when EmuTOS builds, and the localisation settings come out as a header.
+A fresh checkout has the inputs and none of the outputs, so the build makes
+them by asking EmuTOS's own Makefile for them, with the host compiler and no
+cross tools. EmuTOS ignores all of them in its `.gitignore`, so the submodule
+stays as clean as it was found.
+
 The emulated screen is never shown. It is a coordinate space and a piece of
 memory: GEM lays its windows out in it and draws into it the way it always did.
 What appears on the desktop are the windows themselves - one for each window a
