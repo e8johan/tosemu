@@ -53,79 +53,62 @@
 <section id="what" class="wrap prose">
   <h2>What it is</h2>
   <p>
-    TOSEMU runs programs written for the Atari ST &mdash; GEM applications, assemblers,
-    compilers, desk accessories &mdash; on a modern Linux machine. The 68000 code is
-    executed by an emulated CPU, because that part cannot be avoided. Everything
-    <em>around</em> the CPU is not emulated at all: when the program asks the operating
-    system to open a file, draw a line or put up a window, that request is intercepted
-    and carried out by the host.
+    TOSEMU runs well behaved programs written for the Atari ST on a modern Linux machine.
+    The 68k runs on an emulated CPU. System calls are intercepted and run in the host environment.
   </p>
   <p>
-    The result is that an ST application behaves like any other program you have
-    installed. It reads your files, it takes arguments from your shell, and its windows
-    sit alongside your browser and your terminal on the same desktop.
+    The result is that an ST application running fully integrated with your modern Linux desktop.
+    Two worlds, one system.
   </p>
 </section>
 
 <section id="why" class="wrap prose">
   <h2>Why it is not a classical emulator</h2>
   <p>
-    A classical emulator &mdash; Hatari, STeem, MiST &mdash; recreates the machine. It loads a
-    TOS ROM image, emulates the video shifter, the sound chip, the floppy controller
-    and the keyboard, and shows you the machine's screen inside a window. What you get
-    is an Atari ST, faithfully, in a box. Everything inside the box is Atari; everything
-    outside it is your computer; and the only way across is a disk image.
+    A classical emulator recreates the machine and runs the operating system inside the emulator.
+    What you get is an Atari ST in a window. The ST is separated from the host system by that pesky window border.
   </p>
   <p>
-    TOSEMU takes the other route, the one Wine takes for Windows: emulate the
+    TOSEMU takes the other route. Similar to what Wine does for for Windows: emulate the
     <em>instruction set</em>, and reimplement the <em>operating system</em>.
   </p>
 
   <div class="compare">
+    <div class="dlg dlg-accent">
+      <h3>TOSEMU</h3>
+      <ul>
+        <li>Emulates only the CPU; the rest is translated to host calls</li>
+        <li>GEMDOS, BIOS, XBIOS and the AES are reimplemented</li>
+        <li>One real window per GEM window, dialog and menu</li>
+        <li><code>C:</code> is your file system, as it is</li>
+        <li>The desktop is <em>your</em> desktop</li>
+      </ul>
+    </div>
     <div class="dlg">
       <h3>A classical emulator</h3>
       <ul>
-        <li>Needs a TOS ROM image to boot</li>
         <li>Emulates the hardware: shifter, MFP, FDC, ACIA</li>
         <li>One window containing a whole screen</li>
         <li>Files live in a disk image you mount</li>
         <li>The desktop inside is the Atari desktop</li>
       </ul>
     </div>
-    <div class="dlg dlg-accent">
-      <h3>TOSEMU</h3>
-      <ul>
-        <li>No ROM: GEMDOS, BIOS, XBIOS and the AES are reimplemented</li>
-        <li>Emulates only the CPU; the rest is translated to host calls</li>
-        <li>One real window per GEM window, dialog and menu</li>
-        <li><code>C:</code> is your file system, as it is</li>
-        <li>The desktop is <em>your</em> desktop</li>
-      </ul>
-    </div>
   </div>
 
   <p>
-    That last point is the one worth dwelling on. GEM lays out its windows in an
-    emulated screen &mdash; a coordinate space and a block of memory &mdash; because that is
-    what a GEM application expects to exist. But that screen is never shown. Each
-    window the application opens becomes a Wayland surface of its own, scaled up by a
-    whole number so an ST pixel stays a square. The menu bar is a window. A dropped-down
-    menu is a window. A dialog is a window. Your compositor moves them, stacks them and
-    puts them on workspaces, because as far as it is concerned they are ordinary windows.
+    The AES and VDI implementation means that every ST window, every ST pixel, is a window
+    and pixel on the host system. The ST windows live intertwined with the host system.
+    With Wayland client decorations, the windows even look like proper ST windows while
+    being fully integrated.
   </p>
   <p>
-    The same goes for everything else a program touches. <code>Fopen</code> becomes
-    <code>open</code>. A command line typed in bash reaches the program through its
-    basepage. An environment variable set in your shell is the one Lattice C reads to
-    find its headers. A desk accessory registers itself with a daemon and appears in
-    your panel's system tray, so you can reach it when no GEM application is running at
-    all &mdash; something the real machine could not do.
+    The same goes for all system calls. Opening a file, opens the file on the system.
+    Accessories show up in the host's system tray. Each TOS process is a separate Linux process.
   </p>
   <p class="aside">
-    One piece is borrowed rather than rewritten: the VDI, the drawing layer, comes from
-    <a href="https://emutos.sourceforge.io/">EmuTOS</a>, ported to run hosted. Lines,
-    ellipses and text are drawn by the same code an ST would have used, into memory the
-    host then puts on screen.
+    The TOSEMU project is based on the <a href="https://emutos.sourceforge.io/">EmuTOS</a>.
+    For instance, EmuTOS VDI has been ported to run host on the host. Lines, ellipses,
+    and text are drawn by the same code an ST would have used, but runs on the host instead.
   </p>
 </section>
 
@@ -164,10 +147,8 @@
     </div>
     <figcaption>
       <strong>Accessories in the system tray.</strong>
-      The daemon starts every <code>.ACC</code> in a directory and puts a single mark in
-      the panel, with the accessories hanging off it as a menu. It is the only way to
-      reach an accessory when no application is running &mdash; the Desk menu belongs to an
-      application, and if none is running there is no menu to be in.
+      The daemon starts <code>.ACC</code> files from a given directory.
+      They also appear in the Desk menu of ST programs.
     </figcaption>
   </figure>
 
@@ -189,9 +170,7 @@
     </div>
     <figcaption>
       <strong>The Atari menu bar.</strong>
-      A GEM menu bar is a window in its own right, and each menu pulled down from it is
-      another. Accessories add themselves to the Desk menu of every application that
-      starts after them, exactly as they did on the machine.
+      The GEM menu bar lives in a separate window.
     </figcaption>
   </figure>
 
@@ -213,10 +192,7 @@
     </div>
     <figcaption>
       <strong>Rubberband window resizing.</strong>
-      GEM did not resize a window live; it drew an outline that followed the pointer and
-      redrew the window once you let go. That interaction is part of the AES, so it is
-      still what happens here &mdash; the outline is drawn where a modern toolkit would show
-      you the finished result.
+      For that wonderful retro feeling GEM windows are resized with a rubberband.
     </figcaption>
   </figure>
 
@@ -238,8 +214,7 @@
     </div>
     <figcaption>
       <strong>ST windows among Wayland windows.</strong>
-      No outer frame, no screen inside a screen. The GEM windows are siblings of the
-      terminal and the browser next to them, and the compositor treats them as such.
+      Two worlds, one system.
     </figcaption>
   </figure>
 
@@ -260,21 +235,28 @@
       </div>
     </div>
     <figcaption>
-      <strong>Devpac and Lattice C, from your shell.</strong>
-      HiSoft's <code>GEN.TTP</code> and Lattice C 5.60's compiler passes are run by the
-      test suite to build their own test cases &mdash; assembled and compiled inside the
-      emulator, on files in an ordinary directory, driven from a Makefile. A compiler is
-      a large and unforgiving program, and one that runs is worth a great many unit tests.
+      <strong>TOS programs from your shell.</strong>
+      <code>TTP</code> programs such as compilers and linkers can be run directly from the Linux shell.
     </figcaption>
   </figure>
 </section>
 
 <section id="try" class="wrap prose">
   <h2>Trying it</h2>
+
+  <p class="aside">
+    TOSEMU is under development and is currently to be considered pre-alpha. It is prone to
+    crashing, there are issues with window ordering, and many features are missing. That being
+    said, we welcome contributions and help. <em>Come play with us!</em>
+  </p>
+
   <p>
     You need the Wayland development libraries to build, and the
     <a href="http://vincent.riviere.free.fr/soft/m68k-atari-mint/">m68k-atari-mint</a>
     cross tools if you want to run the test suite.
+  </p>
+  <p>
+    Clone the repo, build tosemu and the demos and run one of them:
   </p>
 <pre><code>git clone --recurse-submodules https://github.com/e8johan/tosemu.git
 cd tosemu
@@ -283,18 +265,16 @@ make demos
 
 ./bin/tosemu demos/menu</code></pre>
   <p>
-    A whole session &mdash; a daemon, the accessories it starts, a mark in the panel, and
-    applications coming and going &mdash; looks like this:
+    To run a whole session, including accessories management, do something like this:
   </p>
 <pre><code>mkdir -p /tmp/gem &amp;&amp; cp demos/DEMO.ACC /tmp/gem/
 ./bin/tosaesd -v /tmp/gem &amp;
 ./bin/tosemu demos/menu</code></pre>
   <p>
-    You can also register TOSEMU with the kernel's <code>binfmt_misc</code> and simply
-    run TOS binaries as though they were native. The
+    If you're brave, you can register TOSEMU with the kernel's <code>binfmt_misc</code>
+    and simply run TOS binaries as though they were native. The
     <a href="https://github.com/e8johan/tosemu#readme">README</a> has the details, along
-    with the environment variables that pick a screen resolution, set the scale factor,
-    and drive the thing headlessly for tests.
+    with the environment variables that pick a screen resolution, set the scale factor, and more.
   </p>
 </section>
 
@@ -307,7 +287,7 @@ make demos
 <footer>
   <div class="wrap">
     <p>
-      TOSEMU is by <a href="https://github.com/e8johan">Johan Thelin</a> and is available
+      TOSEMU is by <a href="https://github.com/e8johan">Johan Toverland Thelin</a> and is available
       under the GPLv2. The 68000 core is
       <a href="https://github.com/kstenerud/Musashi">Musashi</a>; the VDI is from
       <a href="https://emutos.sourceforge.io/">EmuTOS</a>.
