@@ -202,6 +202,63 @@ emuvdi/%.o: emuvdi/%.c Makefile
 # in the submodule compile to, and there is no other way for make to see that.
 -include $(EMUTOSOBJECTS:.o=.d)
 
+# And a .d that is not there yet is not something to go and make. It is written
+# as a side effect of compiling the object, so on a first build there are none
+# and there is nothing wrong with that.
+#
+# Saying so stops make from looking for a way to build one, which it does by
+# way of the built-in rule that links a program from the object of the same
+# name: emuvdi/obj/vdi/vdi_main.d becomes a hunt for vdi_main.d.o and then for
+# vdi_main.d.c in the submodule, which is not there and never was, so the
+# $(EMUTOS)/%.c rule announces a missing submodule that is present. Thirty-two
+# of those, one for each object, before the build has begun. An empty recipe is
+# what ends the hunt; make ignores the failure, so they were only ever noise,
+# but noise on the first line of the log somebody reads.
+$(EMUTOSOBJECTS:.o=.d): ;
+
+# The parts of EmuTOS that are generated rather than carried.
+#
+# A resource is drawn in a resource editor and kept as a .rsc and a .def, and
+# EmuTOS turns each one into C when it builds rather than keeping the C - its
+# .gitignore says as much. So a fresh checkout of the submodule has the inputs
+# and none of the outputs, and the first source that includes gem_rsc.h stops
+# the build. Three of them are wanted here: the AES's own resource, the mouse
+# forms, and the header the localisation settings come out as.
+#
+# This is what a build server saw and this machine did not. A tree that has
+# ever had them made is a tree where they are simply there, so the dependency
+# was invisible from here and fatal from anywhere else.
+#
+# They are made by EmuTOS's own Makefile rather than by a copy of its rules,
+# which is the same principle as the rest of the port: how the submodule builds
+# is its own business, and emuvdi/ adapts the result. None of the three needs a
+# cross compiler - the tools that write them are built for the host - and all
+# of them are ignored by EmuTOS's git, so making them leaves the submodule as
+# clean as it was found.
+EMUTOSGENERATED = $(EMUTOS)/aes/gem_rsc.c $(EMUTOS)/aes/gem_rsc.h \
+                  $(EMUTOS)/aes/mforms.c $(EMUTOS)/aes/mforms.h \
+                  $(EMUTOS)/include/i18nconf.h
+
+# The '%' where a '.' belongs is EmuTOS's trick, and it is here for their
+# reason: one run of the tool writes both the .c and the .h, and only a pattern
+# rule tells make that one run produces both. Two ordinary rules would be two
+# runs, and with -j two runs at once over the same pair of files.
+$(EMUTOS)/aes/gem_rsc%c $(EMUTOS)/aes/gem_rsc%h: \
+                $(EMUTOS)/aes/gem%rsc $(EMUTOS)/aes/gem%def
+	$(MAKE) -C $(EMUTOS) aes/gem_rsc.c
+
+$(EMUTOS)/aes/mforms%c $(EMUTOS)/aes/mforms%h: \
+                $(EMUTOS)/aes/mform%rsc $(EMUTOS)/aes/mform%def
+	$(MAKE) -C $(EMUTOS) aes/mforms.c
+
+$(EMUTOS)/include/i18nconf.h: $(EMUTOS)/localise.ctl
+	$(MAKE) -C $(EMUTOS) include/i18nconf.h
+
+# Every object built out of the submodule wants all of them there first. The
+# emuvdi/obj/%.o rule names only the source it compiles, and on a first build
+# there are no .d files yet to say which headers that source went on to read.
+$(EMUTOSOBJECTS): $(EMUTOSGENERATED)
+
 # Main emulator target
 bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
