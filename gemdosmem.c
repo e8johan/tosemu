@@ -235,6 +235,48 @@ uint32_t GEMDOS_Malloc()
     return mem_alloc(newsiz);
 }
 
+/* Which memory a block is to come from, as Mxalloc's mode word spells it. The
+ * bits above these are MiNT's memory protection, which needs an MMU to mean
+ * anything, so they are masked off the way EmuTOS masks them. */
+#define MX_STRAM     0
+#define MX_ALTRAM    1
+#define MX_PREFSTRAM 2
+#define MX_PREFALT   3
+#define MX_MODEMASK  0x03
+
+/* Mxalloc, which is Malloc with a say in where the memory comes from.
+ *
+ * The emulated machine has one kind, so asking for ST RAM and asking for
+ * either kind come to the same thing. A request for alternative RAM and
+ * nothing else is the one that has to fail: there is none, and answering it
+ * with ST RAM would hand back the very memory the caller said it did not want.
+ * That is also what EmuTOS does on a machine built without alternative RAM -
+ * the case falls through to the one for a mode it does not know.
+ */
+uint32_t GEMDOS_Mxalloc()
+{
+    int32_t amount = peek_s32(2);
+    uint16_t mode = peek_u16(6) & MX_MODEMASK;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    amount: %d (0x%x), mode: %d\n", amount, amount, mode);
+    }
+
+    if (mode == MX_ALTRAM)
+        return 0;
+
+    /* An application asks how much it could have by asking for -1 */
+    if (amount == -1)
+        return mem_largest_free();
+
+    /* A block of nothing is not something to hand out an address for, and a
+     * negative size would be a very large one once the allocator has it */
+    if (amount <= 0)
+        return 0;
+
+    return mem_alloc(amount);
+}
+
 int32_t mem_free(uint32_t block)
 {
     struct mem_area *ma, *prev;

@@ -20,6 +20,7 @@
  */
 
 #include "gemdosfile_p.h"
+#include "settings.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -614,7 +615,7 @@ static int32_t path_from_tos(const char *tp, char *up)
     int32_t err;
 
     if (tracing < 0)
-        tracing = (getenv("TOSEMU_TRACE_PATHS") != NULL);
+        tracing = (setting_flag("TOSEMU_TRACE_PATHS"));
 
     drive = drive_from_path(tp, &rest);
     if (drive < 0)

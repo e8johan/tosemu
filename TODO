@@ -6,6 +6,26 @@
   it. An application that Mallocs before it Mshrinks gets nothing, where on
   TOS it would get what the parent released. The modes that load a program
   into the caller's memory do carve it out, and do not have this.
+- A child of Pexec has a copy of the machine's memory rather than the same
+  memory, because it is a forked host process, so nothing it writes is ever
+  seen by its parent. TOS had one address space and no fork, and the modes
+  that run a program the caller has already loaded - 4, 6 and their
+  asynchronous twins - are there so that the two can pass structures back and
+  forth through it. Reading works, the child having inherited everything as it
+  stood; it is the answer coming back that is lost.
+
+  Devpac 3 is the case that shows it. Its editor loads GEN.TTP resident with
+  mode 3, asks mode 5 for a basepage, points that basepage's text segment at
+  the resident copy and runs it with mode 4, handing it the address of a
+  structure of its own in an environment variable. The assembler reads the
+  source out of the editor's buffer and writes back what it found rather than
+  touching a file at all - and the editor gets back a buffer nothing wrote to.
+  It reports no errors and shows an empty document.
+
+  Closing it means the machine's memory being shared rather than copied -
+  MAP_SHARED rather than calloc for te->appmem and the areas beside it - for
+  the modes where the child keeps the machine it inherited. The modes that
+  load a program build one of their own and want no part of it.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.
@@ -92,10 +112,39 @@
   it can be given - aesframe.c builds one and throws it away, so keeping it is
   what this needs.
 
-- A window's information line is not drawn. It is one more object in the tree
-  aesframe.c builds, and the only reason it is not there is that it is
-  G_BOXTEXT and so needs a TEDINFO across the seam, where every other gadget
-  needs only a colour word.
+- A window resized by the desktop whose application does not answer WM_SIZED
+  stays the size it was, and the compositor goes on thinking it is the size it
+  asked for. That is GEM's own arrangement - the application decides, and one
+  that ignores the message keeps its window - but on a desktop it shows,
+  because what is left over is drawn by the compositor rather than by nobody.
+  Only a window created with a size box can get into it, so an application that
+  asked to be resizable and then declined to resize is the whole of the
+  exposure.
+
+- Minimising a window has no gadget of its own, because GEM has no such thing:
+  a window went away or it did not, there being nowhere for one to go. It lives
+  on the desktop's window menu, which the other mouse button on the title bar
+  brings up. The gadget it would want is AES 4.1's iconifier, W_SMALLER, and
+  nothing written for the AES this reports being would ever ask for one - so
+  drawing it would be drawing a button no application knows about.
+
+- The full box makes a window as large as the screen the AES lays windows out
+  on and does not put the desktop's window into its maximised state, so on a
+  640x400 screen the full box and the desktop's maximise mean different sizes.
+  Asking the compositor to maximise instead would mean the two deciding the
+  size in turn - it configures, the application answers, which configures again
+  - and the window that came out of that would be neither of the two things
+  somebody asked for. A screen the size of the display, which is what
+  TOSEMU_SCREEN=native-mono is for, makes them the same thing.
+
+- Nothing in make check reaches the parts of a window's frame that ask the
+  desktop for something: dragging it by the title bar, pulling the size box,
+  and the window menu on the other button. All three want the serial of an
+  input event to prove they are answering something a person did, and injected
+  input has none - a compositor is not something a test can arrange, and this
+  is the far end of that. They were watched working against kwin instead, the
+  configures driven through its scripting interface rather than by hand.
+
 - The boxes an application drags about follow the mouse correctly but can only
   be seen where a window is showing the screen they are drawn into. A rubber
   band pulled out inside a window works; one pulled across the desktop is
@@ -134,6 +183,24 @@
   look as though messages were arriving late when they were not. Whether an
   accessory should be told where to draw - or simply left to inherit, as now -
   is a question for when there is a desktop of our own to start them from.
+- The block Physbase hands out is reserved when the machine is laid out and
+  sized from the screen this process's own settings ask for, so a daemon
+  deciding on a larger one leaves it short. The daemon is not asked until GEM
+  starts, which is after the memory map is fixed, and an application then
+  hears about a screen bigger than the block it has been told to paint in - so
+  a program writing a screen's worth into it writes past the end, the way one
+  did before the block was sized from the screen at all. It reaches only a
+  program that draws without the VDI: a raster operation naming the screen,
+  by zero or by that address, is drawn on the surface the VDI keeps and never
+  touches the block.
+
+  Closing it means settling the screen before the machine is built, and that
+  means asking the daemon before there is an application to ask on behalf of.
+  A program that never opens a window would be joining a session it has no
+  business in, which is worse than the gap. The other way is to reserve at the
+  first Physbase instead, and that wants somewhere to take the memory from
+  that is not where the program is standing: the top of RAM is its own stack
+  until it Mshrinks.
 - GDOS and scalable fonts, which is the whole of the last milestone in the
   plan and is not started. The Atari system fonts are there, compiled in from
   EmuTOS, and they are what vst_font and v_gtext use. What is missing is

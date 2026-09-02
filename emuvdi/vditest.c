@@ -148,6 +148,10 @@ uint32_t drive_map(void)
     return 0;
 }
 
+void host_menu_surface(void)
+{
+}
+
 void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
     (void)x; (void)y; (void)width; (void)height;

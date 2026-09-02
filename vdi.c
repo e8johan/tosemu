@@ -53,6 +53,7 @@
 #include "gem_p.h"
 #include "vdi_p.h"
 #include "tossystem.h"
+#include "xbios.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -204,7 +205,16 @@ static char *vdi_name(int16_t opcode)
  * at once.
  *
  * An address of zero is not a bitmap but the screen, which is how an
- * application says "where I can see it".
+ * application says "where I can see it". So is the address Physbase and
+ * Logbase hand out, because on the machine those were the same memory: an
+ * application that asks the XBIOS where the screen is and puts the answer in
+ * an MFDB has named the screen just as surely as one that wrote a zero, and
+ * plenty do - it is how a program that draws on the screen without a window
+ * gets at it. Here the two are not the same memory at all, the screen being a
+ * surface of the host's that has no address in the machine, so the equivalence
+ * has to be made rather than inherited. Without it the raster operations copy
+ * to and from the buffer the XBIOS handed out, which nothing ever shows, and
+ * the drawing goes quietly nowhere.
  */
 #define MFDB_ADDR     (0)
 #define MFDB_W        (4)
@@ -245,9 +255,11 @@ static int bitmap_in(int16_t *control, int index, int slot)
     stand    = (int16_t)m68k_read_memory_16(mfdb + MFDB_STAND);
     planes   = (int16_t)m68k_read_memory_16(mfdb + MFDB_NPLANES);
 
-    if (b->data == 0)
+    if (b->data == 0 || xbios_screen_named(b->data))
     {
-        /* The screen. The VDI knows where that is. */
+        /* The screen. The VDI knows where that is, and is told so the way
+         * EmuTOS expects to hear it, which is with no address at all. */
+        b->data = 0;
         emuvdi_mfdb_set(host, 0, w, h, wdwidth, stand, planes);
         emuvdi_control_set_pointer(control, index, host);
         return 1;

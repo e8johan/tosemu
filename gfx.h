@@ -63,12 +63,47 @@ int gfx_showing();
  * frame GEM draws round it, because that frame is part of what the application
  * put there.
  */
+/*
+ * own_frame says the window draws its own title bar, which is what a GEM
+ * window with one does: the desktop is then asked for no decorations at all,
+ * because two title bars is a picture of another computer. A window that draws
+ * none - a dialog, the menu bar, a window created without a title strip - asks
+ * for the desktop's, having otherwise nothing to take hold of.
+ */
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
-                     int16_t w, int16_t h);
+                     int16_t w, int16_t h, int own_frame);
 void gfx_window_move(int16_t handle, int16_t x, int16_t y,
                      int16_t w, int16_t h);
 void gfx_window_title(int16_t handle, const char *title);
 void gfx_window_close(int16_t handle);
+
+/*
+ * How large the desktop may make a window, in the screen's own pixels. Until
+ * this is said a window is pinned to the size it opened at, which is what a
+ * window without a size box is: GEM gave no way to resize one and neither
+ * should a desktop.
+ *
+ * The largest is what is left of the screen the AES lays windows out on, and
+ * is a limit rather than a preference - a window larger than that screen is a
+ * rectangle there are no pixels for.
+ */
+void gfx_window_limits(int16_t handle, int16_t min_w, int16_t min_h,
+                       int16_t max_w, int16_t max_h);
+
+/*
+ * Taking hold of a window by its size box, which asks the desktop for the drag
+ * a person would have got by taking hold of a corner. What comes back is the
+ * size the drag arrived at, said as a message to the application.
+ */
+void gfx_window_drag_size(int16_t handle);
+
+/* And by its title bar, which asks the desktop to move it. Nothing here learns
+ * where it ended up, and nothing needs to. */
+void gfx_window_drag_move(int16_t handle);
+
+/* The desktop's own menu for a window, put up where the pointer is. It is
+ * where minimising lives, GEM having no gadget for something it cannot do. */
+void gfx_window_menu(int16_t handle, int16_t x, int16_t y);
 
 /*
  * A dialog: a window of its own showing a rectangle of the surface a dialog
@@ -83,10 +118,16 @@ void gfx_window_close(int16_t handle);
  */
 /*
  * A menu that has dropped down: a popup belonging to the bar, showing that
- * rectangle of the screen. It has no frame, cannot be moved and is not a
- * window as far as the desktop is concerned, which is what a menu should be.
+ * rectangle of a surface of the menu's own. It has no frame, cannot be moved
+ * and is not a window as far as the desktop is concerned, which is what a menu
+ * should be.
+ *
+ * The surface is the menu's rather than the screen's for the same reason a
+ * dialog's is: a menu drawn into the screen would appear inside every window
+ * showing that part of it. See gem_menu_begin.
  */
-void gfx_menu_open(int16_t x, int16_t y, int16_t w, int16_t h);
+void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
+                   int16_t w, int16_t h);
 void gfx_menu_close(void);
 
 void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,

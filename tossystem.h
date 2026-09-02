@@ -55,6 +55,10 @@ struct tos_environment {
     void *staticmem1;
     void *biosram;
 
+    /* The screen, which is the machine's rather than the program's and sits
+     * above the TPA - see where it is reserved in tossystem.c */
+    void *screenmem;
+
     uint32_t tsize, 
              dsize, 
              bsize, 
@@ -169,12 +173,25 @@ void run_tos_environment(struct tos_environment *te);
 /* Reserve a block of ST RAM that lives for as long as the application does.
  *
  * Several BIOS and XBIOS calls hand back a pointer to a structure the system
- * owns, a screen buffer or a vector table for instance. They come from an area
- * outside the TPA, so that reserving one does not take memory away from the
- * application. Returns an address in the emulated machine, or 0 when the area
- * is exhausted. There is no matching free, the whole area goes at once.
+ * owns, a vector table or a device's buffer for instance. They come from an
+ * area outside the TPA, so that reserving one does not take memory away from
+ * the application. Returns an address in the emulated machine, or 0 when the
+ * area is exhausted. There is no matching free, the whole area goes at once.
  */
 uint32_t bios_static_alloc(uint32_t len);
+
+/*
+ * Where the screen is in the machine, and how many bytes of it there are.
+ *
+ * This is what Physbase and Logbase answer with. Nothing is shown there - what
+ * reaches a display is what the VDI drew on a surface of the host's - but an
+ * application that draws without the VDI has to be given somewhere to draw,
+ * and as much of it as it has been told the screen holds. It is reserved off
+ * the top of the machine's RAM, which is where the machine kept its own; see
+ * the note where that is done.
+ */
+uint32_t tos_screen_base(void);
+uint32_t tos_screen_size(void);
 
 void halt_execution();
 

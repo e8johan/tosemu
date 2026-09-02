@@ -39,6 +39,7 @@
  */
 
 #include "aes_p.h"
+#include "settings.h"
 
 #include <poll.h>
 #include <stdlib.h>
@@ -248,7 +249,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             int16_t b, bx, by;
 
             if (gfx_button_peek(&b, &bx, &by) && b
-                && aes_wind_frame_press(bx, by))
+                && aes_wind_frame_press(bx, by, b))
             {
                 gfx_button_take(&b, &bx, &by);
                 state_answered = 0;
@@ -301,7 +302,7 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * waits asking the same question and one wait asking twice. The
              * two look identical from anywhere else.
              */
-            if (getenv("TOSEMU_TRACE_INPUT"))
+            if (setting_flag("TOSEMU_TRACE_INPUT"))
                 printf("tosemu: wait for buttons %x to be %x, they are %x%s\n",
                        bmask, bstate, now,
                        (buttons_are(now, bmask, bstate)

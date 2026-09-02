@@ -78,6 +78,29 @@ through the AES, the screen is in memory as it always was, and `make check`
 passes exactly as it does otherwise. It is meant for a build server, which is
 what CI runs on.
 
+A GEM window wears its own frame. The title bar, the close box, the full box
+and the size box are the ones the AES draws, and they do what a desktop's do:
+the title bar drags the window and its other button brings up the desktop's
+window menu, the close box asks the application to close - which is what GEM's
+always did, and is why an application can ask whether you meant it - the full
+box makes the window as large as the screen the AES lays windows out on, and
+the size box runs the desktop's own resize drag. The desktop is asked to put
+nothing round the outside, because a title bar inside a title bar is the
+picture of another computer again. Say `TOSEMU_DECORATIONS=desktop` to have it
+the other way round: the desktop's frame, and GEM's title bar left out of what
+is shown. Dialogs and the menu bar always take the desktop's, having no frame
+of their own to wear.
+
+A resize drag shows a rubber band, which is what an ST did: the window becomes
+the size the drag has reached and what is in it is an outline of alternate black
+and white pixels with the desktop showing through. The application hears nothing
+until the button comes up, and is then sent GEM's own two messages - WM_SIZED,
+saying what rectangle to take, and WM_REDRAW, saying to paint what is now inside
+it - so it redraws its document once rather than on every frame of the drag,
+which on a 68000 is the difference between a resize and a wait. The feedback is
+the emulator's to give and the drawing is the application's, which is the
+division the rubber band was invented for.
+
 Which screen it is comes from `TOSEMU_SCREEN`. The ST's three are `low`,
 320x200 in sixteen colours, `medium`, 640x200 in four, and `high`, 640x400 in
 two; the TT's are `tt-medium`, 640x480 in sixteen, and `tt-high`, 1280x960 in
@@ -115,7 +138,9 @@ the display's width and never over it.
 it - `eDP-1`, `DP-1` and so on, which `wayland-info` will list. Without it, the
 first one the compositor mentions. With no compositor to ask at all the size
 falls back to 640x400 and the planes stay as asked, which is what happens on a
-machine with no desktop and in the test suite.
+machine with no desktop and in the test suite. A display named and not there -
+a monitor since unplugged, most likely - falls back the same way and says which
+displays it did find, rather than quietly measuring a different one.
 
 Asking costs one round trip at the moment the machine is decided, and no window:
 `wl_output` is a global like any other and says how large it is without anything
@@ -144,6 +169,83 @@ something says which happened.
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.
+
+
+Settings
+========
+
+Everything above can be said in a file instead, which is what most of it wants:
+which screen the machine has and where the drive is rooted do not change
+between one program and the next, and having to remember them on every command
+line is how they come to differ by accident.
+
+`~/.tosemu` is read when it is there, `-c <file>` reads another instead, and
+`--no-config` reads none at all. A file named with `-c` that cannot be read is
+an error rather than a shrug; the one in the home directory is a file that may
+be there rather than one that has to be.
+
+    # Everything is in a section. A remark is a whole line and only a whole
+    # line: a hash halfway along one is part of the value, because a path or a
+    # list of clicks may have a hash in it and losing its tail is worse than
+    # having to put the remark above.
+
+    [screen]
+    mode        = native-color
+    scale       = 3
+    window      = yes
+    decorations = atari
+    # output = DP-1
+
+    [input]
+    keys   = \r
+    clicks = 100,50 200,60
+
+    [files]
+    base = /home/me/tos
+
+    [session]
+    socket = /run/user/1000/tosaesd
+
+    [debug]
+    screenshot  = /tmp/screen.ppm
+    trace-input = no
+    trace-paths = no
+
+Which is which:
+
+| in the file            | in the environment   |
+| ---------------------- | -------------------- |
+| `[screen] mode`        | `TOSEMU_SCREEN`      |
+| `[screen] scale`       | `TOSEMU_SCALE`       |
+| `[screen] output`      | `TOSEMU_OUTPUT`      |
+| `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
+| `[screen] decorations` | `TOSEMU_DECORATIONS` |
+| `[input] keys`         | `TOSEMU_KEYS`        |
+| `[input] clicks`       | `TOSEMU_CLICKS`      |
+| `[files] base`         | `TOS_BASE_PATH`      |
+| `[session] socket`     | `TOSEMU_AESD`        |
+| `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  |
+| `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` |
+| `[debug] trace-paths`  | `TOSEMU_TRACE_PATHS` |
+
+An environment variable overrides what the file says, because saying something
+on a command line is saying it about that run in particular - a file that won
+would leave no way to try anything without editing it first. Said twice in one
+file, the later line is the one that meant it. A value keeps its spaces if it
+is in double quotes, and a name that is not one of these is complained about
+rather than ignored: a settings file quietly half read is worse than one
+refused.
+
+`window` is the only one that is not a rename. An environment variable is set
+or it is not, with no room in that for saying no, which is why it is called
+`TOSEMU_NO_WINDOW`; a file has room, and nobody should have to write
+`no-window = no`. For it and the two `trace-` settings, `no`, `0`, `off` and
+`false` mean no and anything else present means yes.
+
+`tosaesd` reads the same file and takes the same two arguments. That is where
+to put the settings for a session that has a daemon in it: the daemon is what
+says which screen the machine has, to every application that arrives and to the
+accessories it starts itself.
 
 `bin/tosaesd` is the daemon several emulator processes have in common. It is
 not needed to run one program: an application on its own has nobody to agree
@@ -418,6 +520,11 @@ That also settles what a child inherits, and it lands close to TOS:
   process has its own, as under MiNT.
 - Memory, the DTA and the screen do not carry over at all. The child gets a
   machine of its own, so an address the parent allocated means nothing to it.
+- The modes that run a program the caller has already loaded are the exception,
+  because there the child keeps the machine it inherited and every address in
+  it still means what it did. What it writes there is its own, though: a fork
+  copies memory rather than sharing it, so an answer a child leaves at an
+  agreed address is one the parent never sees. See the `TODO`.
 
 A program returns a word and `Pexec` reports it with the high word clear, which
 is more than the eight bits of a host exit status. The child writes the value

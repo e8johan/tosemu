@@ -1,6 +1,7 @@
 *~
 tests/test-*
 tests/out
+tests/settings.tosemu
 tests/out2
 tests/TEST.RSC
 tests/devpac/*.PRG

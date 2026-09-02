@@ -72,6 +72,7 @@ check: all
 	cmp out out2
 	$(TOSEMU) c-drives.PRG > out; ! grep -q '^not ok' out
 	$(TOSEMU) c-bios.PRG > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	$(RM) out out2
 
 clean:

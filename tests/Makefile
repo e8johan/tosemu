@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize
 
 CC=m68k-atari-mint-gcc
 
@@ -26,13 +26,13 @@ NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu
+TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
 # otherwise wait for ever rather than fail. Which daemon, if any, is left to
 # the caller: most of these are the tests that want a real one.
-TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu
+TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu --no-config
 
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 
@@ -50,6 +50,9 @@ test-c-vdi: c-vdi.c
 	$(CC) $< -lgem -o $@
 
 test-c-aesd: c-aesd.c
+	$(CC) $< -lgem -o $@
+
+test-c-acc: c-acc.c
 	$(CC) $< -lgem -o $@
 
 test-c-userdef: c-userdef.c
@@ -71,6 +74,15 @@ test-c-mkstate: c-mkstate.c
 	$(CC) $< -lgem -o $@
 
 test-c-screen: c-screen.c
+	$(CC) $< -lgem -o $@
+
+test-c-menu: c-menu.c
+	$(CC) $< -lgem -o $@
+
+test-c-frame: c-frame.c
+	$(CC) $< -lgem -o $@
+
+test-c-resize: c-resize.c
 	$(CC) $< -lgem -o $@
 
 check: all
@@ -118,8 +130,21 @@ check: all
 	# drive rather than one on the host
 	TOS_BASE_PATH=$(CURDIR) $(TOSEMU) test-c-drives BASED > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.19' out
+	# And the same root spelled with a separator on the end, which is the
+	# natural way to write a directory in a settings file. It has to name
+	# the same drive: the base is what the front of every host path is
+	# compared against, and one ending in two separators is a base no path
+	# resolves to, so the whole drive reads as empty.
+	TOS_BASE_PATH=$(CURDIR)/ $(TOSEMU) test-c-drives BASED > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.19' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
+	# Asking for memory and saying which kind it has to be, which is the
+	# call every compiler of the period makes before anything else
+	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given
@@ -163,7 +188,25 @@ check: all
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
-	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium ../bin/tosaesd & \
+	# And the same thing said in a file rather than in the environment,
+	# which is what a settings file is for. bin/settingstest checks the
+	# reading of one; this checks that what it read reaches the machine,
+	# and that the environment still wins over it.
+	printf '[screen]\nmode = tt-medium\n' > settings.tosemu
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c settings.tosemu \
+	  test-c-screen tt-medium > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=high TOSEMU_NO_WINDOW=1 $(NO_DAEMON) \
+	  ../bin/tosemu -c settings.tosemu test-c-screen high > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And a file named and not there is refused rather than ignored, since
+	# carrying on would be running on a machine nobody asked for
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c nosuch.tosemu \
+	  test-c-screen high > out 2>/dev/null; test "$$?" != 0
+	$(RM) settings.tosemu
+	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium \
+	  ../bin/tosaesd --no-config & \
 	  echo $$! > screen.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=low \
@@ -198,6 +241,32 @@ check: all
 	TOSEMU_CLICKS='72,64 72,64' $(TOSEMU) test-c-watchbox > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# The two strips along the top of a window, and which of them is drawn
+	# where. Twice, because the title bar is GEM's when the decorations are
+	# and the desktop's when they are not, and the information line is
+	# drawn either way.
+	$(TOSEMU) test-c-frame > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_DECORATIONS=desktop $(TOSEMU) test-c-frame desktop > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# A window given a new rectangle, which is what an application does with
+	# the four words WM_SIZED carries. The frame has to move with it and the
+	# application has to be told to paint what is now inside - the drag that
+	# produced the rectangle is the compositor's and is not something a test
+	# can arrange, but everything after it is.
+	$(TOSEMU) test-c-resize > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Where a menu that has dropped down is drawn, which is not on the
+	# screen: a window under it goes on showing what it was showing. The
+	# pointer goes into the Desk title, on to the File title and down on to
+	# the first entry, which is three moves because a GEM menu opens on the
+	# pointer arriving and the title left behind is half of what this
+	# checks. The coordinates are the high resolution screen's, which is
+	# what these run on.
+	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27' $(TOSEMU) test-c-menu > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	# Asking where the mouse is rather than waiting for it, which is what an
 	# application tracking a slider does. The pointer is moved twice and
 	# then pressed and not let go of, and none of it is waited for.
@@ -212,7 +281,7 @@ check: all
 	# nought, appl_find always answers -1, and a message posted comes back
 	# to the sender. The daemon gets a socket of its own so that a test run
 	# does not disturb a session somebody is using.
-	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd & \
+	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd --no-config & \
 	  echo $$! > aesd.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU_FOR_A_WHILE) test-c-aesd > out & \
@@ -226,6 +295,75 @@ check: all
 	grep -q '^1\.\.' out
 	grep -q '^1\.\.' out2
 	$(RM) out out2 aesd.pid waiter.pid aesd.socket
+	#
+	# An accessory outliving the daemon that started it, which is the one
+	# thing it must not do: nothing can reach it afterwards, because being
+	# reached is something an accessory only ever does by being told to.
+	# Quit in the panel closed the session properly and a signal did not, so
+	# this asks the daemon to stop the way a person at a terminal does and
+	# then looks for what it left. The accessory is copied into a directory
+	# of its own rather than pointed at, since the daemon starts everything
+	# in the one it is given.
+	mkdir -p accs
+	cp test-c-acc accs/TEST.ACC
+	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	  ../bin/tosaesd --no-config accs > accsaid 2>&1 & \
+	  echo $$! > accd.pid; \
+	  sleep 3; \
+	  pgrep -P `cat accd.pid` > accwas || true; \
+	  kill -INT `cat accd.pid`; \
+	  wait `cat accd.pid` || true; \
+	  { if ! test -s accwas; then \
+	      echo "not ok 1 - the daemon started the accessory (got no process, want one)"; \
+	    elif kill -0 `cat accwas` 2>/dev/null; then \
+	      echo "not ok 1 - the accessory went with the daemon (got still running, want gone)"; \
+	    else \
+	      echo "ok 1 - the accessory went with the daemon"; \
+	    fi; \
+	    if grep -q '^Asking ' accsaid; then \
+	      echo "ok 2 - and the daemon said what it did with it"; \
+	    else \
+	      echo "not ok 2 - and the daemon said what it did with it (got silence, want a line naming it)"; \
+	    fi; \
+	    echo "1..2"; } > out; \
+	  test -s accwas && kill `cat accwas` 2>/dev/null; true
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -r accs out accsaid accwas accd.pid acc.socket
+	#
+	# And one started by hand rather than out of a directory, which the
+	# daemon never forked and so has nothing to wait for. It is seen off all
+	# the same, because what makes an accessory worth stopping is not who
+	# started it: it has no window and is reached only by being told to open
+	# one, so a daemon going away leaves it with nothing that could ever
+	# ask. Started from a subshell that then goes, so that what is looked
+	# for afterwards is nobody's child - one that is would still answer
+	# while it waited to be collected, and read as alive.
+	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	  ../bin/tosaesd --no-config > accsaid 2>&1 & \
+	  echo $$! > accd.pid; \
+	  sleep 1; \
+	  ( TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
+	      ../bin/tosemu --no-config test-c-acc & \
+	    echo $$! > accwas ); \
+	  sleep 3; \
+	  kill -INT `cat accd.pid`; \
+	  wait `cat accd.pid` || true; \
+	  { if kill -0 `cat accwas` 2>/dev/null; then \
+	      echo "not ok 1 - one started by hand went too (got still running, want gone)"; \
+	    else \
+	      echo "ok 1 - one started by hand went too"; \
+	    fi; \
+	    if grep -q '^Asking ' accsaid; then \
+	      echo "ok 2 - and the daemon reached past its own children to do it"; \
+	    else \
+	      echo "not ok 2 - and the daemon reached past its own children to do it (got silence, want a line naming it)"; \
+	    fi; \
+	    echo "1..2"; } > out; \
+	  kill `cat accwas` 2>/dev/null; true
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out accsaid accwas accd.pid acc.socket
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

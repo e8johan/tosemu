@@ -54,6 +54,7 @@
 /* tosemu's own, for turning a TOS path into a host one. The include path puts
  * emuvdi first, so this one is named the way it is reached from here. */
 #include "../files.h"
+#include "../settings.h"
 
 /*
  * The last one of a character in a string.
@@ -337,7 +338,7 @@ LONG dos_sfirst(char *pattern, WORD attributes)
 
     /* TOSEMU_TRACE_INPUT says which directories were read, which is one line
      * per thing the file selector was told to go into */
-    if (getenv("TOSEMU_TRACE_INPUT"))
+    if (setting_flag("TOSEMU_TRACE_INPUT"))
         fprintf(stderr, "tosemu: listing %s\n", walk.where);
 
     walk.attributes = attributes;

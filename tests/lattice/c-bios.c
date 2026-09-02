@@ -44,6 +44,11 @@ typedef struct
 #define MAP_C       (1L << DRIVE_C)
 #define E_DRVNR     (-2)
 
+/* Vector 127, whose four bytes are the last four below 0x200 - so its top byte
+ * is the last byte of the first five hundred and twelve, which is where an
+ * emulated machine that is one byte short of them shows it */
+#define TOP_VECTOR  (127)
+
 static int n;
 static int fails;
 
@@ -132,7 +137,19 @@ int main(int argc, char **argv)
     previous = (long)Setexc(5, READ_VECTOR);
     check((long)Setexc(5, READ_VECTOR), previous, "Setexc -1 only reads the vector");
 
+    /* And the vector at the far end of the same memory. A vector is a long, so
+     * one whose top byte is past the end of what the machine says it has stops
+     * the emulator rather than answering - and a test that stops prints nothing
+     * further, so the count below is what says this one got through. */
+    previous = (long)Setexc(TOP_VECTOR, READ_VECTOR);
+    check((long)Setexc(TOP_VECTOR, READ_VECTOR), previous,
+          "the vector at the top of the table can be read");
+    Setexc(TOP_VECTOR, (void (*)())0x12345678L);
+    check((long)Setexc(TOP_VECTOR, (void (*)())previous), 0x12345678L,
+          "and written, all four bytes of it");
+
     printf("# %d checks, %d failed\n", n, fails);
+    printf("1..%d\n", n);
 
     return fails;
 }

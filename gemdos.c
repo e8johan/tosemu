@@ -168,7 +168,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fsymlink NULL
 #define GEMDOS_Fxattr GEMDOS_Unknown
 #define GEMDOS_Maddalt NULL
-#define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
 #define GEMDOS_Pdomain GEMDOS_Unknown
 #define GEMDOS_Pfork NULL

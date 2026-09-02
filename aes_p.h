@@ -74,26 +74,59 @@ uint32_t aes_global();
 
 /* The frame round a window, aesframe.c */
 
-void aes_frame_draw(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                    int16_t hslide, int16_t hslsize,
-                    int16_t vslide, int16_t vslsize);
+/*
+ * A window as the frame needs to see it: the rectangle the frame goes round,
+ * what the window is made of, where its sliders sit and what its title bar
+ * says.
+ *
+ * A structure rather than a dozen arguments because the two calls below take
+ * the same dozen, and because a frame is one thing described from several
+ * angles rather than a list of unrelated numbers - drawing one and working out
+ * what was clicked on it have to agree about every single one of them, and a
+ * gadget drawn in one place and found in another is the kind of fault nobody
+ * notices until they try to use it.
+ *
+ * The rectangle is what is shown of the window rather than the whole of it.
+ * Which those are depends on whether the desktop is putting a frame round the
+ * outside - see window_on_show in aeswind.c.
+ */
+struct aes_frame {
+    int16_t kind;
+    int16_t x, y, w, h;
+
+    int16_t hslide, hslsize;
+    int16_t vslide, vslsize;
+
+    /* What the title bar says, or null for a window that has not been given a
+     * name. Not copied: it is drawn where it lies. */
+    char *name;
+
+    /* And what its information line says, which is whatever the application
+     * put there and means nothing to the AES */
+    char *info;
+
+    /* Whether the desktop says this is the window somebody is working in,
+     * which is what the title bar is drawn light or dark to say */
+    int active;
+};
+
+void aes_frame_draw(const struct aes_frame *frame);
 
 /*
  * Which part of a frame a point is in, and how far along a slider it fell.
  * The names are aesframe.c's own; aeswind.c turns one into the message an
  * application is sent.
  */
-int aes_frame_hit(int16_t kind, int16_t x, int16_t y, int16_t w, int16_t h,
-                  int16_t hslide, int16_t hslsize,
-                  int16_t vslide, int16_t vslsize,
+int aes_frame_hit(const struct aes_frame *frame,
                   int16_t px, int16_t py, int16_t *along);
 
 /*
  * A press somewhere on the screen, which may have landed on the frame of a
  * window. Says whether it did, and sends the application whatever the gadget
- * it hit is worth.
+ * it hit is worth - or asks the desktop for whatever the gadget is worth
+ * there, a title bar being something to drag a window by rather than a message.
  */
-int aes_wind_frame_press(int16_t x, int16_t y);
+int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons);
 
 /* The file selector, aesfsel.c */
 

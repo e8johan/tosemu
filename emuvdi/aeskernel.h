@@ -89,7 +89,13 @@ void host_dialog_end(void);
  * for the same reason and a different kind of one: a menu hangs off the bar,
  * has no frame and nothing to drag it by, and is not a window as far as the
  * desktop is concerned.
+ *
+ * These are three rather than two because the two halves of putting a menu up
+ * happen at different moments. The surface is wanted before the menu is drawn,
+ * which is where EmuTOS saved what was underneath; the window is wanted after,
+ * because until then there is nothing in it to show.
  */
+void host_menu_surface(void);
 void host_menu_begin(int16_t x, int16_t y, int16_t width, int16_t height);
 void host_menu_end(void);
 

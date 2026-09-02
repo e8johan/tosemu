@@ -34,6 +34,7 @@
  */
 
 #include "screen.h"
+#include "settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +53,7 @@ int screen_scale(void)
 {
     /* Said once rather than once a window, which is how often this is asked */
     static int complained;
-    const char *said = getenv("TOSEMU_SCALE");
+    const char *said = setting("TOSEMU_SCALE");
     int n;
 
     if (!said)
@@ -85,8 +86,16 @@ int screen_scale(void)
  * work with.
  *
  * The TT's third is not here, and neither are the Falcon's. Both want
- * something the VDI was not built with rather than another line in this table
- * - see the note in TODO.
+ * something the VDI was not built with rather than another line in this table.
+ * The TT's low resolution screen is eight planes, which the VDI draws in
+ * happily, but its palette is sixteen entries unless EXTENDED_PALETTE is on -
+ * init_colors walks MAP_COL and REV_MAP_COL to numcolors either way, so
+ * asking for it runs off the end of both and a cleared screen reads back as
+ * 254. EXTENDED_PALETTE is (CONF_WITH_VIDEL || CONF_WITH_TT_SHIFTER), which
+ * means building the VDI with support for hardware that is not there. The
+ * Falcon's is sixteen bits to a pixel rather than planes, and surface.h says
+ * why that is not a small change: planes interleaved a word at a time is the
+ * shape that lets the VDI be EmuTOS's code rather than a rewrite of it.
  */
 static const struct {
     const char *name;
@@ -318,7 +327,7 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
 {
     struct wl_display *display;
     struct wl_registry *registry;
-    const char *wanted = getenv("TOSEMU_OUTPUT");
+    const char *wanted = setting("TOSEMU_OUTPUT");
     struct display *picked = 0;
     int i;
 
@@ -409,9 +418,38 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
 
 #endif /* NO_WAYLAND */
 
+/*
+ * The same question, asked once.
+ *
+ * The machine is worked out more than once in a run - the screen is reserved
+ * before a program is loaded, and GEM asks again when it starts and needs to
+ * know how large a surface to make - and a display is not unplugged in
+ * between. Remembering the answer keeps the round trip the one round trip the
+ * note above describes rather than one per caller.
+ */
+static int ask_the_compositor_once(int32_t *pixels_w, int32_t *pixels_h,
+                                   int32_t *out_scale)
+{
+    static int asked;
+    static int answered;
+    static int32_t was_w, was_h, was_scale;
+
+    if (!asked)
+    {
+        answered = ask_the_compositor(&was_w, &was_h, &was_scale);
+        asked = 1;
+    }
+
+    *pixels_w = was_w;
+    *pixels_h = was_h;
+    *out_scale = was_scale;
+
+    return answered;
+}
+
 void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 {
-    const char *want = getenv("TOSEMU_SCREEN");
+    const char *want = setting("TOSEMU_SCREEN");
     size_t i;
 
     for (i = 0; want && i < sizeof modes / sizeof modes[0]; i++)
@@ -434,7 +472,7 @@ void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 
         *planes = native[i].planes;
 
-        if (ask_the_compositor(&pixels_w, &pixels_h, &out_scale))
+        if (ask_the_compositor_once(&pixels_w, &pixels_h, &out_scale))
         {
             screen_from_display(pixels_w, pixels_h, out_scale, width, height);
             return;

@@ -43,6 +43,7 @@
 #include "aes_p.h"
 #include "aesclient.h"
 #include "screen.h"
+#include "settings.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
@@ -70,6 +71,22 @@ static struct surface *screen;
  * nothing.
  */
 static struct surface *dialog;
+
+/*
+ * And where a menu that has dropped down draws, which is the same idea again.
+ *
+ * A menu covers whatever is behind it, and what is behind it here is somebody's
+ * window rather than a picture of a screen: a menu drawn into the screen
+ * appears inside every window showing that part of it, which is exactly what
+ * having real windows was meant to avoid. So it gets a surface, the size of the
+ * screen and starting as a copy of it, and the window it is shown in is the
+ * only place its pixels are ever seen.
+ *
+ * It is not on the dialog stack because it is not one of those. A menu is up
+ * while an application is inside a wait rather than inside a dialog, and the
+ * two do not nest: nothing puts a dialog up from a menu that is still down.
+ */
+static struct surface *menu;
 
 static int started;
 
@@ -233,6 +250,70 @@ void gem_dialog_end()
 }
 
 /*
+ * Somewhere for a menu to be drawn, and letting go of it again.
+ *
+ * The AES asks for this where it used to save what was under the menu, which
+ * is the one moment that is both after the bar has been drawn and before the
+ * menu has - see the note in emuvdi/gemmnlib.c. From here until the menu goes
+ * away everything the AES draws lands on the menu's surface, which is what
+ * keeps it out of the screen and so out of every window showing the screen.
+ *
+ * A copy of whatever is being drawn into rather than of the screen, for the
+ * same reason a dialog is: what is behind the menu shows through the parts of
+ * its window the menu itself does not cover.
+ */
+void gem_menu_begin(void)
+{
+    struct surface *below = surface_selected();
+
+    if (!started || menu)
+        return;
+
+    menu = surface_create(surface_width(screen), surface_height(screen),
+                          surface_planes(screen));
+    if (!menu)
+        return;
+
+    surface_copy(menu, below ? below : screen);
+
+    surface_select(menu);
+}
+
+void gem_menu_end(void)
+{
+    if (!menu)
+        return;
+
+    surface_free(menu);
+    menu = 0;
+
+    /* Back to whatever was being drawn into before, which is a dialog if one
+     * is up and the screen if none is */
+    surface_select(dialog ? dialog : screen);
+}
+
+struct surface *gem_menu_surface(void)
+{
+    return menu;
+}
+
+/*
+ * The screen, for the things that belong to it whatever else is being drawn
+ * into.
+ *
+ * Most of what the AES draws belongs wherever the drawing is going: a dialog
+ * reserves the screen, everything after that lands on the dialog's surface,
+ * and that is what keeps a dialog out of the window behind it. A window's
+ * frame is the exception. It is drawn where the window is and the window shows
+ * the screen, so a frame drawn while a dialog is up has to go past the dialog
+ * and onto the screen - see draw_frame in aeswind.c, which is what asks.
+ */
+struct surface *gem_screen_surface(void)
+{
+    return screen;
+}
+
+/*
  * What a child of fork has to do before it is a program of its own.
  *
  * It has a copy of everything this one had: a connection to the compositor
@@ -249,6 +330,10 @@ void gem_forget(void)
     if (screen)
         surface_free(screen);
     screen = 0;
+
+    if (menu)
+        surface_free(menu);
+    menu = 0;
 
     while (depth > 0)
     {
@@ -270,12 +355,13 @@ void gem_present()
     if (!started)
         return;
 
-    shot = getenv("TOSEMU_SCREENSHOT");
+    shot = setting("TOSEMU_SCREENSHOT");
     if (shot)
     {
         /* Whichever is being drawn into. A dialog's surface starts as a copy
-         * of the screen, so it is the whole picture rather than half of it. */
-        surface_write_ppm(dialog ? dialog : screen, shot);
+         * of the screen and a menu's as a copy of that, so whichever of them
+         * is on top is the whole picture rather than half of it. */
+        surface_write_ppm(menu ? menu : dialog ? dialog : screen, shot);
     }
 
     gfx_present();
@@ -312,6 +398,7 @@ void gem_reset()
     aes_reset();
     vdi_reset();
 
+    gem_menu_end();
     gem_dialog_end();
     gfx_close();
 

@@ -31,6 +31,15 @@ void xbios_trap();
  * one that reserved it */
 void xbios_reset();
 
+/*
+ * Whether an address is the one Physbase or Logbase gave out as the screen.
+ *
+ * The VDI needs it: a bitmap named by that address is the screen, and the
+ * raster operations have to draw on the screen rather than on a copy of
+ * whatever happens to be at it. See the note in vdi.c.
+ */
+int xbios_screen_named(uint32_t address);
+
 uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address);
 void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value);
 

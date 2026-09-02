@@ -47,6 +47,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -63,6 +64,7 @@
 #include "aesproto.h"
 #include "aesdtray.h"
 #include "screen.h"
+#include "settings.h"
 
 /*
  * How many applications there can be.
@@ -121,25 +123,50 @@ static int talkative;
 static const char *accessory_directory;
 
 /*
- * The accessories this daemon started, so that it can stop them again.
+ * The accessories to see off when the session ends.
  *
  * By process rather than by connection, because stopping one is a thing to do
  * to a process: an accessory never exits on its own - that is what makes it an
  * accessory - so being asked nicely may not be enough.
+ *
+ * As many as there can be applications rather than as many as fit in a packet.
+ * Six is how many the daemon can name to anybody, and a seventh in the
+ * directory was started and then not written down, which made it exactly the
+ * one nothing would ever stop.
  */
 static struct {
     pid_t pid;
+
+    /* Whether this daemon started it, which decides how to ask whether it is
+     * still there: waitpid answers about a child and about nothing else */
+    int ours;
+
     char from[64];              /* What to call it when saying something */
     char path[PATH_MAX];        /* And where it came from, so that looking
                                  * again can tell a new one from this one */
-} started[AESD_MAX_ACCS];
+} started[MAX_APPS];
 
 static int started_count;
 
-/* Set when somebody picks Quit, which is noticed at the top of the loop
- * rather than acted on where it happens: tearing the daemon down inside a
- * message from the panel would leave the panel waiting for a reply. */
-static int time_to_go;
+/*
+ * Set when somebody picks Quit or sends a signal, which is noticed at the top
+ * of the loop rather than acted on where it happens: tearing the daemon down
+ * inside a message from the panel would leave the panel waiting for a reply,
+ * and doing it inside a signal handler is not something a handler is allowed
+ * to do - closing the session waits for processes and says what it is doing.
+ */
+static volatile sig_atomic_t time_to_go;
+
+/*
+ * How a signal reaches the loop.
+ *
+ * Writing a byte to one end wakes a poll waiting on the other, and writing to
+ * a pipe is one of the few things a signal handler may do. The flag on its own
+ * would not be enough: a signal arriving between the test at the top of the
+ * loop and the poll below it would be set and then slept through, and the
+ * daemon would sit there until something else happened to say anything.
+ */
+static int woken[2] = { -1, -1 };
 
 static void say_of(const char *what, const char *name)
 {
@@ -571,6 +598,7 @@ static void start_accessory(const char *emulator, const char *path)
         const char *leaf = strrchr(path, '/');
 
         started[started_count].pid = child;
+        started[started_count].ours = 1;
         snprintf(started[started_count].from, sizeof started[started_count].from,
                  "%s", leaf ? leaf + 1 : path);
         snprintf(started[started_count].path, sizeof started[started_count].path,
@@ -747,13 +775,73 @@ static int still_here(void)
         if (started[i].pid <= 0)
             continue;
 
-        if (waitpid(started[i].pid, 0, WNOHANG) != 0)
-            started[i].pid = 0;         /* gone, or never ours */
+        /*
+         * Asked one way of a child and another of anything else, and the
+         * difference matters: waitpid says "no such thing" about a process
+         * this daemon did not start, which would read as "it has gone" for one
+         * that is sitting right there. A child is asked with waitpid all the
+         * same, because that is also what collects it.
+         */
+        if (started[i].ours)
+        {
+            if (waitpid(started[i].pid, 0, WNOHANG) != 0)
+                started[i].pid = 0;     /* gone, and collected */
+            else
+                left++;
+        }
+        else if (kill(started[i].pid, 0) < 0 && errno == ESRCH)
+            started[i].pid = 0;
         else
             left++;
     }
 
     return left;
+}
+
+/*
+ * The accessories this daemon did not start, added to the ones it did.
+ *
+ * One can be started by hand against the socket, which is how a new one gets
+ * tried before it is dropped in the directory, and it registers itself the
+ * same way any other does. It is still an accessory, and that is the whole
+ * argument for stopping it: an application left running when the daemon has
+ * gone is somebody's work with a window on the screen, but an accessory is
+ * reached only by being told to open, and there is nothing left to tell it. It
+ * would sit there for ever with no way in and no way out.
+ *
+ * They go in the same list so that the closing below is one loop and not two,
+ * and the only thing that differs about them is that they are not children.
+ */
+static void also_the_ones_started_by_hand(void)
+{
+    int i, j;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used || !apps[i].accessory || apps[i].pid <= 0)
+            continue;
+
+        for (j = 0; j < started_count; j++)
+            if (started[j].pid == apps[i].pid)
+                break;
+
+        if (j < started_count)
+            continue;
+
+        if (started_count >= (int)(sizeof started / sizeof started[0]))
+            return;
+
+        started[started_count].pid = apps[i].pid;
+        started[started_count].ours = 0;
+        started[started_count].path[0] = 0;
+
+        /* Only ever used if it stops answering before it is named, since one
+         * that registered is named by what it calls itself */
+        snprintf(started[started_count].from,
+                 sizeof started[started_count].from, "%.*s", AESD_NAME_LEN,
+                 apps[i].name);
+        started_count++;
+    }
 }
 
 /* Waits a while for one to go, and says whether it did */
@@ -780,13 +868,15 @@ static int gone_within(int which, int tenths)
  * Ending the session.
  *
  * Everybody is asked first, with the message GEM has for exactly this, and
- * given a moment to go of their own accord. Then whatever this daemon started
- * and is still there is stopped, because an accessory that does not handle
- * being asked would otherwise outlive the session that started it.
+ * given a moment to go of their own accord. Then every accessory that is still
+ * there is stopped, because one that does not handle being asked would
+ * otherwise outlive the session it belongs to.
  *
  * Applications are asked and not stopped. One that ignores the message is
  * somebody's work with unsaved changes in it, and a program the person started
- * themselves is theirs to close.
+ * themselves is theirs to close. An accessory is not that, whoever started it:
+ * it has no window and is reached only by being told to open one, so a daemon
+ * going away leaves it with nothing that could ever ask.
  */
 static void everybody_out(void)
 {
@@ -801,6 +891,8 @@ static void everybody_out(void)
         if (apps[i].used)
             send_to(apps[i].fd, &out);
 
+    also_the_ones_started_by_hand();
+
     /*
      * What each is called, taken now rather than when its turn comes.
      *
@@ -810,7 +902,7 @@ static void everybody_out(void)
      * accessories and one line was the first thing this got wrong.
      */
     {
-        static char names[AESD_MAX_ACCS][64];
+        static char names[MAX_APPS][64];
 
         for (i = 0; i < started_count; i++)
             snprintf(names[i], sizeof names[i], "%s", name_of(i));
@@ -857,7 +949,13 @@ static void everybody_out(void)
         }
 
         kill(started[i].pid, SIGKILL);
-        waitpid(started[i].pid, 0, 0);
+
+        /* Waited for only if it is a child, because that is the only kind of
+         * process there is anything to wait for. One that is not is gone all
+         * the same - nothing survives this - and somebody else collects it. */
+        if (started[i].ours)
+            waitpid(started[i].pid, 0, 0);
+
         started[i].pid = 0;
 
         printf(" [ killed ]\n");
@@ -876,29 +974,58 @@ static void tidy_up(void)
         unlink(socket_path);
 }
 
+/*
+ * Interrupted, which is asked for here rather than done here.
+ *
+ * Leaving at once looks like the tidy thing and is not: the socket goes, the
+ * daemon goes, and every accessory it started is still sitting there talking
+ * to nothing. An accessory does not stop on its own - that is what makes it an
+ * accessory - so it has to be stopped, and stopping it is the loop's job. This
+ * says so and gets out of the way, which makes Ctrl-C the same door as Quit in
+ * the panel rather than a second one that skips the closing.
+ */
 static void asked_to_stop(int signal)
 {
     (void)signal;
 
-    tidy_up();
-    _exit(0);
+    time_to_go = 1;
+
+    if (woken[1] >= 0)
+    {
+        /* What is in the byte does not matter, only that something arrived. A
+         * pipe already holding one wakes the poll just as well, so there is
+         * nothing to do about a write that does not fit. */
+        ssize_t said = write(woken[1], "", 1);
+
+        (void)said;
+    }
 }
 
 int main(int argc, char **argv)
 {
     struct sockaddr_un where;
     const char *said;
+    const char *config = 0;
+    int no_config = 0;
     int i;
 
     for (i = 1; i < argc; i++)
     {
         if (!strcmp(argv[i], "-v"))
             talkative = 1;
+        else if (!strcmp(argv[i], "--no-config"))
+            no_config = 1;
+        else if ((!strcmp(argv[i], "-c") || !strcmp(argv[i], "--config"))
+                 && i + 1 < argc)
+            config = argv[++i];
+        else if (!strncmp(argv[i], "--config=", 9))
+            config = argv[i] + 9;
         else if (!accessory_directory && argv[i][0] != '-')
             accessory_directory = argv[i];
         else
         {
-            printf("Usage: tosaesd [-v] [directory]\n\n"
+            printf("Usage: tosaesd [-v] [-c <file>] [--no-config] "
+                   "[directory]\n\n"
                    "The daemon several tosemu processes have in common: which\n"
                    "application is which, what the screen looks like, and\n"
                    "messages one sends another.\n\n"
@@ -906,11 +1033,28 @@ int main(int argc, char **argv)
                    "in .ACC - and each one is started in an emulator of its\n"
                    "own. They put themselves in the Desk menu of every\n"
                    "application that runs afterwards.\n\n"
-                   "TOSEMU_AESD says where to put the socket, and defaults to\n"
-                   "$XDG_RUNTIME_DIR/" AESD_SOCKET_NAME ".\n");
+                   "Settings come from %s when there is one, and an\n"
+                   "environment variable overrides what it says. This is\n"
+                   "where to set them for a session: the daemon is what says\n"
+                   "which screen the machine has, to every application that\n"
+                   "arrives and to the accessories it starts itself.\n\n"
+                   "TOSEMU_AESD, or [session] socket, says where to put the\n"
+                   "socket, and defaults to $XDG_RUNTIME_DIR/"
+                   AESD_SOCKET_NAME ".\n",
+                   settings_default_path() ? settings_default_path()
+                                           : "the settings file");
             return 1;
         }
     }
+
+    /*
+     * The settings before anything reads one, which here is the very next
+     * line: which screen this session has is one of them.
+     */
+    if (no_config)
+        settings_ignore_file();
+    else if (!settings_load(config))
+        return 1;
 
     /* Which machine this session is, before anybody can arrive to be told.
      * The screens that are as large as the display ask the compositor here,
@@ -919,7 +1063,7 @@ int main(int argc, char **argv)
      * process that tells it. */
     screen_mode(&screen_width, &screen_height, &screen_planes);
 
-    said = getenv("TOSEMU_AESD");
+    said = setting("TOSEMU_AESD");
     if (said && *said)
         snprintf(socket_path, sizeof socket_path, "%s", said);
     else
@@ -995,6 +1139,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /*
+     * The way a signal gets a word in, made before anything can send one.
+     *
+     * Nothing else may have it: an accessory is started by forking, so a write
+     * end left open in the child would be a second daemon as far as the pipe
+     * is concerned. And the handler must not be able to wait, which is what a
+     * pipe nobody is emptying would otherwise make it do.
+     */
+    if (pipe2(woken, O_CLOEXEC | O_NONBLOCK) < 0)
+    {
+        perror("tosaesd: pipe");
+        tidy_up();
+        return 1;
+    }
+
     signal(SIGINT, asked_to_stop);
     signal(SIGTERM, asked_to_stop);
     signal(SIGPIPE, SIG_IGN);   /* An application going away mid-write */
@@ -1019,15 +1178,24 @@ int main(int argc, char **argv)
 
     for (;;)
     {
-        struct pollfd fds[MAX_APPS + 2];
-        int slots[MAX_APPS + 2];
+        struct pollfd fds[MAX_APPS + 3];
+        int slots[MAX_APPS + 3];
         int panel_slot = -1;
+        int wake_slot;
         int panel = tray_fd();
         int n = 0;
 
         fds[n].fd = listening;
         fds[n].events = POLLIN;
         slots[n] = -1;
+        n++;
+
+        /* The end a signal is heard on, so that one arriving while this is
+         * asleep is what wakes it rather than the next thing anybody says */
+        wake_slot = n;
+        fds[n].fd = woken[0];
+        fds[n].events = POLLIN;
+        slots[n] = -3;
         n++;
 
         /* The panel, when there is one to talk to */
@@ -1075,7 +1243,10 @@ int main(int argc, char **argv)
             struct aesd_packet in;
             ssize_t got;
 
-            if (i == panel_slot)
+            /* The panel is pumped above, and the byte a signal wrote has done
+             * its work by getting this far: the flag it set is read at the top
+             * of the loop, which is the next thing to happen. */
+            if (i == panel_slot || i == wake_slot)
                 continue;
 
             if (!(fds[i].revents & (POLLIN|POLLHUP|POLLERR)))

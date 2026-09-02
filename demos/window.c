@@ -28,6 +28,13 @@
  * It waits for the close box and then goes away, which is what any GEM
  * application does: the AES does not close a window, it tells the application
  * that somebody asked, and the application decides.
+ *
+ * The same goes for the size box. Taking hold of it starts the drag the desktop
+ * would have started had somebody taken hold of a corner, and what comes back
+ * is WM_SIZED - a message saying what rectangle the drag arrived at. Nothing
+ * has resized yet when that arrives: the application is what decides, and it
+ * decides by setting the window's rectangle, which is the two lines below.
+ * An application that ignores the message keeps the window it had.
  */
 
 #include <gem.h>
@@ -39,7 +46,13 @@
  */
 #define W_HAS_NAME    (0x0001)
 #define W_HAS_CLOSER  (0x0002)
+#define W_HAS_FULLER  (0x0004)
 #define W_HAS_MOVER   (0x0008)
+#define W_HAS_INFO    (0x0010)
+#define W_HAS_SIZER   (0x0020)
+
+/* Which of the two rectangles the full box last put the window in */
+static short full;
 
 static short control[5], global[15], intin[16], intout[7];
 static long addrin[3], addrout[1];
@@ -60,6 +73,10 @@ static short handle, window;
 static void draw(void)
 {
     short pxy[4], x, y, wide, high;
+
+    /* Not on the stack: the AES keeps the pointer rather than the words, so
+     * the string has to outlive the call that hands it over */
+    static char measured[40];
 
     intin[0] = window;
     intin[1] = 4;                   /* WF_WORKXYWH */
@@ -82,6 +99,23 @@ static void draw(void)
     vst_color(handle, 1);
     v_gtext(handle, x + 16, y + 24, "A GEM window");
     v_gtext(handle, x + 16, y + 40, "on your own desktop");
+
+    /*
+     * How large the work area is, said in the information line, which is where
+     * a GEM application says what its window is showing. Setting it is all
+     * there is to it: the AES neither reads it nor acts on it, and draws it
+     * again when it is told.
+     *
+     * The string stays here rather than being copied, because the application
+     * owns it and is entitled to change what it says without telling anybody.
+     */
+    sprintf(measured, " Work area: %d by %d", wide, high);
+
+    intin[0] = window;
+    intin[1] = 3;                                    /* WF_INFO */
+    intin[2] = (short)(((long)measured) >> 16);
+    intin[3] = (short)(((long)measured) & 0xffff);
+    call_aes(105, 6, 1, 0, 0);                       /* wind_set */
 }
 
 int main(int argc, char **argv)
@@ -99,8 +133,10 @@ int main(int argc, char **argv)
     work_in[10] = 2;
     v_opnvwk(work_in, &handle, work_out);
 
-    /* A window with a title, a closer and something to drag it by */
-    intin[0] = W_HAS_NAME|W_HAS_CLOSER|W_HAS_MOVER;
+    /* A window with a title, a closer, a full box, something to drag it by, an
+     * information line and a size box to pull it about with */
+    intin[0] = W_HAS_NAME|W_HAS_CLOSER|W_HAS_FULLER|W_HAS_MOVER
+             |W_HAS_INFO|W_HAS_SIZER;
     intin[1] = 0; intin[2] = 0; intin[3] = 320; intin[4] = 200;
     window = call_aes(100, 5, 1, 0, 0);              /* wind_create */
 
@@ -131,6 +167,43 @@ int main(int argc, char **argv)
         case WM_REDRAW:
             draw();
             break;
+
+        /*
+         * The rectangle a drag on the size box arrived at. Taking it is what
+         * makes the window that size - the AES has changed nothing yet - and
+         * the four words are where as well as how large, because a window
+         * grown at the bottom right of the screen has to be moved back to fit.
+         */
+        case WM_SIZED:
+            intin[0] = window;
+            intin[1] = 5;                            /* WF_CURRXYWH */
+            intin[2] = message[4]; intin[3] = message[5];
+            intin[4] = message[6]; intin[5] = message[7];
+            call_aes(105, 6, 1, 0, 0);               /* wind_set */
+            draw();
+            break;
+
+        /*
+         * The full box, which is GEM's way of saying "as large as it goes" and
+         * "back the way it was". Neither rectangle comes with the message: the
+         * application asks the AES for whichever of the two it wants next, and
+         * as large as it goes means as large as the screen the AES lays windows
+         * out on rather than as large as the display.
+         */
+        case WM_FULLED:
+            intin[0] = window;
+            intin[1] = full ? 6 : 7;                 /* PREVXYWH or FULLXYWH */
+            call_aes(104, 6, 5, 0, 0);               /* wind_get */
+            full = !full;
+
+            intin[0] = window;
+            intin[1] = 5;                            /* WF_CURRXYWH */
+            intin[2] = intout[1]; intin[3] = intout[2];
+            intin[4] = intout[3]; intin[5] = intout[4];
+            call_aes(105, 6, 1, 0, 0);               /* wind_set */
+            draw();
+            break;
+
         case WM_CLOSED:
             running = 0;
             break;

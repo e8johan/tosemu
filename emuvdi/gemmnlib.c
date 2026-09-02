@@ -209,43 +209,46 @@ static BOOL menu_select(OBJECT *tree, WORD last_item, WORD cur_item, WORD setit)
  *  underneath the menu before it was pulled down.
  */
 /*
- * TOSEMU: the two things changed in this file, here and in menu_down below.
+ * TOSEMU: the three things changed in this file - here, in menu_down below,
+ * and in the order of two lines of mn_do.
  *
  * This pair is where a menu appears and disappears, and the only place that
- * knows the rectangle it covers. EmuTOS saves what was underneath before
- * drawing over it and puts it back afterwards, which is what a menu on one
- * screen has to do, and that still happens: the screen is still one screen as
- * far as everything drawing into it is concerned.
+ * knows the rectangle it covers. EmuTOS draws the menu over whatever was on
+ * the screen and remembers the pixels underneath so that it can put them back,
+ * which is what a menu on one screen has to do.
  *
- * What is added is telling the desktop, so that a menu can be a surface of its
- * own - hanging off the bar, with no frame and nothing to drag it by, and gone
- * again afterwards. Saying so is the difference between a menu and a picture
- * of one.
+ * Here a menu is not drawn over anything. It gets a surface of its own - and
+ * then a window of its own hanging off the bar, with no frame and nothing to
+ * drag it by - so what is behind it is a window belonging to somebody, still
+ * there and still showing what it showed. Drawing into the screen instead
+ * would put the menu inside every window showing that part of it, which is
+ * the picture of another computer that having real windows was meant to avoid.
  *
- * Going away happens here, before what was underneath is put back, so that the
- * window is gone before the pixels it was showing are. Appearing cannot happen
- * here, because at this point the menu has been saved but not yet drawn: it
- * happens in menu_down, after the drawing.
+ * So there is nothing to remember and nothing to put back, the same way there
+ * is nothing for an alert to remember - see the note in gemfmalt.c, which
+ * makes the same trade for the same reason. What is left of the save is
+ * asking for the surface, and what is left of the restore is letting go of it.
+ *
+ * Appearing cannot happen here, because at this point the menu has somewhere
+ * to be drawn but has not been drawn yet: the window is asked for in
+ * menu_down, after the drawing.
  *
  * Everything else in this file is EmuTOS's, unchanged, from VERSION_1_4.
  */
 static void menu_sr(WORD saveit, OBJECT *tree, WORD imenu)
 {
-    GRECT   t;
+    MAYBE_UNUSED(tree);
+    MAYBE_UNUSED(imenu);
 
-    /* do the blit to save or restore */
+    /* The clip the blit was done with. The drawing that follows relies on it
+     * as much as the blit did: a menu is drawn outside whatever the
+     * application was last clipped to. */
     gsx_sclip(&gl_rzero);
-    ob_actxywh(tree, imenu, &t);
-    t.g_x -= MENU_THICKNESS;
-    t.g_w += 2 * MENU_THICKNESS;
-    t.g_h += 2 * MENU_THICKNESS;
+
     if (saveit)
-        bb_save(&t);
+        host_menu_surface();
     else
-    {
         host_menu_end();
-        bb_restore(&t);
-    }
 }
 
 
@@ -702,9 +705,27 @@ WORD mn_do(WORD *ptitle, WORD *pitem)
 
         /* unhilite old item */
         menu_select(tree, last_item, cur_item, FALSE);
-        /* unhilite old title & pull up old menu */
-        if (menu_select(tree, last_title, cur_title, FALSE))
+        /*
+         * pull up old menu & unhilite old title
+         *
+         * TOSEMU: EmuTOS does these two the other way round, and here they
+         * cannot be. The menu is drawn on a surface of its own and the title
+         * is on the bar, which is the screen's, so a title drawn while the
+         * menu is still up is drawn where nobody will ever see it - and the
+         * title of the menu just left stays highlighted for as long as the bar
+         * is up. The condition is menu_select's own, written out, because the
+         * answer is needed before the drawing rather than from it.
+         *
+         * Nothing else changes. The two rectangles do not touch - a menu hangs
+         * below the bar its title is on - so which is dealt with first is not
+         * something an ST could tell either.
+         */
+        if (last_title != NIL && last_title != cur_title
+            && !(tree[last_title].ob_state & DISABLED))
+        {
             menu_sr(FALSE, tree, cur_menu);
+            do_chg(tree, last_title, SELECTED, FALSE, TRUE, TRUE);
+        }
         /* hilite new title & pull down new menu */
         if (menu_select(tree, cur_title, last_title, TRUE))
         {
