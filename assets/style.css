@@ -27,6 +27,7 @@
 
   --measure: 34rem;
   --wide: 62rem;
+  --bar-h: 34px;        /* the sticky menu bar, its bottom rule included */
 
   /* 50% dither, 1px cells - grey at arm's length, pixels up close */
   --dither:
@@ -84,6 +85,11 @@ a:focus-visible,
   margin: 0 auto;
   padding: 0 1.5rem;
 }
+
+/* A section's top margin collapses out of it, so its border edge sits level
+   with the heading - and the sticky bar would then cover the heading when
+   the menu jumps to it. Hold the target clear of the bar, with some air. */
+section[id] { scroll-margin-top: calc(var(--bar-h) + 1.5rem); }
 
 /* ------------------------------------------------------------------ *
  * The menu bar. GEM highlighted a menu title by inverting it; here it
