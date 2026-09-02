@@ -44,6 +44,12 @@
  * is not a small modern pixel, it is a large old one, and the only honest way
  * to make it large again is to repeat it. A compositor asked to scale would
  * smooth it, which is the one thing it must not do.
+ *
+ * The file is in two halves, and NO_WAYLAND keeps the first. That half is the
+ * queues of keys and clicks, and the input a test asks for on the command line
+ * when there is nobody to press anything - none of which involves a compositor.
+ * The second half is the windows, and a build without Wayland answers there
+ * what this already answers when nobody is logged in. See the Makefile.
  */
 
 /* memfd_create is a GNU extension, and this has to be said before the first
@@ -60,11 +66,13 @@
 #include <poll.h>
 #include <sys/mman.h>
 
+#ifndef NO_WAYLAND
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 #include "xdg-shell-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#endif
 
 #include "surface.h"
 #include "screen.h"
@@ -88,6 +96,8 @@ void host_window_closed(int16_t handle);
  * application can honestly be shown at different sizes, and one day they will
  * be.
  */
+
+#ifndef NO_WAYLAND
 
 /*
  * A window, which shows one rectangle of a surface. A GEM window is one of
@@ -144,7 +154,10 @@ struct window {
 #define MENU     (10)
 #define WINDOWS  (11)
 
+#endif /* NO_WAYLAND */
+
 static struct {
+#ifndef NO_WAYLAND
     struct wl_display *display;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
@@ -166,6 +179,7 @@ static struct {
     /* Which window the pointer is in, so that where it is can be given in the
      * screen's coordinates rather than in that window's */
     struct window *pointer_in;
+#endif /* NO_WAYLAND */
 
     /*
      * The last thing the person did, as the compositor numbers them.
@@ -241,6 +255,7 @@ static struct {
  * are.
  * http://toshyp.atari.org/en/003007.html
  */
+#ifndef NO_WAYLAND
 static uint16_t scancode_for(xkb_keysym_t sym)
 {
     switch (sym)
@@ -282,6 +297,7 @@ static uint16_t scancode_for(xkb_keysym_t sym)
         default:                return 0;
     }
 }
+#endif /* NO_WAYLAND */
 
 static void key_post(uint16_t key)
 {
@@ -418,6 +434,11 @@ int gfx_mouse_known(void)
 
 uint16_t gfx_kstate()
 {
+#ifdef NO_WAYLAND
+    /* No keyboard, so nothing is being held down on it. Which is also the
+     * answer on a machine that has one and nobody logged in to use it. */
+    return 0;
+#else
     uint16_t state = 0;
 
     if (!w.xkb_state)
@@ -435,6 +456,7 @@ uint16_t gfx_kstate()
         state |= 0x0008;
 
     return state;
+#endif
 }
 
 /*
@@ -618,6 +640,10 @@ int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
 
     return 1;
 }
+
+/* Everything below here talks to a compositor, and a build without Wayland
+ * ends the file with the answers it would have arrived at without one */
+#ifndef NO_WAYLAND
 
 /* Keyboard ****************************************************************/
 
@@ -1688,3 +1714,109 @@ void gfx_present()
 
     wl_display_flush(w.display);
 }
+
+#else /* NO_WAYLAND */
+
+/*
+ * The same half, built where there is no Wayland to build it against.
+ *
+ * None of this is a special case for a test to run into. The emulator already
+ * has to work when there is nothing to connect to - gfx_open returns 0 on a
+ * machine where nobody is logged in, and everything else here is written to do
+ * nothing when it does - so what these answer is what the ordinary build
+ * answers on a machine with no desktop, and the emulator takes the same path
+ * through the AES either way.
+ *
+ * What is lost is being able to see it. The screen is in memory, which is
+ * where GEM draws and where a screenshot is taken from, and that is the part
+ * an application can observe.
+ */
+
+int gfx_open(struct surface *screen)
+{
+    (void)screen;
+
+    memset(&w, 0, sizeof w);
+
+    return 0;
+}
+
+void gfx_close()
+{
+    memset(&w, 0, sizeof w);
+}
+
+void gfx_forget(void)
+{
+    memset(&w, 0, sizeof w);
+}
+
+int gfx_showing()
+{
+    return 0;
+}
+
+void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
+{
+    (void)handle; (void)title; (void)x; (void)y; (void)sw; (void)sh;
+}
+
+void gfx_window_move(int16_t handle, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
+{
+    (void)handle; (void)x; (void)y; (void)sw; (void)sh;
+}
+
+void gfx_window_title(int16_t handle, const char *title)
+{
+    (void)handle; (void)title;
+}
+
+void gfx_window_close(int16_t handle)
+{
+    (void)handle;
+}
+
+void gfx_menu_open(int16_t x, int16_t y, int16_t sw, int16_t sh)
+{
+    (void)x; (void)y; (void)sw; (void)sh;
+}
+
+void gfx_menu_close(void)
+{
+}
+
+void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
+                     int16_t sw, int16_t sh)
+{
+    (void)shows; (void)x; (void)y; (void)sw; (void)sh;
+}
+
+void gfx_dialog_close()
+{
+}
+
+/* Nothing to wait on beside the timer, which is what -1 says */
+int gfx_fd()
+{
+    return -1;
+}
+
+void gfx_dispatch()
+{
+}
+
+void gfx_dispatch_ready(void)
+{
+}
+
+void gfx_flush()
+{
+}
+
+void gfx_present()
+{
+}
+
+#endif /* NO_WAYLAND */

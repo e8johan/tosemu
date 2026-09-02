@@ -39,7 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef NO_WAYLAND
 #include <wayland-client.h>
+#endif
 
 /* How much larger than an ST pixel one on the desktop is. Three is a
  * reasonable guess at a modern display - a 640x400 screen becomes 1920x1200. */
@@ -167,6 +169,8 @@ void screen_from_display(int32_t pixels_w, int32_t pixels_h, int32_t out_scale,
     *width = (int16_t)w;
     *height = (int16_t)h;
 }
+
+#ifndef NO_WAYLAND
 
 /* What the compositor said about one display */
 struct display {
@@ -384,6 +388,26 @@ static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
 
     return 1;
 }
+
+#else /* NO_WAYLAND */
+
+/*
+ * Nobody to ask, and no way to ask built in.
+ *
+ * This is the answer a build with Wayland in it also arrives at whenever there
+ * is no compositor running, so the caller has nothing new to handle: the
+ * screen falls back to the one GEM applications were written for and the
+ * planes stay as asked. See screen_mode below.
+ */
+static int ask_the_compositor(int32_t *pixels_w, int32_t *pixels_h,
+                              int32_t *out_scale)
+{
+    (void)pixels_w; (void)pixels_h; (void)out_scale;
+
+    return 0;
+}
+
+#endif /* NO_WAYLAND */
 
 void screen_mode(int16_t *width, int16_t *height, int16_t *planes)
 {

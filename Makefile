@@ -51,6 +51,27 @@ WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 # dependency it should not have.
 WAYLANDONLYLIBS = $(shell pkg-config --libs wayland-client)
 
+# Building on a machine that has no Wayland to build against.
+#
+# Wayland is a build dependency here rather than a run time one. The emulator
+# already runs with nobody to show anything to - gfx_open answers that there is
+# no window and the screen stays in memory, which is what happens on a machine
+# where nobody is logged in and what the whole test suite does anyway - but the
+# headers and the libraries still have to be there to compile it at all.
+#
+# NO_WAYLAND=1 leaves them out. What goes with them is the half of gfx.c that
+# opens windows and the question screen.c asks about how large the display is;
+# everything an application can see is the same, because all of that happens in
+# the emulated screen and none of it happens on the desktop. It is meant for a
+# build server, which is a machine with no desktop for the answer to differ on.
+ifdef NO_WAYLAND
+WAYLANDGENERATED =
+WAYLANDHEADERS =
+WAYLANDFLAGS = -DNO_WAYLAND
+WAYLANDLIBS =
+WAYLANDONLYLIBS =
+endif
+
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
@@ -261,6 +282,13 @@ gen/xdg-decoration-unstable-v1-client-protocol.h:
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
 
 gfx.o: $(WAYLANDHEADERS)
+
+# The two files NO_WAYLAND changes, which depend on this one as well as on
+# their source. What the flag decides is what those objects contain rather than
+# merely how they were compiled, and make has no other way to see that turning
+# it on or off has made them stale - the same reason the EmuTOS objects above
+# depend on this file.
+gfx.o screen.o: Makefile
 
 # Every object needs the generated m68kops.h, so none of them may be compiled
 # before m64kmake has run
