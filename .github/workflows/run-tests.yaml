@@ -11,7 +11,13 @@ jobs:
             - uses: actions/checkout@v2
               with:
                 submodules: recursive
+            # NO_WAYLAND=1 because a build server has no Wayland to build
+            # against: no headers, no libraries and no wayland-scanner. It
+            # costs nothing that is checked here - the runner has no desktop
+            # either, so the windows would have had nowhere to appear, and the
+            # tests all run with the screen in memory as it is. See the
+            # Makefile for what it leaves out.
             - run: |
                 sh ./install-deps.sh
-                make check
-                make emuvdi-check
+                make NO_WAYLAND=1 check
+                make NO_WAYLAND=1 emuvdi-check

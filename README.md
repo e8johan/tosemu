@@ -59,6 +59,17 @@ picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the
 same either way, and the variable only decides whether anyone can see it.
 
+Showing them needs Wayland, which is a build dependency rather than a run time
+one: `wayland-client`, `xkbcommon` and `wayland-scanner` have to be there to
+compile it at all, even on a machine where nobody will ever be logged in to see
+a window. `make NO_WAYLAND=1` builds without them. What goes is the half of
+`gfx.c` that opens windows and the question `screen.c` asks about how large the
+display is, and what is left answers what the ordinary build already answers
+when there is no compositor to connect to - so the emulator takes the same path
+through the AES, the screen is in memory as it always was, and `make check`
+passes exactly as it does otherwise. It is meant for a build server, which is
+what CI runs on.
+
 Which screen it is comes from `TOSEMU_SCREEN`. The ST's three are `low`,
 320x200 in sixteen colours, `medium`, 640x200 in four, and `high`, 640x400 in
 two; the TT's are `tt-medium`, 640x480 in sixteen, and `tt-high`, 1280x960 in
@@ -492,6 +503,10 @@ anything is committed:
 `make check` builds its tests with the m68k-atari-mint cross compiler and runs
 them inside the emulator, so a failure there is a failure of the thing being
 tested rather than of the test.
+
+None of them needs a compositor. CI passes `NO_WAYLAND=1` because a build
+server has no Wayland to build against, and the tests come out the same: they
+all run with the screen in memory, which is the part being checked.
 
 **The self hosted ones**, which need the period tool chains under `tos_root`:
 
