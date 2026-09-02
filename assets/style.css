@@ -172,12 +172,22 @@ h1 {
   max-width: 28rem;
 }
 
-.cta { margin: 0; display: flex; flex-wrap: wrap; gap: 1.1rem; }
+/* centre, rather than stretch: the default button gives up 6px of height
+   to the margin its ring sits in, and a stretched sibling would be taller */
+.cta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.1rem;
+}
 
 /* ---- GEM buttons: a box, and a ring around the default one ---- */
 
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.55rem 1.1rem;
   border: 2px solid var(--ink);
   background: var(--paper);
