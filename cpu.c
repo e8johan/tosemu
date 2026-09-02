@@ -1,7 +1,8 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
- * 
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -70,7 +71,7 @@ uint16_t pop_u16()
 uint32_t pop_u32()
 {
     uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
-    uint16_t value = m68k_read_disassembler_32(sp);
+    uint32_t value = m68k_read_disassembler_32(sp);
     sp += 4;
     m68k_set_reg(M68K_REG_A7, sp);
     return value;

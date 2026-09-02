@@ -1,0 +1,3 @@
+[submodule "3rdparty/emutos"]
+	path = 3rdparty/emutos
+	url = https://github.com/emutos/emutos.git

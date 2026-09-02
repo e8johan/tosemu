@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,6 +24,7 @@
 #include "gemdosmem_p.h"
 #include "gemdoscon_p.h"
 #include "gemdosfile_p.h"
+#include "gemdosproc_p.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -35,26 +37,6 @@
 #include "gemdos_p.h"
 
 /* GEMDOS functions */
-
-/* Process management functions **********************************************/
-
-uint32_t GEMDOS_Pterm()
-{
-    FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", peek_u16(2));
-    }
-
-    exit(peek_u16(2));
-    return 0;
-}
-        
-uint32_t GEMDOS_Pterm0()
-{
-    FUNC_TRACE_ENTER
-
-    exit(0);
-    return 0;
-}
 
 /* Date/time functions *******************************************************/
 
@@ -169,12 +151,9 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Dpathconf NULL
 #define GEMDOS_Dreaddir NULL
 #define GEMDOS_Drewinddir NULL
-#define GEMDOS_Dsetdrv NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
 #define GEMDOS_Fcntl GEMDOS_Unknown
-#define GEMDOS_Fdup NULL
-#define GEMDOS_Fforce NULL
 #define GEMDOS_Fgetchar NULL
 #define GEMDOS_Finstat NULL
 #define GEMDOS_Flink NULL
@@ -192,14 +171,11 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Mxalloc NULL
 #define GEMDOS_Pause NULL
 #define GEMDOS_Pdomain GEMDOS_Unknown
-#define GEMDOS_Pexec NULL
 #define GEMDOS_Pfork NULL
 #define GEMDOS_Pgetegid GEMDOS_Unknown
 #define GEMDOS_Pgeteuid GEMDOS_Unknown
 #define GEMDOS_Pgetgid GEMDOS_Unknown
 #define GEMDOS_Pgetpgrp NULL
-#define GEMDOS_Pgetpid NULL
-#define GEMDOS_Pgetppid NULL
 #define GEMDOS_Pgetuid GEMDOS_Unknown
 #define GEMDOS_Pkill NULL
 #define GEMDOS_Pmsg NULL
@@ -222,9 +198,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Pumask GEMDOS_Unknown
 #define GEMDOS_Pursval NULL
 #define GEMDOS_Pvfork NULL
-#define GEMDOS_Pwait NULL
-#define GEMDOS_Pwait3 NULL
-#define GEMDOS_Pwaitpid NULL
 #define GEMDOS_Salert NULL
 #define GEMDOS_Pyield NULL
 #define GEMDOS_Sysconf NULL
@@ -373,6 +346,14 @@ void gemdos_init(struct tos_environment *te)
     gemdos_file_init(te);
 }
 
+void gemdos_reinit(struct tos_environment *te)
+{
+    /* The application that was running took its memory with it */
+    gemdos_mem_init(te);
+
+    gemdos_file_reinit(te);
+}
+
 void gemdos_free()
 {
     gemdos_mem_free();
@@ -383,7 +364,7 @@ void gemdos_trap()
     uint16_t fnct = peek_u16(0);
     int i;
     
-    for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
+    for(i=0; i<sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i) {
         if (GEMDOS_functions[i].id == fnct) {
             if (GEMDOS_functions[i].fnct) {
                 uint32_t r = GEMDOS_functions[i].fnct();
@@ -415,7 +396,7 @@ uint32_t GEMDOS_Unknown()
         fnct = peek_u16(0);
         printf("    func: 0x%x\n", fnct);
 
-        for(i=0; i<=sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i)
+        for(i=0; i<sizeof(GEMDOS_functions)/sizeof(struct GEMDOS_function); ++i)
             if (GEMDOS_functions[i].id == fnct)
                 if (GEMDOS_functions[i].fnct)
                     printf("    %s\n", GEMDOS_functions[i].name);        

@@ -1,4 +1,188 @@
-- Move the whole execution loop into the tossystem module
-- Looks as if many parts of this will have to be implemented:
-    http://www.yardley.cc/atari/compendium/atari-compendium-appendb.htm
-    http://www.yardley.cc/atari/compendium/atari-compendium-appendb2.htm
+- Mode 7 of Pexec takes the program flags a program header carries, and tosemu
+  acts on none of them, so it is mode 5 with an argument it ignores. Same for
+  the flags in a program header itself.
+- A child of Pexec mode 0 gets the whole of memory rather than a TPA carved
+  out of what its parent left free, so it is handed more than TOS would give
+  it. An application that Mallocs before it Mshrinks gets nothing, where on
+  TOS it would get what the parent released. The modes that load a program
+  into the caller's memory do carve it out, and do not have this.
+- Only sixteen children of the asynchronous Pexec modes can be waited for at
+  once, and Pwait3 ignores the resource usage it is handed, which tosemu has
+  nothing to fill in.
+- The BIOS device handles, -1 CON:, -2 AUX: and -3 PRN:, which GEMDOS accepts
+  everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
+  tosemu has a console but no serial port or printer, so -1 is the one with an
+  answer to give, and the other two keep reporting EIHNDL.
+- Console output goes straight to the host rather than through handle 1, so
+  Cconout and Cconws ignore an Fforce that redirected it.
+- Ptermres, which has nowhere to stay resident in.
+- remove_memory_area never advances its pointer, so it only ever finds the
+  first area. reset_memory happens to always ask for that one.
+- A routine that draws an object for the application may only call the VDI,
+  and one that calls the AES is refused rather than obeyed. The AES is
+  halfway through drawing a tree when it calls the routine, and the tree it
+  is drawing is the copy aestree.c made, which the next AES call would free
+  and build again. Making that safe means a stack of trees rather than one,
+  and there is nothing yet that wants it: the routine is documented as VDI
+  only, and both of WTEST's keep to it.
+- A routine that draws an object runs with whatever writing mode the AES left
+  set on its workstation, because it draws through the AES's handle. That is
+  what an ST did as well - WTEST leans on it, and a button held down comes
+  out inverted rather than erased - but it is the sort of thing that will
+  differ from real GEM somewhere, and it will look like the routine being
+  wrong rather than the mode.
+- A colour icon is drawn in black and white. A G_CICON points at a CICONBLK,
+  which is an ICONBLK with a chain of colour versions of the same icon after
+  it - one for each resolution the icon was drawn for - and only the ICONBLK
+  at the front of it is brought across, so what is drawn is the mono version
+  underneath. Which is what a CICONBLK carries one for, and what the icon
+  looked like in high resolution, so it is a fallback rather than a hole; but
+  a machine with four planes ought to be showing the four plane icon.
+
+  The chain is the work: each link is a plane count and up to four forms - the
+  image and its mask, and the same again for the selected state - where a mono
+  icon is two. Picking which link is the other half, and it is not aestree.c's
+  to decide from what the application handed over: rsrc_load fixes the chain
+  up for the screen it finds, so what arrives here should already be the right
+  one, and that wants checking against a resource file that has more than one.
+- Investigate how to support non-planar modes (up to 16bpp currently) and 
+  planar modes without having to rewrite the entire VDI stack.
+- Add a configuration item (or command line option) to select the memory size 
+  from what the various Atari models (ST, TT and Falcon) offered, and then the
+  maximum possible given the restrictions of the APIs.- wind_update takes no
+  lock, and with a process per application there is
+  nothing yet for it to protect: each has a screen of its own and what reaches
+  the desktop are its windows, so two applications cannot reach each other's
+  pixels. It was a lock because every application drew into one screen. It
+  becomes one again when windows belonging to different applications overlap
+  and have to be composed from a single surface rather than shown side by
+  side - which is the same piece of work as the surface router, and neither is
+  needed until then.
+- Bridge the scrap to the desktop's own clipboard, so that copying in a GEM
+  program pastes into a modern one and the other way round.
+
+  Going out has to be watched for rather than waited for: a GEM program never
+  says it copied something. scrp_write only says which directory the scrap is
+  in, and the cut itself is a file appearing in it, so inotify on that
+  directory is not a shortcut but the only signal there is. Watch for
+  IN_CLOSE_WRITE rather than IN_MODIFY, or half a file gets read: SCRAP.TXT is
+  written by an ordinary program doing ordinary writes.
+
+  Where the code goes is decided by something less obvious. The daemon looks
+  like the place - it already holds the scrap path, it is session wide, and it
+  outlives any one application - but Wayland only lets a client take the
+  selection in answer to something the person did, and it wants the serial of
+  the input event to prove it. A daemon has no seat, no focus and no serials,
+  so it cannot take the selection at all. The application that wrote the scrap
+  can: it has a connection, and it has the serial of the click on Copy that
+  led to the write. So the watching belongs in the application process, and
+  what the daemon adds is telling the others to stop offering it.
+
+  Coming in is easier and is not inotify at all: when the desktop offers
+  something, write SCRAP.TXT into the scrap directory so that a GEM program
+  pasting finds one. The work there is the conversion. Text on an ST is the
+  Atari character set with CRLF between lines, and the desktop's is UTF-8 with
+  LF, and the two do not agree about anything above 127. SCRAP.IMG against
+  image/png is a second conversion and a larger one; text first.
+- Dragging a window's elevator follows the pointer only when the button goes
+  down: a press says where to put it and the slider goes there, and moving the
+  pointer while holding it does nothing until the next press. GEM tracked the
+  drag, which is what makes scrolling feel continuous. The tracking loop is
+  gr_slidebox, which is bridged already and wants the frame as an object tree
+  it can be given - aesframe.c builds one and throws it away, so keeping it is
+  what this needs.
+
+- A window's information line is not drawn. It is one more object in the tree
+  aesframe.c builds, and the only reason it is not there is that it is
+  G_BOXTEXT and so needs a TEDINFO across the seam, where every other gadget
+  needs only a colour word.
+- The boxes an application drags about follow the mouse correctly but can only
+  be seen where a window is showing the screen they are drawn into. A rubber
+  band pulled out inside a window works; one pulled across the desktop is
+  followed correctly and seen by nobody, and the same goes for graf_movebox,
+  growbox and shrinkbox, which animate between two places that are usually not
+  both inside a window. This is the same gap dialogs had before form_dial gave
+  them windows of their own, and it closes the same way: a surface for the
+  drag that lives as long as the drag does, marked so the desktop leaves it
+  alone. It is the overlay surface in the plan.
+- The file selector lists a directory and answers with what was chosen, and
+  what it has not been watched doing is somebody picking a file out of the list
+  with the mouse. Listing, walking into a folder and the drive buttons are all
+  EmuTOS's and are as tested as the rest of the reused library; the part that
+  is new is underneath, in emuvdi/hostfs.c, and that is exercised by the
+  listing appearing at all.
+
+- emuvdi/hostfs.c answers four of GEMDOS's calls against the host filesystem
+  rather than against tosemu's own GEMDOS, because every entrance to that
+  reads its arguments off the 68000's stack. It is a second implementation of
+  Fsfirst and Fsnext and should not become a third of anything: what it shares
+  with the original is tos_path_to_host rather than a copy of the translation.
+  If more of GEMDOS is wanted from the host side - shel_find will want it - the
+  answer is to give gemdosfile.c host callable entry points and have both use
+  them, not to keep adding here.
+- The accessory scenario is not in make check. An accessory registering, its
+  name appearing in another application's Desk menu, and AC_OPEN reaching it
+  when the entry is picked all work and were watched doing it, but automating
+  it wants three processes with a daemon between them and the recipe for that
+  was not reliable - the run either hung or left nothing in the file it was
+  meant to write. The two process message test next to it is the shape to
+  follow; what it does not have to deal with is a third process that has to be
+  clicked in the right place before anything happens.
+- An accessory started by the daemon inherits the daemon's environment, so it
+  talks to a compositor whether or not the application that will show it in its
+  menu does. That is right for a session and wrong for a test, and it made one
+  look as though messages were arriving late when they were not. Whether an
+  accessory should be told where to draw - or simply left to inherit, as now -
+  is a question for when there is a desktop of our own to start them from.
+- GDOS and scalable fonts, which is the whole of the last milestone in the
+  plan and is not started. The Atari system fonts are there, compiled in from
+  EmuTOS, and they are what vst_font and v_gtext use. What is missing is
+  everything above them: loading .FNT files, FreeType and fontconfig behind
+  the SpeedoGDOS calls an application uses to ask for a typeface by name
+  (vst_load_fonts, vqt_name, vst_name, vst_arbpt, v_ftext, vqt_f_extent), a
+  table mapping the names documents were written with onto host faces - Swiss
+  721 to Nimbus Sans and so on - and ASSIGN.SYS read from the emulated
+  filesystem.
+
+  What is answered is the knock on the door. vq_gdos puts -2 in d0 and traps,
+  and TOS leaves d0 alone for anything that is not the AES or the VDI, so an
+  application asking is told there is none and takes the path it would have
+  taken on a machine without it. Installing GDOS is what would change the
+  answer, and that is the rest of this entry.
+
+  Metrics are the part to be careful about. An application lays itself out
+  from what vqt_extent tells it, so a substituted face changes where every
+  word on the page goes. That happened on real SpeedoGDOS too and is not a
+  fault, but it is the reason to get the bitmap fonts exactly right rather
+  than nearly right: those are the ones a document of the period was actually
+  set in.
+
+- Drawing outside a window is not promoted to a window of its own. form_dial
+  says a rectangle is being reserved and that gets one, which covers dialogs;
+  an application that draws on the desktop beside its window without saying so
+  - Calamus and its tool palette are the case the plan was written around -
+  draws into the screen the AES keeps and is seen by nobody.
+
+  The plan's answer is a scratch surface the size of the screen with the
+  regions that were drawn into tracked, and a rectangle that stays put for a
+  moment promoted to a window. The hysteresis is what stops a mouse drag
+  spawning windows. It also wants a per application file to say what the
+  heuristics got wrong, which is the honest part of the design rather than an
+  admission: no rule about where an application meant to draw will be right
+  for every application.
+
+- Settings and About, the tosemu dialogs of its own, are not written, and the
+  reason is a decision rather than an oversight. The plan has the daemon link
+  the AES, the VDI and the graphics and run a built in desktop application to
+  own them. That reverses the one thing kept true of the daemon throughout -
+  it links no part of the emulator, and everything it knows is in aesproto.h -
+  and would make the cross compiler a dependency of an ordinary build.
+
+  The cheaper way that keeps both: make About an ordinary GEM program the
+  daemon starts when the entry is picked, the way it starts an accessory. It
+  already knows how to start programs. That wants deciding rather than
+  assuming, because the plan says otherwise.
+
+- No .desktop files are written for GEM programs, so one has no icon and no
+  name of its own in a launcher or a task bar. The windows already carry an
+  app_id, which is the half that needs no files.

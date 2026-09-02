@@ -1,0 +1,211 @@
+demos - programs to look at
+===========================
+
+These are GEM applications, cross compiled for the emulated machine with the
+m68k-atari-mint tools, in the ordinary way an application is written. Nothing
+in them knows it is not running on an ST.
+
+They are here to be looked at rather than checked. The tests in tests/ say
+whether something is right; these say what it looks like, which is a question
+only a person can answer.
+
+    make demos
+    ./bin/tosemu demos/dialog
+
+`TOSEMU_SCALE` says how much larger than an ST pixel one on the desktop is,
+and three is the default.
+
+With a compositor there is a window and the mouse and keyboard work. Without
+one the screen is only in memory, which is not very interesting, though
+TOSEMU_SCREENSHOT will still write out what was drawn:
+
+    TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu demos/dialog
+
+and TOSEMU_KEYS and TOSEMU_CLICKS will press something, for when there is
+nobody to. Keys are characters, with \r for Return. Clicks are places to press
+and release the left button, and can also drag or only move:
+
+    x,y             press and release there
+    x,y-x2,y2       press at the first, release at the second
+    @x,y            move the pointer there, pressing nothing
+
+    TOSEMU_KEYS='\r' ./bin/tosemu demos/dialog
+    TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
+    TOSEMU_CLICKS='@96,5 @100,27 100,27' ./bin/tosemu demos/menu
+
+Moving without pressing is not a nicety: a GEM menu opens when the pointer
+arrives among the titles, so a menu cannot be worked by clicking alone.
+
+
+The emulated screen is never shown. It is a coordinate space and a piece of
+memory: GEM lays its windows out in it and draws into it the way it always did,
+and an application cannot tell the difference. What appears on the desktop are
+the windows themselves - one for each window GEM opens, one for each dialog -
+with the desktop's own background showing through where an ST would have had
+grey with an Atari logo on it.
+
+
+window
+------
+
+A window with a title, a close box and a line of text, and the loop every GEM
+application has: wait for a message, redraw when told to, and stop when the
+close box is used.
+
+The close box is the desktop's, standing in for the one GEM would have drawn.
+It does not close anything by itself - it sends the application the message it
+would have got from its own closer, and the application decides. That is what
+GEM does, and it is why an application can ask whether you meant it.
+
+
+dialog
+------
+
+A box, a question and two buttons.
+
+form_dial reserves the screen the dialog sits on, which is what gives it a
+window of its own: the desktop treats it as a dialog rather than as a picture
+of one, so it is kept above the screen window, the screen window is out of
+reach while it is up, and it can be dragged about with whatever the desktop
+uses for moving windows - even though the program is blocked inside form_do
+waiting for a button to be pressed.
+
+Then objc_draw puts the tree up and form_do runs it: it waits, works out what
+was clicked or typed, redraws the button that was pressed, and answers with
+which object ended it.
+
+The dialog is a window of the desktop's, so it has a frame and can be dragged
+about even while the program is blocked waiting inside form_do. Its close
+button sends Undo, the key GEM programs use for cancelling; form_do does not
+listen for that one, so on this dialog it does nothing. GEM has no way of
+saying a dialog was closed, and the only key that would end it is Return, which
+presses the default button - closing a window should not be a way to agree to
+something.
+
+Click OK or Cancel, or press Return for OK - it is the default button, which
+is why the AES draws it with a heavier border. Either way the program prints
+which one it was and exits.
+
+The tree is built in C rather than loaded from a resource file. A real
+application would carry a .RSC and call rsrc_load, which needs a TOS path
+resolved the way GEMDOS resolves one, and that is not written yet.
+
+
+userdef
+-------
+
+The same dialog with the buttons drawn round instead of square, because the
+program draws them itself.
+
+Everything in a GEM dialog is one of a dozen kinds the AES knows how to draw,
+except one: a G_USERDEF object - a G_PROGDEF to a resource editor - says "call
+me and I will draw it", and what it points at is a routine in the application.
+It is how every GEM program that did not look like a GEM program was written.
+
+Here the AES and the application are not the same kind of code. The AES is the
+emulator, running on the host; the routine is 68000 code in the emulated
+machine. So this is the one place where a call goes the other way: the emulator
+is halfway through drawing a dialog when it reaches an object it has to ask the
+application about, and it starts the CPU again and runs it to the end of the
+routine before carrying on.
+
+The routine gets everything it needs in a block the AES builds in the machine's
+own memory: which tree and which object, where it is, what it is clipped to,
+and the state it is going into. The tree in that block is the application's own
+rather than the copy the emulator has been drawing out of - this one reads the
+object's flags out of it to find out whether it is the default button, and the
+only tree it can read is its own.
+
+    ./bin/tosemu demos/userdef
+
+Hold a button down to see the routine draw the pressed state, which is its own
+doing rather than the AES inverting the rectangle: an object that draws itself
+is asked again when its state changes, and told what the state was as well as
+what it is becoming.
+
+The one rule is that it may only call the VDI. Calling the AES back would ask
+it to start again on a tree it has not finished, so a call made from inside one
+of these is refused and says so.
+
+
+menu
+----
+
+A menu bar with two titles, and the shape a menu tree has to have.
+
+Unlike a dialog, a menu is not a tree of any shape the application likes. The
+AES walks it by position - the screen, the bar and the row of titles first, and
+the box holding the drop-down menus last - and it rebuilds the Desk menu every
+time a bar goes up, splicing in an entry for each accessory that has
+registered. Those entries are written after the Desk menu's first one, so the
+room for them has to be there whether or not anything ever fills it in. A
+resource editor produces all of that without being asked, which is why it is so
+rarely written down; this one builds it by hand, so it says it out loud.
+
+The menu opens on hover rather than on a click, which is how GEM menus always
+worked: the pointer arriving among the titles is what starts one, and the click
+that follows is what chooses. Open File and choose Quit, or let go outside and
+nothing is chosen.
+
+The bar is a window of the desktop's like any other here, so it follows this
+program about rather than sitting at the top of a picture of an ST.
+
+
+fsel
+----
+
+The file selector, which is how a GEM application opens a file.
+
+One call does all of it. The AES puts up the box, lists the directory, lets you
+walk into folders and change drives, and answers with a path and a name. The
+application draws none of it and reads no directories: it hands over two
+buffers and reads them afterwards.
+
+Those buffers are why this shows the selector twice. The path goes in as well
+as coming out, so passing the same one again opens where the last one was left
+- walk into a folder in the first box and the second starts there. That is the
+whole of what "remembers the last directory" meant in 1988, and it is the
+application remembering rather than the AES.
+
+The second is fsel_exinput, the same thing with a line of the application's own
+words along the top, so that a program asking where to save something can say
+so instead of showing the box it showed for opening.
+
+The box is a window of the desktop's like the dialogs are. It has to be asked
+for separately from the way an application's own dialogs get one, because the
+selector reserves its screen from inside the AES rather than by calling
+form_dial - see the note in emuvdi/bridge.c.
+
+
+acc
+---
+
+A desk accessory, built as DEMO.ACC.
+
+What makes one an accessory is not what it is made of - it is a GEM application
+like any other - but that it never stops. A program runs, does something and
+exits; an accessory says what it is called and then waits for the rest of the
+session to ask for it.
+
+Saying what it is called is menu_register, and it is the only thing that makes
+an accessory reachable: the name goes into the Desk menu of every application
+running, including the ones that started first and the ones that have not
+started yet. Picking it there sends the accessory AC_OPEN, which is its cue to
+put a window up.
+
+It answers AP_TERM by leaving, which is the one message an accessory does fall
+out of its loop for: not an application closing, which happens all day, but the
+thing that started it saying there will not be another. An accessory that
+ignores it is stopped instead, which works and is less tidy.
+
+It needs a daemon, because the menu it appears in belongs to the other
+applications rather than to itself:
+
+    make demos
+    mkdir -p /tmp/acc && cp demos/DEMO.ACC /tmp/acc/
+    bin/tosaesd -v /tmp/acc &
+    bin/tosemu demos/menu
+
+and the Desk menu has Demo in it, under a separator. Picking it prints a line
+from the accessory rather than doing anything to the menu demo, which is the
+whole point.

@@ -26,7 +26,17 @@
 /* GEMDOS functions */
 
 void gemdos_init(struct tos_environment *);
+
+/* Prepares GEMDOS for an application replacing the one that was running.
+ * What belongs to the process rather than to the application - the file
+ * handles, the drive table - is left as the new application inherits it. */
+void gemdos_reinit(struct tos_environment *);
+
 void gemdos_free();
 void gemdos_trap();
 
 #endif /* GEMDOS_H */
+
+/* Starts a program alongside this one, the way the AES's shel_write does. The
+ * two addresses are in the machine: a path, and a command line. */
+uint32_t tos_start_program(uint32_t prog, uint32_t tail);

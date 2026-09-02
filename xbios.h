@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,6 +26,10 @@
 #include "memory.h"
 
 void xbios_trap();
+
+/* Forgets the system RAM XBIOS handed out, for an application replacing the
+ * one that reserved it */
+void xbios_reset();
 
 uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address);
 void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value);

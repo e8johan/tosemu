@@ -1,0 +1,3 @@
+# Gen only recognises CR and CR/LF as line terminators, so these sources must
+# keep their CR/LF endings no matter what core.autocrlf is set to.
+*.s -text

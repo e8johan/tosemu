@@ -34,4 +34,14 @@ uint32_t GEMDOS_Mshrink();
 uint32_t GEMDOS_Malloc();
 uint32_t GEMDOS_Mfree();
 
+/* The allocator behind them, for the parts of GEMDOS that have to make room
+ * for something without going through a trap. Pexec loads a program into
+ * memory it takes from here.
+ *
+ * mem_alloc returns the base of the block, or 0 when there is no room for it.
+ */
+uint32_t mem_largest_free(void);
+uint32_t mem_alloc(uint32_t size);
+int32_t mem_free(uint32_t block);
+
 #endif /* GEMDOSMEM_H */

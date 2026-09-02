@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -29,6 +30,7 @@
 #include <linux/limits.h>
 #include <time.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <glob.h>
 #include <libgen.h>
@@ -39,6 +41,8 @@
 #include "memory.h"
 
 #include "gemdos_p.h"
+#include "gemdosdrive_p.h"
+#include "files.h"
 
 /* File structures ***********************************************************/
 
@@ -54,13 +58,29 @@ struct DTA
 };
 #pragma pack(pop)
 
-struct fhandle
+/*
+ * The handle table is the process' list of open files. Fdup and Fforce both
+ * make a second handle refer to a file another handle already has open, so the
+ * open file lives in a structure of its own, counting the handles pointing at
+ * it. Closing one of them then leaves the file open for the others.
+ */
+struct openfile
 {
     FILE *f;
+    int refs;
+};
+
+struct fhandle
+{
+    struct openfile *of;
     uint32_t flags;
 };
 
-#define HANDLES 10
+/* Handles 0-5 are the standard handles every process starts with, and are the
+ * only ones Fforce may redirect. GEMDOS lets a process open 40 files on top of
+ * those. */
+#define STD_HANDLES 6
+#define HANDLES (STD_HANDLES+40)
 #define HANDLE_ALLOCATED 0x001
 
 #define ATTR_READ_ONLY  0x01
@@ -71,6 +91,50 @@ struct fhandle
 #define ATTR_ARCHIVE    0x20
 
 static struct tos_environment *tos_env;
+
+static struct fhandle handles[HANDLES];
+
+static int invalid_handle(uint16_t h)
+{
+    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED)
+           || (handles[h].of == NULL);
+}
+
+/* The stream a handle refers to. Only call this once invalid_handle said no. */
+static FILE *handle_file(uint16_t h)
+{
+    return handles[h].of->f;
+}
+
+static struct openfile *open_stream(FILE *f)
+{
+    struct openfile *of = malloc(sizeof *of);
+
+    if (of == NULL)
+        return NULL;
+
+    of->f = f;
+    of->refs = 1;
+
+    return of;
+}
+
+/*
+ * Drops one handle's reference to a file, closing it once no handle is left.
+ *
+ * The streams tosemu inherited from the host outlive the application, so they
+ * are unlinked from the table but never closed.
+ */
+static void release_stream(struct openfile *of)
+{
+    if (of == NULL || --of->refs > 0)
+        return;
+
+    if (of->f != stdin && of->f != stdout && of->f != stderr)
+        fclose(of->f);
+
+    free(of);
+}
 
 /* File functions ************************************************************/
 
@@ -90,13 +154,16 @@ uint32_t GEMDOS_Fseek()
     uint16_t seekmode = peek_u16(8);
     uint16_t handle = peek_u16(6);
     int32_t offset = peek_s32(2);
-    off_t ret;
+    long ret;
     int whence;
-    
+
     FUNC_TRACE_ENTER_ARGS {
         printf("    offset: 0x%x, handle: 0x%x, seekmode: 0x%x\n", offset, handle, seekmode);
     }
-    
+
+    if (invalid_handle(handle))
+        return GEMDOS_EIHNDL;
+
     switch (seekmode)
     {
     case 0: /* From start of file */
@@ -111,17 +178,23 @@ uint32_t GEMDOS_Fseek()
     default:
         return GEMDOS_EINVAL;
     }
-    
-    ret = lseek(handle, offset, whence);
-    
-    if (ret < 0)
+
+    errno = 0;
+    if (fseek(handle_file(handle), offset, whence) != 0)
     {
+        /* A failed seek must not leave the error indicator set, or every
+         * later read or write on the handle would be reported as failed. */
+        clearerr(handle_file(handle));
+
         switch(errno)
         {
         case EBADF:
             return GEMDOS_EIHNDL;
         case ESPIPE:
-            return GEMDOS_EACCDN;
+            /* MiNTLib derives errno as -<GEMDOS code>, and its stdio only
+             * accepts ESPIPE as "this handle has no position". Anything else
+             * makes it drop the buffered data instead of writing it. */
+            return GEMDOS_ESPIPE;
         case EINVAL:
             return GEMDOS_EINVAL;
         case EOVERFLOW:
@@ -130,7 +203,12 @@ uint32_t GEMDOS_Fseek()
             return GEMDOS_EINTRN;
         }
     }
-    
+
+    /* Fseek returns the resulting absolute position in the file */
+    ret = ftell(handle_file(handle));
+    if (ret < 0)
+        return GEMDOS_EINTRN;
+
     return ret;
 }
 
@@ -144,13 +222,20 @@ uint32_t GEMDOS_Fdatime()
     uint16_t wflag = peek_u16(8);
     uint16_t handle = peek_u16(6);
     uint32_t ptr = peek_u32(2);
-    
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: 0x%x, wflag: %d, ptr: 0x%x\n", handle, wflag, ptr);
+    }
+
+    if (invalid_handle(handle))
+        return GEMDOS_EIHNDL;
+
     if (wflag == 0)
     {
         /* Read time */
-        
-        ret = fstat(handle, &buf);
-        
+
+        ret = fstat(fileno(handle_file(handle)), &buf);
+
         if (!ret)
         {
             lt = localtime(&buf.st_mtime);
@@ -166,8 +251,6 @@ uint32_t GEMDOS_Fdatime()
                   
             return 0;
         }
-        else if (ret == EBADF)
-            return GEMDOS_EIHNDL;
         else
             return GEMDOS_EINTRN;
     }
@@ -177,7 +260,24 @@ uint32_t GEMDOS_Fdatime()
 
 uint32_t GEMDOS_Dgetdrv()
 {
-    return 2; /* C: */
+    FUNC_TRACE_ENTER
+
+    return drive_current();
+}
+
+uint32_t GEMDOS_Dsetdrv()
+{
+    uint16_t drive = peek_u16(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    drive: %d\n", drive);
+    }
+
+    /* TOS ignores a request for a drive that is not there, and always answers
+     * with the drive map, http://toshyp.atari.org/en/00500b.html */
+    drive_set_current(drive);
+
+    return drive_map();
 }
 
 uint32_t dta_addr;
@@ -219,86 +319,332 @@ static int get_path(char *buf, uint32_t address)
 uint32_t GEMDOS_Dgetpath()
 {
     uint32_t addr = peek_u32(2);
-    uint16_t drive = peek_u32(6);
+    uint16_t drive = peek_u16(6);
     char ubuf[PATH_MAX+1];
+    const char *path;
     int i;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x, drive=%d\n", addr, drive);
     }
 
+    /* Drive 0 means the current drive, anything else names one directly */
+    if (drive != 0 && !drive_volume(drive - 1))
+        return GEMDOS_EDRIVE;
+
     memset(ubuf, 0, PATH_MAX+1);
     getcwd(ubuf, sizeof ubuf);
 
+    /*
+     * What comes back has to be a path on the drive rather than a path on the
+     * host, because an application builds file names out of it and hands them
+     * straight back. The two are the same thing when the drive is the whole
+     * host file system; when TOS_BASE_PATH has moved the root, the part in
+     * front of it is not on the drive at all and has to come off - otherwise
+     * the base is put in front of it a second time on the way back in.
+     *
+     * At the root itself that leaves nothing, which is what TOS answers there:
+     * an empty string, to which an application appends its own separator.
+     */
+    path = ubuf;
+    if (tos_env->base_path[0] != 0)
+    {
+        size_t n = strlen(tos_env->base_path);
+
+        if (strncmp(ubuf, tos_env->base_path, n) == 0)
+            path = ubuf + n - 1;        /* keeping the separator it ends in */
+        else if (strlen(ubuf) == n - 1)
+            path = ubuf + n - 1;        /* standing on the root, so nothing */
+    }
+
+    /*
+     * Spelled the way TOS spells a path, which is with backslashes.
+     *
+     * host_resolve takes either on the way in, because an application that got
+     * a path from somewhere else may hand back whichever was in it. Nothing
+     * takes either on the way out: what comes back here is a path the
+     * application will pick apart itself, and the code that does the picking
+     * knows one separator. The AES's own file selector is that code - it walks
+     * up a folder by looking for the last backslash - so a path handed to it
+     * with the host's separators in it is one it cannot read.
+     */
     i=0;
     do
     {
-        m68k_write_memory_8(addr+i, ubuf[i]);
+        char c = path[i];
+
+        if (c == '/')
+            c = '\\';
+
+        m68k_write_memory_8(addr+i, (uint8_t)c);
         ++i;
     }
-    while(ubuf[i-1]!=0 && i<PATH_MAX);
+    while(path[i-1]!=0 && i<PATH_MAX);
 
     return 0;
 }
 
-/* 
- * Converts a TOS path to a host path 
+/*
+ * TOS file systems are case insensitive, while most host file systems are not.
+ * Programs therefore happily ask for FILE.TXT when the host knows the file as
+ * file.txt - Gen for instance upper cases every include file name.
  *
- * Returns the lenght of the resulting path on success, or zero on failure.
+ * Resolve the host path in place, replacing every component that does not
+ * exist verbatim with one that only differs in case, if the host has such a
+ * component. Components without a match are left untouched, so that Fcreate
+ * and Dcreate still create names exactly as the application spelled them.
  */
-static int path_from_tos(char *tp, char *up)
+static void resolve_case(char *path)
 {
-    char tbuf[PATH_MAX+1];
+    char *cur, *sep;
+    DIR *dir;
+    struct dirent *de;
+
+    if (access(path, F_OK) == 0)
+        return; /* The path exists exactly as spelled */
+
+    cur = path;
+    if (*cur == '/')
+        ++cur; /* The root is always spelled correctly */
+
+    while (*cur)
+    {
+        sep = strchr(cur, '/');
+        if (sep == cur)
+        {
+            /* Empty component, e.g. from a doubled separator */
+            ++cur;
+            continue;
+        }
+
+        if (sep)
+            *sep = 0;
+
+        if (access(path, F_OK) != 0)
+        {
+            if (cur == path)
+                dir = opendir(".");
+            else if (cur == path + 1)
+                dir = opendir("/");
+            else
+            {
+                cur[-1] = 0;
+                dir = opendir(path);
+                cur[-1] = '/';
+            }
+
+            if (dir)
+            {
+                while ((de = readdir(dir)) != NULL)
+                {
+                    if (strcasecmp(de->d_name, cur) == 0)
+                    {
+                        /* A case insensitive match has the same length */
+                        strcpy(cur, de->d_name);
+                        break;
+                    }
+                }
+                closedir(dir);
+            }
+        }
+
+        if (!sep)
+            break;
+
+        *sep = '/';
+        cur = sep + 1;
+    }
+}
+
+/*
+ * Whether a host path lands inside the base, which is what stops an
+ * application walking out of the drive with .. or a symbolic link.
+ *
+ * A file that is being created is not there yet and so has no real path of its
+ * own. What is checked then is the directory it is going into, which does have
+ * to exist whatever is about to be put in it.
+ */
+static int inside_base(const char *up)
+{
+    const char *base = tos_env->base_path;
+    size_t n = strlen(base);
+    char real[PATH_MAX+1];
+    char dir[PATH_MAX+1];
+    char *slash;
+
+    if (n == 0)
+        return 1;
+
+    memset(real, 0, sizeof real);
+
+    if (!realpath(up, real))
+    {
+        strncpy(dir, up, PATH_MAX);
+        dir[PATH_MAX] = 0;
+
+        slash = strrchr(dir, '/');
+        if (slash == dir)
+            dir[1] = 0;                 /* the root of the host itself */
+        else if (slash)
+            *slash = 0;
+        else
+            strcpy(dir, ".");           /* wherever the application is */
+
+        if (!realpath(dir, real))
+            return 0;
+    }
+
+    /* The base ends in a separator, so being inside it is having the whole of
+     * it in front, and being it is being all of it but that separator */
+    if (strncmp(real, base, n) == 0)
+        return 1;
+
+    return strlen(real) == n - 1 && strncmp(real, base, n - 1) == 0;
+}
+
+/*
+ * Converts a TOS path, without its drive prefix, to a host path
+ *
+ * Returns 0 on success, or a negative GEMDOS error.
+ */
+static int32_t host_resolve(const char *tp, char *up)
+{
     int len;
-    char *src, *dest;
-    int prev_slash = 1;
-    
-    memset(tbuf, 0, PATH_MAX+1);
-    
-    /* Prepend prefix */
-    strncpy(up, tos_env->base_path, PATH_MAX);
+    const char *src;
+    char *dest;
+    int prev_slash;
+
+    /*
+     * Only a path that starts at the root of the drive is placed under the
+     * base. A relative one is relative to where the application is, and the
+     * host already knows where that is - Dsetpath changed into it - so putting
+     * the base in front of it would name a file at the root of the drive
+     * instead of the one next door.
+     */
+    if (*tp == '\\' || *tp == '/')
+        strncpy(up, tos_env->base_path, PATH_MAX);
+    else
+        up[0] = 0;
+
     len = strlen(up);
     src = tp;
     dest = up + len;
-    
-    /* Convert \ -> / */
+
+    /* A path starting at the root of the drive keeps its leading separator, as
+     * the host root is where the drive begins. A prefix already ends in one,
+     * and then the leading separator is the one to drop. */
+    prev_slash = (len != 0);
+
+    /*
+     * Convert \ -> /, and treat a / the application wrote as the separator it
+     * plainly meant. TOS spells one with a backslash and applications mostly
+     * do, but the ones that take a path from somewhere else - an environment
+     * variable, a makefile, a command line typed by a person - get whichever
+     * was in it, and both name the same file here.
+     */
     while(*src && len < PATH_MAX)
     {
         switch(*src)
         {
         case '\\':
+        case '/':
             if (!prev_slash)
             {
                 *dest = '/';
                 ++ dest;
             }
             prev_slash = 1;
-            
+
             break;
         default:
             *dest = *src;
             ++ dest;
-            
+
             prev_slash = 0;
 
             break;
         }
-        
+
         ++ src;
         ++ len;
     }
-    
-    /* Make canonical */ /* TODO, this limits the usage of symbolic links when mixing the TOS and host file systems */
-    realpath(up, tbuf);
-    
-    if (tos_env->base_path[0] != 0)
+
+    *dest = 0;
+
+    resolve_case(up);
+
+    /* TODO, this limits the usage of symbolic links when mixing the TOS and
+     * host file systems */
+    if (!inside_base(up))
+        return GEMDOS_EFILNF;
+
+    return GEMDOS_E_OK;
+}
+
+/* The host file system never has its media swapped */
+static int host_mediach(void)
+{
+    return 0;
+}
+
+static struct volume host_volume = {
+    "host",
+    host_resolve,
+    host_mediach
+};
+
+/*
+ * Converts a TOS path to a host path, resolving the drive it refers to
+ *
+ * Returns 0 on success, or a negative GEMDOS error.
+ *
+ * TOSEMU_TRACE_PATHS prints every one of these, which is how to see what an
+ * application is actually looking for. That is worth having on its own switch
+ * rather than inside the GEMDOS trace, which is a compile time one and buries
+ * this in everything else: a program that cannot find a file usually says
+ * nothing at all about which file, and the list of names it tried is the whole
+ * answer. HiSoft's make looking for /bin/bash.ttp is what this found.
+ */
+static int32_t path_from_tos(const char *tp, char *up)
+{
+    static int tracing = -1;
+    const char *rest;
+    struct volume *v;
+    int drive;
+    int32_t err;
+
+    if (tracing < 0)
+        tracing = (getenv("TOSEMU_TRACE_PATHS") != NULL);
+
+    drive = drive_from_path(tp, &rest);
+    if (drive < 0)
     {
-        /* Ensure within prefix */    
-        if (strncmp(up, tbuf, strlen(tos_env->base_path)-1))
-            return 0;
+        if (tracing)
+            fprintf(stderr, "path: '%s' is on no drive there is\n", tp);
+
+        return GEMDOS_EDRIVE;
     }
-    
-    return strlen(up);
+
+    v = drive_volume(drive);
+
+    err = v->resolve(rest, up);
+
+    if (tracing)
+    {
+        if (err)
+            fprintf(stderr, "path: '%s' -> %d\n", tp, (int)err);
+        else
+            fprintf(stderr, "path: '%s' -> '%s'\n", tp, up);
+    }
+
+    return err;
+}
+
+/* What the rest of the emulator is allowed to know about naming a file, see
+ * files.h */
+int32_t tos_path_to_host(const char *tos_path, char *host_path)
+{
+    return path_from_tos(tos_path, host_path);
 }
 
 uint32_t GEMDOS_Dsetpath()
@@ -306,6 +652,7 @@ uint32_t GEMDOS_Dsetpath()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -315,8 +662,9 @@ uint32_t GEMDOS_Dsetpath()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (chdir(ubuf))
         perror("chdir");
@@ -329,6 +677,7 @@ uint32_t GEMDOS_Dcreate()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -338,8 +687,9 @@ uint32_t GEMDOS_Dcreate()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if(mkdir(ubuf, 0777) != 0)
         return GEMDOS_EACCDN;
@@ -352,6 +702,7 @@ uint32_t GEMDOS_Fdelete()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -361,8 +712,9 @@ uint32_t GEMDOS_Fdelete()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (unlink(ubuf) != 0)
         return GEMDOS_EFILNF;
@@ -370,16 +722,16 @@ uint32_t GEMDOS_Fdelete()
     return 0;
 }
 
-static struct fhandle handles[HANDLES];
-
-static int get_handle(FILE *f)
+/* Opening a file never hands out one of the standard handles, so the search
+ * starts past them even when the application has closed one. */
+static int get_handle(struct openfile *of)
 {
     int i;
-    for (i = 0; i < HANDLES; i++)
+    for (i = STD_HANDLES; i < HANDLES; i++)
     {
         if (handles[i].flags & HANDLE_ALLOCATED)
             continue;
-        handles[i].f = f;
+        handles[i].of = of;
         handles[i].flags = HANDLE_ALLOCATED;
         return i;
     }
@@ -394,7 +746,8 @@ static void make_dirs(char *path)
     while ((end = strchr(start, '/')) != NULL)
     {
         *end = 0;
-        if (mkdir(path, 0777) < 0 && errno != EEXIST)
+        /* Skip the root itself, and any empty component from a doubled '/' */
+        if (end != path && mkdir(path, 0777) < 0 && errno != EEXIST)
             perror("mkdir");
         *end = '/';
         start = end + 1;
@@ -406,7 +759,10 @@ uint32_t GEMDOS_Fcreate()
     uint32_t addr = peek_u32(2);
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
     int h, fd;
+    FILE *f;
+    struct openfile *of;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    addr: 0x%x\n", addr);
@@ -416,15 +772,41 @@ uint32_t GEMDOS_Fcreate()
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
+
+    FUNC_TRACE_ARGS {
+        printf("    path: '%s' -> '%s'\n", buf, ubuf);
+    }
 
     make_dirs(ubuf);
-    fd = creat(ubuf, 0777);
+    /* A file GEMDOS created can be read as well as written, which is what an
+     * application that builds a file and then reads it back relies on */
+    fd = open(ubuf, O_RDWR | O_CREAT | O_TRUNC, 0777);
     if (fd < 0)
         return GEMDOS_EACCDN;
 
-    h = get_handle(fdopen(fd, "w"));
+    f = fdopen(fd, "w+");
+    if (f == NULL)
+    {
+        close(fd);
+        return GEMDOS_EACCDN;
+    }
+
+    of = open_stream(f);
+    if (of == NULL)
+    {
+        fclose(f);
+        return GEMDOS_ENSMEM;
+    }
+
+    h = get_handle(of);
+    if (h == -1)
+    {
+        release_stream(of);
+        return GEMDOS_ENHNDL;
+    }
 
     return h;
 }
@@ -444,11 +826,26 @@ glob_t *gemdos_prepare_dta(int *id)
     static int sid = 42;
     glob_t *res;
     struct globitem *item;
-    
+
     sid ++;
-    res = malloc(sizeof(glob_t));
+    /*
+     * Empty rather than merely allocated, because this is on the list from the
+     * moment it is made and everything on the list is handed to globfree in
+     * the end. Fsfirst turns back before it globs anything whenever the path
+     * it was given cannot be resolved, and globfree reading a block of
+     * whatever was in the heap frees pointers that were never pointers.
+     */
+    res = calloc(1, sizeof(glob_t));
     item = malloc(sizeof(struct globitem));
-    
+
+    if (res == NULL || item == NULL)
+    {
+        free(res);
+        free(item);
+        *id = 0;
+        return NULL;
+    }
+
     item->g = res;
     item->id = sid;
     item->next = globhead;
@@ -512,6 +909,7 @@ uint32_t GEMDOS_Fsfirst()
 
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     int i;
     int gres_id;
@@ -530,11 +928,14 @@ uint32_t GEMDOS_Fsfirst()
     memset(ubuf, 0, PATH_MAX+1);
     
     gres = gemdos_prepare_dta(&gres_id);
-    
+    if (gres == NULL)
+        return GEMDOS_ENSMEM;
+
     get_path(buf, filename);
-    
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
     
     /* TODO, take attr into account */
     
@@ -672,9 +1073,11 @@ uint32_t GEMDOS_Fopen()
 {
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     const char *m;
     FILE *f;
+    struct openfile *of;
     int h;
 
     uint32_t filename = peek_u32(2);
@@ -689,8 +1092,9 @@ uint32_t GEMDOS_Fopen()
     
     get_path(buf, filename);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     switch(mode & 0x3)
     {
@@ -708,15 +1112,80 @@ uint32_t GEMDOS_Fopen()
         break;
     }
 
+    FUNC_TRACE_ARGS {
+        printf("    path: '%s' -> '%s'\n", buf, ubuf);
+    }
+
     f = fopen(ubuf, m);
     if (f == NULL)
         return GEMDOS_EFILNF;
 
-    h = get_handle(f);
+    of = open_stream(f);
+    if (of == NULL)
+    {
+        fclose(f);
+        return GEMDOS_ENSMEM;
+    }
+
+    h = get_handle(of);
     if (h == -1)
+    {
+        release_stream(of);
         return GEMDOS_ENHNDL;
+    }
 
     return h;
+}
+
+uint32_t GEMDOS_Fdup()
+{
+    uint16_t h = peek_u16(2);
+    int n;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d\n", h);
+    }
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    n = get_handle(handles[h].of);
+    if (n == -1)
+        return GEMDOS_ENHNDL;
+
+    handles[h].of->refs++;
+
+    return n;
+}
+
+uint32_t GEMDOS_Fforce()
+{
+    uint16_t stdh = peek_u16(2);
+    uint16_t h = peek_u16(4);
+    struct openfile *of;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    stdh: %d, handle: %d\n", stdh, h);
+    }
+
+    /* Only the handles a process starts out with can be redirected */
+    if (stdh >= STD_HANDLES)
+        return GEMDOS_EIHNDL;
+
+    if (invalid_handle(h))
+        return GEMDOS_EIHNDL;
+
+    /* Claim the new file before letting go of the old one, so that redirecting
+     * a handle onto itself does not close the file in between */
+    of = handles[h].of;
+    of->refs++;
+
+    release_stream(handles[stdh].of);
+
+    handles[stdh].of = of;
+    handles[stdh].flags = HANDLE_ALLOCATED;
+
+    return GEMDOS_E_OK;
 }
 
 uint32_t GEMDOS_Fattrib()
@@ -724,6 +1193,7 @@ uint32_t GEMDOS_Fattrib()
     struct stat st;
     char buf[PATH_MAX+1];
     char ubuf[PATH_MAX+1];
+    int32_t err;
 
     uint32_t filename = peek_u32(2);
     uint16_t wflag = peek_u16(6);
@@ -739,8 +1209,9 @@ uint32_t GEMDOS_Fattrib()
     
     get_path(buf, filename);
 
-    if (!path_from_tos(buf, ubuf))
-        return GEMDOS_EFILNF;
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
 
     if (stat(ubuf, &st) < 0)
         return GEMDOS_EFILNF;
@@ -748,20 +1219,21 @@ uint32_t GEMDOS_Fattrib()
     return mode_to_attrib(st.st_mode);
 }
 
-static int invalid_handle(uint16_t h)
-{
-    return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED);
-}
-
 uint32_t GEMDOS_Fclose()
 {
     uint16_t h = peek_u16(2);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    handle: %d\n", h);
+    }
 
     if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
     handles[h].flags = 0;
-    fclose(handles[h].f);
+    release_stream(handles[h].of);
+    handles[h].of = NULL;
+
     return GEMDOS_E_OK;
 }
 
@@ -781,11 +1253,19 @@ uint32_t GEMDOS_Fread()
     if (tmp == NULL)
         return GEMDOS_ENSMEM;
 
-    n = fread(tmp, 1, len, handles[h].f);
-    if (ferror(handles[h].f))
+    /* The error indicator is sticky, so clear it to make sure that what we
+     * look at afterwards was caused by this read alone. */
+    errno = 0;
+    clearerr(handle_file(h));
+
+    n = fread(tmp, 1, len, handle_file(h));
+    if (ferror(handle_file(h)))
     {
+        int err = errno;
+
+        clearerr(handle_file(h));
         free(tmp);
-        return GEMDOS_EINTRN;
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
 
     for (i = 0; i < n; i++)
@@ -818,31 +1298,67 @@ uint32_t GEMDOS_Fwrite()
     for (i = 0; i < len; i++)
         tmp[i] = m68k_read_memory_8(buf+i);
 
-    n = fwrite(tmp, 1, len, handles[h].f);
-    if (ferror(handles[h].f))
+    /* The error indicator is sticky, so clear it to make sure that what we
+     * look at afterwards was caused by this write alone. */
+    errno = 0;
+    clearerr(handle_file(h));
+
+    n = fwrite(tmp, 1, len, handle_file(h));
+    if (ferror(handle_file(h)))
     {
+        int err = errno;
+
+        clearerr(handle_file(h));
         free(tmp);
-        return GEMDOS_EINTRN;
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
     }
 
     free(tmp);
     return n;
 }
 
+/* Releases every search the application left running */
+static void free_dtas(void)
+{
+    while (globhead)
+    {
+        struct globitem *next = globhead->next;
+
+        globfree(globhead->g);
+        free(globhead->g);
+        free(globhead);
+
+        globhead = next;
+    }
+}
+
+void gemdos_file_reinit(struct tos_environment *te)
+{
+    free_dtas();
+
+    /* TOS defaults the DTA to the command line in the basepage */
+    dta_addr = 0x000880;
+
+    tos_env = te;
+}
+
 void gemdos_file_init(struct tos_environment *te)
 {
     int i;
 
-    dta_addr = 0x000830; /* TODO this is probably cheating, points to reserved memory */
+    /* tosemu presents the host file system as C: */
+    drive_register(DRIVE_C, &host_volume);
 
     memset(handles, 0, sizeof handles);
-    /* Handles 0-5 are reserved. */
-    for (i = 0; i < 6; i++)
+    /* Handles 0-5 are reserved. Only the three the host gave us refer to
+     * anything, the rest are allocated but have no file behind them. */
+    for (i = 0; i < STD_HANDLES; i++)
         handles[i].flags = HANDLE_ALLOCATED;
-    handles[0].f = stdin;
-    handles[1].f = stdout;
+    handles[0].of = open_stream(stdin);
+    handles[1].of = open_stream(stdout);
+    handles[2].of = open_stream(stderr);
 
-    tos_env = te;
+    gemdos_file_reinit(te);
 }
 
 void gemdos_file_free()

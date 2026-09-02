@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,9 +29,16 @@
 /* GEMDOS functions */
 
 void gemdos_file_init(struct tos_environment *);
+
+/* The part of the file state that belongs to the application rather than to
+ * the process running it: the DTA, and the searches going through it. The
+ * handle table and the drive table are inherited and stay as they are. */
+void gemdos_file_reinit(struct tos_environment *);
+
 void gemdos_file_free();
 
 uint32_t GEMDOS_Dgetdrv();
+uint32_t GEMDOS_Dsetdrv();
 
 uint32_t GEMDOS_Fseek();
 uint32_t GEMDOS_Fdatime();
@@ -40,6 +48,8 @@ uint32_t GEMDOS_Fsfirst();
 uint32_t GEMDOS_Fsnext();
 uint32_t GEMDOS_Fopen();
 uint32_t GEMDOS_Fclose();
+uint32_t GEMDOS_Fdup();
+uint32_t GEMDOS_Fforce();
 uint32_t GEMDOS_Fread();
 uint32_t GEMDOS_Fwrite();
 uint32_t GEMDOS_Dgetpath();

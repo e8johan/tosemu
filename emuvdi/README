@@ -1,0 +1,249 @@
+emuvdi - the EmuTOS VDI, built for the host
+===========================================
+
+tosemu translates TOS calls rather than emulating a machine, and the VDI is far
+too large a thing to write again when a free one already exists. EmuTOS carries
+a VDI descended from the GEM sources Caldera released under the GPL in 1999,
+and it is the same licence as tosemu.
+
+It arrives as a submodule, 3rdparty/emutos, pinned to VERSION_1_4. The
+submodule is read only: nothing in it is edited, and everything that adapts it
+lives here. That is the opposite of how Musashi is carried, which is vendored
+and patched, with the patch invisible in the tree.
+
+
+What is used
+------------
+
+The drawing files, compiled as they stand, about ten thousand lines:
+
+    vdi_control.c vdi_line.c vdi_raster.c vdi_textblit.c vdi_text.c
+    vdi_fill.c vdi_col.c vdi_bezier.c vdi_gdp.c vdi_marker.c vdi_misc.c
+    util/intmath.c
+
+and the Atari ST system fonts, bios/fnt_st_*.c with their offset tables.
+
+Not used, because they are the parts a hosted VDI has to answer for itself:
+
+    vdi_main.c                 nothing: it is the freestanding boot, but the
+                               dispatcher in it is wanted, so it is built
+    vdi_mouse.c vdi_input.c    the pointer and the input, which belong to the
+                               compositor
+    vdi_esc.c                  terminal escapes
+    every .S                   see below
+
+vdi_control.c is the workstation management - opening, closing and clearing
+them, and vq_extnd - rather than the trap entry, which is vdi_main.c. Both are
+built. screen() in vdi_main.c reads the control array, finds the workstation
+the handle names, fills in how many answers there are and calls the right
+function, so tosemu does not dispatch VDI calls at all: it copies the arrays
+out of the emulated memory and hands them over whole. See emuvdi.h and
+bridge.c, which are the only things on both sides.
+
+vdi_mouse.c stays out. EmuTOS draws a pointer into the screen itself, saving
+and restoring what it covers, because on an ST there is nothing else to draw
+one; here there will be a compositor with a pointer of its own. The calls
+screen() dispatches to still have to exist, so hostvars.c stands in for them.
+v_show_c and v_hide_c are honest as they are. vsc_form, which sets the shape,
+will have to say something to the compositor once there is one.
+
+
+How it is adapted
+-----------------
+
+Three levers, no edits.
+
+1. Include order. asm.h and intmath.h here come first on the include path, so
+   the EmuTOS sources reach these rather than EmuTOS's own. The originals are
+   m68k inline assembly; every macro in them has a portable meaning.
+
+   Shadowing intmath.h means providing min, max and Isqrt as well, since
+   EmuTOS keeps them there. Isqrt itself is portable C and is compiled from
+   the submodule.
+
+2. biosbind.h and xbiosbind.h, likewise shadowed. The originals are trap
+   instructions. The VDI reaches the BIOS only to hang its timer routine on a
+   vector, and the XBIOS only to set and read palette registers.
+
+3. -D__mcoldfire__, which is the interesting one. EmuTOS uses it as its
+   "target without m68k inline assembly" switch, and all seven uses of it in
+   the files above mean exactly that. It is what selects the C rotate macros,
+   the C bit_blt in vdi_raster.c, and the C loops in vdi_line.c, and it sets
+   ASM_BLIT_IS_AVAILABLE to 0 so that none of the assembly is wanted. That is
+   why no .S file is built and why no file here is a copy of one there.
+
+   The claim is not true of the host in any other sense, so the config knobs
+   it would otherwise flip are pinned explicitly in the Makefile rather than
+   left to follow from it. All of them concern hardware that is not there:
+   the MFP timer, ColdFire RS232, cache control, the PMMU, CPU detection.
+
+CONF_WITH_VDI_TEXT_SPEEDUP is off, and for a different reason from the rest.
+It turns on direct_screen_blit, which draws a byte at a time and chooses which
+byte of a word by testing bit 3 of the x coordinate. That is the right byte
+only on a big endian machine. Surfaces here are host endian, which is what lets
+the rest of the VDI go unedited, so the two halves of every word are the other
+way round and a glyph lands in the wrong one. With it off, all text goes
+through normal_blit, which works in words and does not care.
+
+Should a file ever genuinely need editing, it is copied into this directory and
+compiled in place of the submodule's, with a header saying which revision it
+came from and what changed. That list is currently empty. If it reaches three
+or so, fork EmuTOS instead and point the submodule at the fork, so the changes
+get a history and can go back upstream.
+
+
+What is here
+------------
+
+    asm.h        the m68k inline assembly of EmuTOS's asm.h, in C
+    intmath.h    the same for intmath.h, plus min, max and Isqrt
+    biosbind.h   the one BIOS call the VDI makes
+    xbiosbind.h  the palette and resolution calls the VDI makes
+    bdosbind.h   where a virtual workstation's memory comes from. Not the
+                 shape EmuTOS declares: its Mxalloc answers with a LONG, which
+                 cannot hold a pointer on a 64 bit host, and the caller casts
+                 that answer straight to a Vwk *
+    hostvars.c   the globals the VDI draws through, which EmuTOS keeps in
+                 assembly because line-A needs them at fixed offsets
+    fonts.c      the three ST system fonts, taken directly rather than through
+                 EmuTOS's bios/font.c, which asks country.c which fonts a
+                 machine sold in a given country should have
+    textblit.c   normal_blit, the one part of the VDI written here rather than
+                 adapted - see below
+    vditest.c    draws into a surface and prints it, so that the port is
+                 checked by looking at pixels rather than at whether it built
+
+
+normal_blit
+-----------
+
+This is the only file here that replaces EmuTOS code rather than adapting it.
+vdi_textblit.c calls normal_blit to put a character on the screen, and EmuTOS
+has it in vdi_tblit.S and a ColdFire variant of that, with no C behind either.
+The other three routines the same comment calls assembler - outline, rotate and
+scale - do have C definitions in vdi_textblit.c, despite what it says.
+
+The original works a word at a time, with fringe masks at each end and four
+variants of the loop. This works a pixel at a time, which is slower by a large
+factor and does not matter: a glyph is eight by sixteen. What is bought with
+the cycles is that the loop variants and the rotate direction stop existing.
+
+Two things that are not optional, both found by drawing and looking:
+
+The effect masks come from the globals LITEMASK and SKEWMASK, not from the
+lite_msk and skew_msk fields. vdi_textblit.c never writes those fields: the
+assembly reloads them itself at the top of each character, so they hold
+whatever the character before left behind.
+
+Reads have to be clamped to the glyph. A font is a strip, so the bits either
+side of a character are its neighbours rather than blank, and skew reads to the
+left of the glyph. Without the clamp the lean is drawn out of whichever
+character happens to precede it, which is what the fringe masks were for.
+
+
+Pointers in thirty two bit fields
+---------------------------------
+
+GEM keeps addresses in LONGs. An OBJECT's ob_spec is a LONG holding the address
+of a string; a USERBLK holds the address of a routine; an MFDB holds the
+address of a bitmap. That is not something the code can be talked out of - it
+is the layout applications and resource files are built to, and it is the same
+on both sides of the trap.
+
+So every address this side of tosemu puts in one has to fit in thirty two bits.
+The whole program is therefore linked without position independence: it lands
+at 0x400000 and its static data with it, well under the four gigabyte line.
+Memory allocated as it runs is asked for below the line explicitly, in
+host_vdi_alloc, because a large malloc is served by mmap and would otherwise
+land wherever the kernel liked - and a resource file is exactly the sort of
+thing that is large.
+
+This is worth knowing because getting it wrong does not crash. A position
+independent build puts static data above 0x550000000000; truncating one of
+those to a LONG leaves an address that is usually still mapped, so it draws
+rubbish rather than stopping. The object tree in vditest rendered correctly
+under a PIE build by luck, and would not have on the next run.
+
+
+The AES
+-------
+
+The library files of EmuTOS's AES - the object, form, resource, graphics and
+rectangle ones, and gemgsxif.c, which is its VDI interface - are built here
+too. All they do is call the VDI, which is why they come across.
+
+The kernel does not. EmuTOS's is cooperative multitasking with every
+application in one address space, and tosemu runs an application to a process,
+so appl_, evnt_, wind_, menu_ and shel_ are written rather than taken.
+aeskernel.c is the seam: everything the library files reach down for, arrived
+at by compiling them and seeing what was left over. Nothing in it is
+implemented yet, and what is reached says so.
+
+gsx2.c is replaced. The original is thirty three lines that point a parameter
+block at the control array and execute a trap, and that one instruction is the
+whole path between the two halves of GEM. Here both are host code, so it is a
+call, and nothing is copied because there is nothing to copy between.
+
+Five files are copied and edited, which is the whole override list. Four of
+them are EmuTOS code that has to be told something about this machine; three of
+those four are the same bug in different places: EmuTOS says a LONG is a signed
+32 bit word and writes it as long, which is four bytes on a 68000 and eight
+here. Anything that then treats a LONG as a fixed number of bytes, or reaches
+into one by position, finds the wrong thing.
+
+An OBJECT is 24 bytes in the machine and 32 in this program for the same
+reason, which is why aestree.c does not copy a tree as a block: it reads the
+fields at the machine's offsets and hands them to emuvdi.h to be put wherever
+this side keeps them. Nothing outside emuvdi/ knows either layout.
+
+gemfmalt.c: an alert on an ST is drawn over whatever was on the screen, with
+the AES remembering the pixels underneath and putting them back afterwards.
+Here it is given a window of its own instead, the same way a dialog is through
+form_dial, so that the desktop treats the two alike - both dialogs of the
+window they belong to, both modal, and both movable while the program that put
+them up is waiting. Nothing needs remembering, because nothing is covered.
+
+gemoblib.c: call_usercode in it is fifteen lines of assembly that jsr to a
+routine the application supplied, and here that routine is 68000 code in the
+emulated machine.
+
+gemobjop.c: a box's border thickness is the second byte of its ob_spec, and
+EmuTOS takes it by pointing a char at the LONG and stepping one along. That
+finds it where a LONG is four bytes and the high one comes first. Here it is
+eight bytes and the low one comes first, so the step lands in the middle of the
+colour word and a two pixel border is drawn seventeen pixels thick. Shifting
+says which byte is wanted rather than where it sits, and is right either way.
+
+vdi_raster.c: a bitmap's address arrives in two words of the control array and
+is read back as *(MFDB **)&CONTRL[7]. On a 68000 that reads four bytes, the
+whole address. On a sixty four bit host it reads eight, and since the two
+bitmaps a call names are only two words apart, the source read swallows the
+destination address as its high half. Four reads now take thirty two bits,
+which is what the caller wrote - the AES stores them through ULONG_AT, which
+is thirty two bits wide, and so was already doing it that way.
+
+
+Things that bite
+----------------
+
+get_start_addr, which turns a pixel column into an address, lives in
+vdi_misc.c beside the timer code. That file is wanted for the one and not the
+other, which is why it is built rather than replaced.
+
+mul_div_round rounds by doubling, adding or subtracting one, and arithmetic
+shifting. A divide is not the same function: it truncates towards zero where a
+shift goes towards minus infinity.
+
+The drawing helpers assume the VDI entry point ran first. polyline draws
+nothing at all unless LN_MASK holds a line style, which draw_pline is what
+normally sets. A handler that calls a helper directly has to set up what the
+entry point would have, and getting it wrong is silent.
+
+textblit.c copies the LOCALVARS structure, which is private to vdi_textblit.c.
+It is the interface between the two, so it has to follow any change made there
+- the same warning the original carries about the assembly.
+
+Half of what EMUTOSFLAGS does is choose between paths inside EmuTOS rather than
+how to compile them, so a changed flag changes the program. The objects depend
+on the Makefile for that reason. Without it, changing a flag leaves stale
+objects that look like a bug in the code.
