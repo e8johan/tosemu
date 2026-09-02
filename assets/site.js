@@ -80,8 +80,11 @@
         fig.classList.add("missing");
         var box = document.createElement("div");
         box.className = "placeholder";
-        box.textContent = "screenshot pending — " + img.getAttribute("src");
-        fig.insertBefore(box, img);
+        var label = document.createElement("span");
+        label.textContent = "screenshot pending\n" + img.getAttribute("src");
+        label.style.whiteSpace = "pre-line";
+        box.appendChild(label);
+        img.parentNode.insertBefore(box, img);
       }
       if (img.complete && img.naturalWidth === 0) miss();
       img.addEventListener("error", miss);

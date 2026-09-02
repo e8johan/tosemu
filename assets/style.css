@@ -1,37 +1,59 @@
-/* TOSEMU project page */
+/* TOSEMU project page
+ *
+ * Black on white with a green accent, and the furniture GEM was made of:
+ * a menu bar, windows with close boxes and scroll bars, dialogs with a hard
+ * drop shadow, and dither fills where the ST would have had them. The dithers
+ * are checkerboards built from a pair of 45deg gradients, the same trick the
+ * VDI played with a 16x16 pattern - at 1px they read as grey, which is exactly
+ * what a 50% fill looked like on a mono monitor.
+ */
 
 :root {
   color-scheme: light dark;
 
-  --bg:        #f6f4f0;
-  --bg-raised: #ffffff;
-  --bg-sunken: #ebe7e0;
-  --ink:       #23201c;
-  --ink-soft:  #57514a;
-  --ink-faint: #8a827a;
-  --rule:      #d9d3ca;
-  --accent:    #b34700;
-  --accent-ink:#ffffff;
-  --code-bg:   #2b2723;
-  --code-ink:  #ece7df;
+  --paper:      #ffffff;
+  --ink:        #000000;
+  --green:      #00a651;   /* black is readable on it; used as a fill  */
+  --link:       #00803e;   /* darker, so it is readable as text        */
+  --term-bg:    #000000;
+  --term-ink:   #4dff9e;
+  --on-green:   #000000;
+  --code-bg:    #e3f3ea;
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+          "DejaVu Sans Mono", monospace;
+  --sans: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", system-ui,
+          sans-serif;
 
   --measure: 34rem;
-  --wide: 60rem;
+  --wide: 62rem;
+
+  /* 50% dither, 1px cells - grey at arm's length, pixels up close */
+  --dither:
+    linear-gradient(45deg, var(--ink) 25%, #0000 25% 75%, var(--ink) 75%) 0 0/2px 2px,
+    linear-gradient(45deg, var(--ink) 25%, #0000 25% 75%, var(--ink) 75%) 1px 1px/2px 2px;
+
+  /* the desktop behind the window: the same fill in green at 3px, which is
+     TOSEMU_SCALE's default. Muted, because a window has to sit on top of it. */
+  --green-desk: #8ad9b0;
+  --dither-desk:
+    linear-gradient(45deg, var(--green-desk) 25%, #0000 25% 75%, var(--green-desk) 75%) 0 0/6px 6px,
+    linear-gradient(45deg, var(--green-desk) 25%, #0000 25% 75%, var(--green-desk) 75%) 3px 3px/6px 6px;
+
+  /* a lighter fill, for standing in and for large areas */
+  --dots: radial-gradient(circle at 1px 1px, var(--ink) 1px, #0000 0) 0 0/6px 6px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:        #171513;
-    --bg-raised: #201d1a;
-    --bg-sunken: #100e0d;
-    --ink:       #ece7df;
-    --ink-soft:  #b6ada2;
-    --ink-faint: #857b70;
-    --rule:      #363029;
-    --accent:    #ff8f4d;
-    --accent-ink:#1a1512;
-    --code-bg:   #0d0c0b;
-    --code-ink:  #ece7df;
+    --paper:    #0b0f0c;
+    --ink:      #e8f5ec;
+    --green:    #00e676;
+    --link:     #00e676;
+    --term-bg:  #000000;
+    --term-ink: #4dff9e;
+    --code-bg:  #10241a;
+    --green-desk: #145c39;
   }
 }
 
@@ -39,11 +61,21 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--ink);
-  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
+  font: 16px/1.65 var(--sans);
   -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--green); color: var(--on-green); }
+
+a { color: var(--link); text-underline-offset: 2px; }
+
+a:focus-visible,
+.btn:focus-visible,
+.menubar a:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
 }
 
 .wrap {
@@ -53,149 +85,345 @@ body {
   padding: 0 1.5rem;
 }
 
-/* ---- typography ---- */
+/* ------------------------------------------------------------------ *
+ * The menu bar. GEM highlighted a menu title by inverting it; here it
+ * fills with the accent instead, which is the same gesture in colour.
+ * ------------------------------------------------------------------ */
 
-h1, h2, h3 {
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+.menubar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--paper);
+  border-bottom: 2px solid var(--ink);
 }
+
+.menubar-inner {
+  max-width: var(--wide);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.menubar-inner::-webkit-scrollbar { display: none; }
+
+.menu-name {
+  font: 700 0.78rem/1 var(--mono);
+  letter-spacing: 0.16em;
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 1.1rem 0.6rem 0;
+}
+
+.menubar ul {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menubar a {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0.6rem 0.85rem;
+  color: var(--ink);
+  text-decoration: none;
+  font: 0.78rem/1 var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.menubar a:hover { background: var(--green); color: var(--on-green); }
+
+/* ------------------------------------------------------------------ *
+ * The desktop, with a window sitting on it
+ * ------------------------------------------------------------------ */
+
+.desktop {
+  background: var(--dither-desk), var(--paper);
+  border-bottom: 2px solid var(--ink);
+  padding: 3.5rem 0 4rem;
+}
+
+.win-hero { max-width: 38rem; }
+
+.hero-body { padding: 2rem 2.25rem 2.4rem; }
+
+.eyebrow {
+  font: 0.72rem/1 var(--mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 0 0 1.1rem;
+}
+
+h1 {
+  font: 700 clamp(2.4rem, 9vw, 3.8rem)/1 var(--mono);
+  letter-spacing: 0.06em;
+  margin: 0 0 0.9rem;
+}
+
+.tagline {
+  font-size: clamp(1rem, 2.4vw, 1.2rem);
+  margin: 0 0 1.8rem;
+  max-width: 28rem;
+}
+
+.cta { margin: 0; display: flex; flex-wrap: wrap; gap: 1.1rem; }
+
+/* ---- GEM buttons: a box, and a ring around the default one ---- */
+
+.btn {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: 700 0.78rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.btn:hover { background: var(--ink); color: var(--paper); }
+
+.btn-default {
+  margin: 3px;
+  background: var(--green);
+  color: var(--on-green);
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--ink);
+}
+
+.btn-default:hover { background: var(--ink); color: var(--green); }
+
+/* ------------------------------------------------------------------ *
+ * Headings, prose, code
+ * ------------------------------------------------------------------ */
 
 h2 {
-  font-size: 1.6rem;
-  margin: 3.5rem 0 1rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;      /* the rule drops below the text when it has to */
+  gap: 0.85rem;
+  font: 700 1.05rem/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 3.75rem 0 1.4rem;
 }
 
-h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+/* the ruled fill of a GEM mover bar, run out to the margin */
+h2::after {
+  content: "";
+  flex: 1 0 4rem;
+  height: 10px;
+  background: repeating-linear-gradient(
+    to bottom, var(--ink) 0 2px, #0000 2px 4px);
+}
 
-p { margin: 0 0 1.1rem; }
+h3 {
+  font: 700 0.8rem/1.2 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+
+p { margin: 0 0 1.15rem; }
 
 .prose p, .prose ul { max-width: var(--measure); }
 
-a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
-a:hover { text-decoration-thickness: 2px; }
-
 code {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--mono);
   font-size: 0.88em;
-  background: var(--bg-sunken);
-  border-radius: 3px;
-  padding: 0.1em 0.35em;
+  background: var(--code-bg);
+  padding: 0.05em 0.3em;
 }
 
 pre {
-  background: var(--code-bg);
-  color: var(--code-ink);
+  background: var(--term-bg);
+  color: var(--term-ink);
+  border: 2px solid var(--ink);
   padding: 1rem 1.15rem;
-  border-radius: 6px;
   overflow-x: auto;
-  max-width: var(--measure);
-  margin: 0 0 1.4rem;
+  /* wider than the prose: a command line is as long as it is */
+  max-width: min(100%, 42rem);
+  margin: 0 0 1.5rem;
 }
 
 pre code {
   background: none;
+  box-shadow: none;
   padding: 0;
   color: inherit;
-  font-size: 0.85rem;
-  line-height: 1.55;
+  font-size: 0.84rem;
+  line-height: 1.6;
 }
 
 .aside {
-  border-left: 3px solid var(--rule);
-  padding-left: 1rem;
-  color: var(--ink-soft);
+  position: relative;
+  padding-left: 1.35rem;
   font-size: 0.94rem;
 }
 
-/* ---- hero ---- */
-
-.hero {
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--rule);
-  padding: 4.5rem 0 3.5rem;
+.aside::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.25em;
+  bottom: 0.25em;
+  width: 6px;
+  background: var(--dither), var(--paper);
 }
 
-.eyebrow {
-  font-size: 0.75rem;
+/* ------------------------------------------------------------------ *
+ * Windows
+ * ------------------------------------------------------------------ */
+
+.win {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+}
+
+.win-bar {
+  display: flex;
+  align-items: stretch;
+  height: 26px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--dither), var(--paper);
+}
+
+.win-title {
+  margin: 0 auto;               /* centred, dither showing either side */
+  padding: 0 0.9em;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  font: 700 0.7rem/1 var(--mono);
   letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  margin: 0 0 0.9rem;
 }
 
-.hero h1 {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: clamp(2.6rem, 9vw, 4.2rem);
-  margin: 0 0 0.6rem;
-  letter-spacing: -0.03em;
+/* close box: a filled square in a box. full box: a hollow one. */
+.gadget {
+  flex: 0 0 26px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
 }
 
-.tagline {
-  font-size: clamp(1.05rem, 2.6vw, 1.35rem);
-  color: var(--ink-soft);
-  max-width: 32rem;
-  margin: 0 0 2rem;
+.gadget.close { border-right: 2px solid var(--ink); }
+.gadget.full  { border-left: 2px solid var(--ink); }
+
+.gadget::before { content: ""; width: 9px; height: 9px; }
+.gadget.close::before { background: var(--ink); }
+.gadget.full::before  { box-shadow: inset 0 0 0 2px var(--ink); }
+
+.win-inner { display: flex; align-items: stretch; }
+
+.win-body { flex: 1; min-width: 0; padding: 1.5rem; }
+.win-body.flush { padding: 0; }
+
+.win-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;   /* ST pixels stay square */
 }
 
-.cta { margin: 0; display: flex; flex-wrap: wrap; gap: 0.7rem; }
+/* ---- the scroll bar down the right hand side ---- */
 
-.btn {
-  display: inline-block;
-  padding: 0.6rem 1.2rem;
-  border-radius: 5px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-  font-size: 0.95rem;
-  text-decoration: none;
-  border: 1px solid transparent;
+.win-scroll {
+  flex: 0 0 20px;
+  border-left: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
 }
 
-.btn:hover { filter: brightness(1.08); }
-
-.btn-quiet {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--rule);
+.win-scroll .arrow {
+  flex: 0 0 20px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
 }
 
-/* ---- comparison ---- */
+.win-scroll .arrow.up   { border-bottom: 2px solid var(--ink); }
+.win-scroll .arrow.down { border-top: 2px solid var(--ink); }
+
+.win-scroll .arrow::before { content: ""; border-style: solid; }
+
+.win-scroll .arrow.up::before {
+  border-width: 0 5px 7px 5px;
+  border-color: transparent transparent var(--ink) transparent;
+}
+
+.win-scroll .arrow.down::before {
+  border-width: 7px 5px 0 5px;
+  border-color: var(--ink) transparent transparent transparent;
+}
+
+.win-scroll .track {
+  flex: 1;
+  position: relative;
+  min-height: 3rem;
+  background: var(--dither), var(--paper);
+}
+
+.win-scroll .thumb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6%;
+  height: 38%;
+  background: var(--paper);
+}
+
+/* ------------------------------------------------------------------ *
+ * Dialogs - a box with the hard drop shadow GEM put under one
+ * ------------------------------------------------------------------ */
 
 .compare {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1rem;
-  margin: 1.75rem 0 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0 2.75rem;
+  max-width: var(--measure);
 }
 
-.card {
-  background: var(--bg-raised);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 1.25rem 1.4rem;
+@media (min-width: 52rem) {
+  .compare { max-width: none; }
 }
 
-.card-accent { border-color: var(--accent); }
+.dlg {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 1.15rem 1.35rem 1.35rem;
+  box-shadow: 7px 7px 0 var(--ink);
+}
 
-.card h3 { color: var(--ink-faint); }
-.card-accent h3 { color: var(--accent); }
+.dlg-accent { box-shadow: 7px 7px 0 var(--green); }
 
-.card ul { margin: 0; padding-left: 1.1rem; }
-.card li { margin-bottom: 0.4rem; font-size: 0.94rem; color: var(--ink-soft); }
-.card li:last-child { margin-bottom: 0; }
+.dlg h3 {
+  margin: -1.15rem -1.35rem 1.15rem;
+  padding: 0.6rem 1.35rem;
+  border-bottom: 2px solid var(--ink);
+}
 
-/* ---- video ---- */
+.dlg-accent h3 { background: var(--green); color: var(--on-green); }
+
+.dlg ul { margin: 0; padding-left: 1.1rem; }
+.dlg li { margin-bottom: 0.45rem; font-size: 0.94rem; }
+.dlg li:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------ *
+ * Video
+ * ------------------------------------------------------------------ */
 
 .video-slot {
   position: relative;
   aspect-ratio: 16 / 9;
-  background: var(--bg-sunken);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
+  background: var(--dither), var(--paper);
   overflow: hidden;
-  margin-bottom: 1rem;
 }
 
 .video-slot iframe,
@@ -211,24 +439,17 @@ pre code {
 
 .video-facade { cursor: pointer; display: block; }
 
-.video-facade::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-}
-
 .play {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  width: 4.5rem;
-  height: 3.2rem;
-  border-radius: 12px;
-  background: var(--accent);
-  border: 0;
+  width: 5rem;
+  height: 3.4rem;
+  background: var(--green);
+  border: 2px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -237,9 +458,11 @@ pre code {
 .play::before {
   content: "";
   border-style: solid;
-  border-width: 0.6rem 0 0.6rem 1rem;
-  border-color: transparent transparent transparent var(--accent-ink);
+  border-width: 0.62rem 0 0.62rem 1rem;
+  border-color: transparent transparent transparent var(--on-green);
 }
+
+.video-facade:hover .play { background: var(--paper); }
 
 .video-slot .empty {
   position: absolute;
@@ -248,65 +471,105 @@ pre code {
   place-items: center;
   text-align: center;
   padding: 2rem;
-  color: var(--ink-faint);
-  font-size: 0.9rem;
+  background: var(--paper);
+  font: 0.8rem/1.6 var(--mono);
 }
 
-/* ---- screenshots ---- */
+/* ------------------------------------------------------------------ *
+ * Screenshots
+ * ------------------------------------------------------------------ */
 
-.shot {
-  margin: 0 0 3rem;
-}
-
-.shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--bg-sunken);
-}
+.shot { margin: 0 0 3.25rem; }
 
 .shot figcaption {
-  margin-top: 0.85rem;
+  margin-top: 1rem;
   max-width: var(--measure);
-  color: var(--ink-soft);
   font-size: 0.94rem;
 }
 
-.shot figcaption strong { color: var(--ink); }
-
-/* stand-in shown when a screenshot file is not there yet */
+/* stand-in for a screenshot that is not committed yet */
 .shot.missing img { display: none; }
 
 .shot .placeholder {
-  aspect-ratio: 16 / 10;
-  border: 1px dashed var(--rule);
-  border-radius: 8px;
-  background: var(--bg-sunken);
+  aspect-ratio: 16 / 9;
+  background: var(--dots), var(--paper);
   display: grid;
   place-items: center;
   text-align: center;
   padding: 1.5rem;
-  color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.82rem;
 }
 
-/* ---- footer ---- */
+.shot .placeholder span {
+  background: var(--paper);
+  padding: 0.5rem 0.9rem;
+  border: 2px solid var(--ink);
+  font: 0.72rem/1.5 var(--mono);
+  letter-spacing: 0.04em;
+}
+
+/* ------------------------------------------------------------------ *
+ * The eight fill patterns, as a divider
+ * ------------------------------------------------------------------ */
+
+.fillbar {
+  display: flex;
+  height: 30px;
+  margin-top: 4.5rem;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+}
+
+.fillbar i { flex: 1; border-right: 2px solid var(--ink); }
+.fillbar i:last-child { border-right: 0; }
+
+.fillbar i:nth-child(1) { background: var(--ink); }
+.fillbar i:nth-child(2) { background: var(--dither), var(--paper); }
+.fillbar i:nth-child(3) { background: var(--dots), var(--paper); }
+.fillbar i:nth-child(4) {
+  background: repeating-linear-gradient(
+    to bottom, var(--ink) 0 2px, #0000 2px 6px), var(--paper);
+}
+.fillbar i:nth-child(5) {
+  background: repeating-linear-gradient(
+    to right, var(--ink) 0 2px, #0000 2px 6px), var(--paper);
+}
+.fillbar i:nth-child(6) {
+  background: repeating-linear-gradient(
+    45deg, var(--ink) 0 2px, #0000 2px 6px), var(--paper);
+}
+.fillbar i:nth-child(7) {
+  background:
+    repeating-linear-gradient(to bottom, var(--ink) 0 2px, #0000 2px 8px),
+    repeating-linear-gradient(to right, var(--ink) 0 2px, #0000 2px 8px),
+    var(--paper);
+}
+.fillbar i:nth-child(8) { background: var(--green); }
+
+/* ------------------------------------------------------------------ *
+ * Footer
+ * ------------------------------------------------------------------ */
 
 footer {
-  margin-top: 4rem;
-  padding: 2rem 0 3rem;
-  border-top: 1px solid var(--rule);
-  color: var(--ink-soft);
+  padding: 2.25rem 0 3.5rem;
   font-size: 0.9rem;
 }
 
 footer p { max-width: var(--measure); }
-footer p:last-child { margin-bottom: 0; }
+footer p:last-child { margin-bottom: 0; font-family: var(--mono); font-size: 0.82rem; }
+
+/* ------------------------------------------------------------------ *
+ * Small screens
+ * ------------------------------------------------------------------ */
 
 @media (max-width: 40rem) {
-  .hero { padding: 3rem 0 2.5rem; }
+  .desktop { padding: 2.25rem 0 2.75rem; }
+  .hero-body { padding: 1.5rem 1.35rem 1.75rem; }
   h2 { margin-top: 2.75rem; }
+  .dlg { box-shadow: 5px 5px 0 var(--ink); }
+  .dlg-accent { box-shadow: 5px 5px 0 var(--green); }
+  .win-scroll { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }

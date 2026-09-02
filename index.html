@@ -12,16 +12,39 @@
 </head>
 <body>
 
-<header class="hero">
+<nav class="menubar">
+  <div class="menubar-inner">
+    <span class="menu-name">TOSEMU</span>
+    <ul>
+      <li><a href="#what">About</a></li>
+      <li><a href="#why">Why</a></li>
+      <li><a href="#video">Video</a></li>
+      <li><a href="#screenshots">Screenshots</a></li>
+      <li><a href="#try">Build</a></li>
+      <li><a href="https://github.com/e8johan/tosemu">Source</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="desktop">
   <div class="wrap">
-    <p class="eyebrow">Free software · GPLv2</p>
-    <h1>TOSEMU</h1>
-    <p class="tagline">Atari TOS applications, running as part of your desktop &mdash;
-    not a picture of another computer.</p>
-    <p class="cta">
-      <a class="btn" href="https://github.com/e8johan/tosemu">Source on GitHub</a>
-      <a class="btn btn-quiet" href="#what">What is this?</a>
-    </p>
+    <div class="win win-hero">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">TOSEMU.PRG</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-body hero-body">
+        <p class="eyebrow">Free software &middot; GPLv2</p>
+        <h1>TOSEMU</h1>
+        <p class="tagline">Atari TOS applications, running as part of your desktop
+        &mdash; not a picture of another computer.</p>
+        <p class="cta">
+          <a class="btn btn-default" href="https://github.com/e8johan/tosemu">Source on GitHub</a>
+          <a class="btn" href="#what">What is this?</a>
+        </p>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -44,7 +67,7 @@
   </p>
 </section>
 
-<section class="wrap prose">
+<section id="why" class="wrap prose">
   <h2>Why it is not a classical emulator</h2>
   <p>
     A classical emulator &mdash; Hatari, STeem, MiST &mdash; recreates the machine. It loads a
@@ -59,7 +82,7 @@
   </p>
 
   <div class="compare">
-    <div class="card">
+    <div class="dlg">
       <h3>A classical emulator</h3>
       <ul>
         <li>Needs a TOS ROM image to boot</li>
@@ -69,7 +92,7 @@
         <li>The desktop inside is the Atari desktop</li>
       </ul>
     </div>
-    <div class="card card-accent">
+    <div class="dlg dlg-accent">
       <h3>TOSEMU</h3>
       <ul>
         <li>No ROM: GEMDOS, BIOS, XBIOS and the AES are reimplemented</li>
@@ -108,8 +131,15 @@
 
 <section id="video" class="wrap">
   <h2>See it running</h2>
-  <div id="video-slot" class="video-slot">
-    <!-- Set VIDEO_ID in assets/site.js to the YouTube id and this becomes the player. -->
+  <div class="win">
+    <div class="win-bar">
+      <span class="gadget close" aria-hidden="true"></span>
+      <span class="win-title">INTRO.MOV</span>
+      <span class="gadget full" aria-hidden="true"></span>
+    </div>
+    <div class="win-body flush">
+      <div id="video-slot" class="video-slot"></div>
+    </div>
   </div>
 </section>
 
@@ -117,7 +147,21 @@
   <h2>Screenshots</h2>
 
   <figure class="shot">
-    <img src="images/accessories-tray.png" alt="A system tray icon whose menu lists the running Atari desk accessories">
+    <div class="win">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">TRAY.PI3</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-inner">
+        <div class="win-body flush">
+          <img src="images/accessories-tray.png" alt="A system tray icon whose menu lists the running Atari desk accessories">
+        </div>
+        <div class="win-scroll" aria-hidden="true">
+          <span class="arrow up"></span><span class="track"><span class="thumb"></span></span><span class="arrow down"></span>
+        </div>
+      </div>
+    </div>
     <figcaption>
       <strong>Accessories in the system tray.</strong>
       The daemon starts every <code>.ACC</code> in a directory and puts a single mark in
@@ -128,7 +172,21 @@
   </figure>
 
   <figure class="shot">
-    <img src="images/menu-bar.png" alt="The GEM menu bar with a menu pulled down from it">
+    <div class="win">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">MENUBAR.PI3</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-inner">
+        <div class="win-body flush">
+          <img src="images/menu-bar.png" alt="The GEM menu bar with a menu pulled down from it">
+        </div>
+        <div class="win-scroll" aria-hidden="true">
+          <span class="arrow up"></span><span class="track"><span class="thumb"></span></span><span class="arrow down"></span>
+        </div>
+      </div>
+    </div>
     <figcaption>
       <strong>The Atari menu bar.</strong>
       A GEM menu bar is a window in its own right, and each menu pulled down from it is
@@ -138,7 +196,21 @@
   </figure>
 
   <figure class="shot">
-    <img src="images/rubberband-resize.png" alt="A GEM window being resized, with the outline following the pointer">
+    <div class="win">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">RESIZE.PI3</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-inner">
+        <div class="win-body flush">
+          <img src="images/rubberband-resize.png" alt="A GEM window being resized, with the outline following the pointer">
+        </div>
+        <div class="win-scroll" aria-hidden="true">
+          <span class="arrow up"></span><span class="track"><span class="thumb"></span></span><span class="arrow down"></span>
+        </div>
+      </div>
+    </div>
     <figcaption>
       <strong>Rubberband window resizing.</strong>
       GEM did not resize a window live; it drew an outline that followed the pointer and
@@ -149,7 +221,21 @@
   </figure>
 
   <figure class="shot">
-    <img src="images/wayland-windows.png" alt="Atari ST application windows sitting among ordinary Linux windows on one desktop">
+    <div class="win">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">WAYLAND.PI3</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-inner">
+        <div class="win-body flush">
+          <img src="images/wayland-windows.png" alt="Atari ST application windows sitting among ordinary Linux windows on one desktop">
+        </div>
+        <div class="win-scroll" aria-hidden="true">
+          <span class="arrow up"></span><span class="track"><span class="thumb"></span></span><span class="arrow down"></span>
+        </div>
+      </div>
+    </div>
     <figcaption>
       <strong>ST windows among Wayland windows.</strong>
       No outer frame, no screen inside a screen. The GEM windows are siblings of the
@@ -158,7 +244,21 @@
   </figure>
 
   <figure class="shot">
-    <img src="images/devpac-lattice.png" alt="A terminal running the Devpac assembler and the Lattice C compiler through tosemu">
+    <div class="win">
+      <div class="win-bar">
+        <span class="gadget close" aria-hidden="true"></span>
+        <span class="win-title">TOOLS.PI3</span>
+        <span class="gadget full" aria-hidden="true"></span>
+      </div>
+      <div class="win-inner">
+        <div class="win-body flush">
+          <img src="images/devpac-lattice.png" alt="A terminal running the Devpac assembler and the Lattice C compiler through tosemu">
+        </div>
+        <div class="win-scroll" aria-hidden="true">
+          <span class="arrow up"></span><span class="track"><span class="thumb"></span></span><span class="arrow down"></span>
+        </div>
+      </div>
+    </div>
     <figcaption>
       <strong>Devpac and Lattice C, from your shell.</strong>
       HiSoft's <code>GEN.TTP</code> and Lattice C 5.60's compiler passes are run by the
@@ -199,6 +299,10 @@ make demos
 </section>
 
 </main>
+
+<div class="fillbar" aria-hidden="true">
+  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+</div>
 
 <footer>
   <div class="wrap">
