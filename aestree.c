@@ -850,11 +850,11 @@ int16_t host_userdef_draw(const struct host_userdef *call)
     m68k_set_reg(M68K_REG_A0, call->code);
     m68k_set_reg(M68K_REG_PC, call->code);
 
-#ifdef ENABLE_AES_TRACE
-    printf("AES userdef 0x%x: object %d, %04x to %04x, %d,%d %dx%d\n",
-           call->code, call->obj, (unsigned)call->prevstate,
-           (unsigned)call->currstate, call->x, call->y, call->w, call->h);
-#endif
+    FUNC_TRACE_ARGS {
+        printf("AES userdef 0x%x: object %d, %04x to %04x, %d,%d %dx%d\n",
+               call->code, call->obj, (unsigned)call->prevstate,
+               (unsigned)call->currstate, call->x, call->y, call->w, call->h);
+    }
 
     running = 1;
 

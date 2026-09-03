@@ -85,6 +85,10 @@ static char *from_file[SETTINGS];
 /* And whether to look at a file at all */
 static int ignoring;
 
+/* Which file was read, for saying so. A file that was looked for and not
+ * found leaves this empty, which is not the same as not having looked. */
+static char came_from[512];
+
 static int index_of(const char *env)
 {
     int i;
@@ -315,6 +319,8 @@ int settings_load(const char *path)
         from_file[i] = 0;
     }
 
+    came_from[0] = 0;
+
     if (!path)
         path = settings_default_path();
 
@@ -333,6 +339,8 @@ int settings_load(const char *path)
 
         return !named;
     }
+
+    snprintf(came_from, sizeof came_from, "%s", path);
 
     memset(&at, 0, sizeof at);
 
@@ -359,4 +367,48 @@ int settings_load(const char *path)
     fclose(f);
 
     return 1;
+}
+
+void settings_say(const char *who)
+{
+    int said = 0;
+    int i;
+
+    if (ignoring)
+        printf("%s: no settings file, because none was to be read\n", who);
+    else if (came_from[0])
+        printf("%s: settings from %s\n", who, came_from);
+    else
+        printf("%s: no settings file to read\n", who);
+
+    for (i = 0; i < SETTINGS; i++)
+    {
+        const char *from_env = getenv(settings[i].env);
+
+        /*
+         * Said in the terms it was said in, rather than translated into one
+         * of the two spellings. They are not the same sentence: the
+         * environment's name for the window is a negative and the file's is
+         * not, so a line reporting one as the other would be reporting the
+         * opposite of what was asked for.
+         */
+        if (from_env && from_file[i])
+            printf("%s: %s=%s, over the file's %s\n", who, settings[i].env,
+                   from_env, from_file[i]);
+        else if (from_env)
+            printf("%s: %s=%s\n", who, settings[i].env, from_env);
+        else if (from_file[i])
+            printf("%s: [%s] %s = %s\n", who, settings[i].section,
+                   settings[i].key, from_file[i]);
+        else
+            continue;
+
+        said = 1;
+    }
+
+    if (!said)
+        printf("%s: and nothing was asked for, so all of it is the usual\n",
+               who);
+
+    fflush(stdout);
 }

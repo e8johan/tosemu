@@ -28,7 +28,10 @@
 
 #include "tossystem.h"
 #include "settings.h"
+#include "config.h"
 
+/* How much was asked for. config.h says what each level is, and is where the
+ * OS call tracing reads this; the instruction trace below is the top one. */
 int verbose;
 
 void cpu_instr_callback()
@@ -36,7 +39,7 @@ void cpu_instr_callback()
     static char buff[100];
     static unsigned int pc;
 
-    if (verbose)
+    if (verbose >= VERBOSE_CPU)
     {
         pc = m68k_get_reg(NULL, M68K_REG_PC);
         m68k_disassemble(buff, pc, M68K_CPU_TYPE_68000);
@@ -113,14 +116,39 @@ static int is_an_accessory(const char *path)
     return len >= 4 && strcasecmp(path + len - 4, ".acc") == 0;
 }
 
+/*
+ * How many v's an argument is, or nought if it is not that sort of argument.
+ *
+ * -vv rather than -v -v because that is how everything else spells it, and
+ * both, because a person who writes it the other way did not mean something
+ * else by it.
+ */
+static int how_many_vs(const char *arg)
+{
+    int n = 0;
+
+    if (*arg++ != '-')
+        return 0;
+
+    while (*arg == 'v')
+    {
+        arg++;
+        n++;
+    }
+
+    return *arg ? 0 : n;
+}
+
 static void usage(void)
 {
     const char *where = settings_default_path();
 
-    printf("Usage: tosemu [-v] [-c <file>] [--no-config] <binary> [<args>]\n"
+    printf("Usage: tosemu [-v...] [-c <file>] [--no-config] <binary> [<args>]\n"
            "\n"
            "\t<binary>       name of binary to execute\n"
-           "\t-v             say what the emulated program is doing\n"
+           "\t-v             say what the session was configured with\n"
+           "\t-vv            and every OS call the program makes\n"
+           "\t-vvv           and every instruction it runs\n"
            "\t-c <file>      read settings from <file>\n"
            "\t--no-config    read no settings file at all\n"
            "\n"
@@ -152,9 +180,10 @@ int main(int argc, char **argv)
     while (argb < argc && argv[argb][0] == '-' && argv[argb][1] != '\0')
     {
         const char *arg = argv[argb];
+        int vs = how_many_vs(arg);
 
-        if (strcmp(arg, "-v") == 0)
-            verbose = -1;
+        if (vs)
+            verbose += vs;
         else if (strcmp(arg, "--no-config") == 0)
             no_config = 1;
         else if (strcmp(arg, "-c") == 0 || strcmp(arg, "--config") == 0)
@@ -193,6 +222,12 @@ int main(int argc, char **argv)
         settings_ignore_file();
     else if (!settings_load(config))
         return -1;
+
+    /* And said, now that it is settled and before anything has acted on it.
+     * Which screen this turns into is gem.c's to say, because a daemon can
+     * still overrule what any of this asked for. */
+    if (verbose >= VERBOSE_CONFIG)
+        settings_say("tosemu");
 
     remember_program_name(argv[argb]);
     tos_load_as_accessory(is_an_accessory(argv[argb]));

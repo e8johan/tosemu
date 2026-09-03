@@ -120,6 +120,16 @@ int gem_start()
      */
     aes_client_screen(&width, &height, &planes);
 
+    /* Which is worth saying, because it is the answer rather than the
+     * question: what the settings asked for is one thing, and what a daemon
+     * decided for the whole session is what an application actually gets */
+    if (verbose >= VERBOSE_CONFIG)
+    {
+        printf("tosemu: the screen is %dx%d in %d colours\n",
+               width, height, 1 << planes);
+        fflush(stdout);
+    }
+
     screen = surface_create((uint16_t)width, (uint16_t)height,
                             (uint16_t)planes);
     if (!screen)

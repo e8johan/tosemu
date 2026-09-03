@@ -712,3 +712,25 @@ more than one program to exist.
 `TOSEMU_SCREENSHOT` for what was drawn, and `-v` on the daemon for who is
 connected. The first exists because a wait that answers wrongly is invisible
 from anywhere else.
+
+And `-v` on the emulator, which is a level rather than a switch: each one
+added is the same run looked at closer.
+
+  - `-v` says what the session was configured with - every setting that was
+    said, which of the environment and the file said it, and which screen it
+    came out as. A setting is read once, deep inside whatever cared about it,
+    and never mentioned again, so this is the only place the answer is in one
+    piece. The screen is said where it is settled rather than where it is
+    asked for, because a daemon can overrule what any of it wanted
+  - `-vv` adds every OS call the program makes - GEMDOS, BIOS, XBIOS, AES and
+    VDI, with their arguments on the way in and their answer on the way out.
+    This is the story of what the program asked for, which is usually enough:
+    a program that has stopped has stopped after something
+  - `-vvv` adds every instruction it runs, disassembled. Hundreds of thousands
+    of lines for a program that prints one, so it is for when the story of
+    what was asked for is not enough and the question is where it was asked
+
+`-v -v` is `-vv`, for anyone who spells it that way. The tracing is built in
+at every level and costs a test on the way into an OS call; `config.h` is
+where a sub-system can be left out of the build altogether, which is worth
+doing only if that ever turns out to matter.

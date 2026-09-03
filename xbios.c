@@ -345,18 +345,18 @@ void xbios_trap()
             r = f->fnct();
         } else if (f->kind == FN_STUB) {
             r = f->ret;
-#ifdef ENABLE_XBIOS_TRACE
-            printf("Stubbed %s (0x%x)\n", f->name, fnct);
-#endif
+            FUNC_TRACE_ARGS {
+                printf("Stubbed %s (0x%x)\n", f->name, fnct);
+            }
         } else {
             halt_execution();
             printf("XBIOS %s (0x%x) not implemented\n", f->name, fnct);
             return;
         }
 
-#ifdef ENABLE_XBIOS_TRACE
-        printf("Return from %s: %d = 0x%x\n", f->name, r, r);
-#endif
+        FUNC_TRACE_ARGS {
+            printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+        }
         m68k_set_reg(M68K_REG_D0, r);
 
         return;
