@@ -20,6 +20,7 @@
  */
 #include "tossystem.h"
 #include "settings.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -671,6 +672,18 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     screen_base = (ramtop - screen_size) & ~0xffu;
     screen_area = ramtop - screen_base;
     te->screenmem = calloc(1, screen_area);
+
+    /* Which is worth saying for the same reason the screen is, and for one
+     * more: max is a setting rather than a number, and the number is what an
+     * application has to live in once the screen has come off the top */
+    if (verbose >= VERBOSE_CONFIG)
+    {
+        printf("tosemu: the machine has %luk of memory, and the screen takes "
+               "%luk of it\n",
+               (unsigned long)(ramtop / 1024),
+               (unsigned long)(screen_area / 1024));
+        fflush(stdout);
+    }
 
     /* And the rest of it is the application's */
     te->size = screen_base - 0x000900;
