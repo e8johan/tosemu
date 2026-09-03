@@ -67,4 +67,23 @@ void scrap_refresh(void);
  * that path is in the scrap directory */
 void scrap_refresh_for(const char *host_path);
 
+/*
+ * The watch on the scrap directory, for the event loop to wait on beside the
+ * compositor and the daemon, or -1 when there is nothing being watched.
+ *
+ * It is a watch rather than a call because a GEM application never says it
+ * copied anything. scrp_write says only which directory the scrap is in; the
+ * cut itself is a file appearing in it, some time later and with nothing to
+ * announce it, so noticing the file is the only signal there is.
+ *
+ * Nothing that arrives here can end a wait the application is in. It is the
+ * desktop that is being served, not the program - see the note in aesevnt.c
+ * about why that distinction has to be kept in the poll set.
+ */
+int scrap_fd(void);
+
+/* Something happened in the scrap directory: reads what, and offers whatever
+ * was cut to the desktop */
+void scrap_pump(void);
+
 #endif /* SCRAP_H */

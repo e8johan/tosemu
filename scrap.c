@@ -48,6 +48,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -65,6 +67,14 @@
 /* A TOS path, which is short: a drive, directories of eight and three, and a
  * separator between each. The same size aesscrp.c and the daemon use. */
 #define MAX_TOS_PATH (128)
+
+/*
+ * Room for a file inside the scrap directory: a path, and a name on the end of
+ * it. Longer than a path can be, so that appending the name cannot be what
+ * pushes it over - which is a thing the compiler is entitled to ask about, and
+ * a buffer of exactly PATH_MAX cannot answer.
+ */
+#define SCRAP_PATH (PATH_MAX + 32)
 
 /*
  * Where the scrap goes when nobody has said.
@@ -95,11 +105,26 @@ static struct {
     char tos[MAX_TOS_PATH];
     char host[PATH_MAX + 1];
 
+    /* The watch on that directory, and the watch descriptor within it */
+    int notify;
+    int watch;
+
+    /*
+     * How many writes of our own are still to come back.
+     *
+     * Bringing the desktop's clipboard in means writing into the very
+     * directory being watched, and the watch cannot tell that write from an
+     * application's. Without this the file would be read straight back out and
+     * offered to the desktop it just came from, which is a loop that ends only
+     * because the second offer looks identical to the first.
+     */
+    int ours;
+
     /* Said once rather than every time something looks: a scrap directory that
      * cannot be made is a thing to mention, not a thing to complain about
      * repeatedly while an application runs */
     int complained;
-} scrap;
+} scrap = { "", "", -1, -1, 0, 0 };
 
 /* Whether the bridge is wanted at all */
 static int wanted(void)
@@ -110,6 +135,40 @@ static int wanted(void)
         asked = !setting_flag("TOSEMU_NO_SCRAP");
 
     return asked;
+}
+
+/*
+ * Starts watching the scrap directory, or moves the watch to where it is now.
+ *
+ * IN_CLOSE_WRITE rather than IN_MODIFY, which is the difference between
+ * reading a file and reading half of one: SCRAP.TXT is written by an ordinary
+ * program doing ordinary writes, and IN_MODIFY arrives after the first of
+ * them. IN_MOVED_TO as well, because a careful program writes beside the name
+ * and renames onto it - which is what put() below does, and what a GEM
+ * application ought to do.
+ *
+ * All of it may fail, and none of the failures are worth reporting. A watch
+ * that could not be set up is a session where copying out does not reach the
+ * desktop, which is where every session was until recently.
+ */
+static void watch_it(void)
+{
+    if (scrap.notify < 0)
+    {
+        scrap.notify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+
+        if (scrap.notify < 0)
+            return;
+    }
+
+    if (scrap.watch >= 0)
+    {
+        inotify_rm_watch(scrap.notify, scrap.watch);
+        scrap.watch = -1;
+    }
+
+    scrap.watch = inotify_add_watch(scrap.notify, scrap.host,
+                                    IN_CLOSE_WRITE | IN_MOVED_TO);
 }
 
 /*
@@ -166,6 +225,8 @@ static const char *directory(void)
     snprintf(scrap.tos, sizeof scrap.tos, "%s", tos);
     snprintf(scrap.host, sizeof scrap.host, "%s", host);
 
+    watch_it();
+
     return scrap.host;
 }
 
@@ -217,6 +278,13 @@ void scrap_watch(const char *tos_path)
         scrap.tos[0] = 0;
         scrap.host[0] = 0;
     }
+
+    /*
+     * Worked out now rather than when something next asks, because this is
+     * scrp_write arriving and what follows it is the application writing the
+     * file. A watch set up after that write has missed the thing it was for.
+     */
+    directory();
 }
 
 /*
@@ -283,8 +351,8 @@ static char *contents(const char *path, size_t *length)
 static int put(const char *dir, const char *name,
                const char *bytes, size_t length)
 {
-    char temporary[PATH_MAX + 1];
-    char final[PATH_MAX + 1];
+    char temporary[SCRAP_PATH];
+    char final[SCRAP_PATH];
     FILE *f;
 
     snprintf(temporary, sizeof temporary, "%s/.scrap-%d", dir, (int)getpid());
@@ -320,12 +388,23 @@ void scrap_refresh(void)
 {
     const char *offering;
     const char *dir;
-    char target[PATH_MAX + 1];
+    char target[SCRAP_PATH];
     char *utf8;
     char *atari;
     size_t utf8_length, atari_length;
 
     if (!wanted())
+        return;
+
+    /*
+     * The directory first, and before asking whether there is anything to
+     * bring in, because settling on it is also what starts the watch on it.
+     * An application that asks where the scrap is and then writes one - which
+     * is most of them, scrp_write being optional - would otherwise never be
+     * watched, and its copy would never reach the desktop.
+     */
+    dir = directory();
+    if (!dir)
         return;
 
     /*
@@ -335,10 +414,6 @@ void scrap_refresh(void)
      */
     offering = setting("TOSEMU_SCRAP_IN");
     if (!offering || !offering[0])
-        return;
-
-    dir = directory();
-    if (!dir)
         return;
 
     snprintf(target, sizeof target, "%s/%s", dir, SCRAP_TEXT);
@@ -361,9 +436,112 @@ void scrap_refresh(void)
     if (!atari)
         return;
 
-    put(dir, SCRAP_TEXT, atari, atari_length);
+    /* The write is about to come back through the watch as though an
+     * application had made it. See scrap.ours. */
+    scrap.ours++;
+
+    if (!put(dir, SCRAP_TEXT, atari, atari_length))
+        scrap.ours--;
 
     free(atari);
+}
+
+/*
+ * Hands what a GEM application cut out to the desktop.
+ *
+ * A file for now, named by TOSEMU_SCRAP_OUT, standing in for a compositor the
+ * way TOSEMU_SCRAP_IN stands in for one on the way in. What replaces it is a
+ * selection taken on the seat, and the shape of this does not change when it
+ * does: read the file, spell it the way the desktop spells text, hand over the
+ * bytes.
+ */
+static void offer_text(void)
+{
+    char source[SCRAP_PATH];
+    const char *where;
+    char *atari;
+    char *utf8;
+    size_t atari_length, utf8_length;
+    FILE *f;
+
+    where = setting("TOSEMU_SCRAP_OUT");
+    if (!where || !where[0])
+        return;
+
+    snprintf(source, sizeof source, "%s/%s", scrap.host, SCRAP_TEXT);
+
+    atari = contents(source, &atari_length);
+    if (!atari)
+        return;
+
+    utf8 = scrap_text_to_utf8(atari, atari_length, &utf8_length);
+    free(atari);
+
+    if (!utf8)
+        return;
+
+    f = fopen(where, "wb");
+    if (f)
+    {
+        if (utf8_length)
+            fwrite(utf8, 1, utf8_length, f);
+
+        fclose(f);
+    }
+
+    free(utf8);
+}
+
+int scrap_fd(void)
+{
+    return scrap.notify;
+}
+
+void scrap_pump(void)
+{
+    /*
+     * Enough for several events at once, and aligned the way the header asks:
+     * a name is part of the event rather than a pointer to one, so the reads
+     * have to land somewhere a struct may legally start.
+     */
+    union {
+        struct inotify_event event;
+        char space[4096];
+    } buffer;
+
+    ssize_t got;
+
+    if (scrap.notify < 0)
+        return;
+
+    while ((got = read(scrap.notify, buffer.space, sizeof buffer.space)) > 0)
+    {
+        ssize_t at = 0;
+
+        while (at + (ssize_t)sizeof(struct inotify_event) <= got)
+        {
+            const struct inotify_event *e =
+                (const struct inotify_event *)(buffer.space + at);
+
+            at += (ssize_t)sizeof(struct inotify_event) + (ssize_t)e->len;
+
+            if (!e->len || strcasecmp(e->name, SCRAP_TEXT) != 0)
+                continue;
+
+            /*
+             * A write of our own coming back. Not an application copying
+             * anything - it is what the desktop offered, on its way in - and
+             * offering it back would be telling the desktop what it just said.
+             */
+            if (scrap.ours > 0)
+            {
+                scrap.ours--;
+                continue;
+            }
+
+            offer_text();
+        }
+    }
 }
 
 void scrap_refresh_for(const char *host_path)
