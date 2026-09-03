@@ -65,6 +65,8 @@ static const struct {
     { "TOSEMU_NO_WINDOW",   "screen",  "window",      1 },
     { "TOSEMU_DECORATIONS", "screen",  "decorations", 0 },
 
+    { "TOSEMU_MEMORY",      "machine", "memory",      0 },
+
     { "TOSEMU_KEYS",        "input",   "keys",        0 },
     { "TOSEMU_CLICKS",      "input",   "clicks",      0 },
 
@@ -252,9 +254,29 @@ static void take_line(const char *where, int line, char *text,
                 return;
             }
 
-        fprintf(stderr, "%s:%d: there is no section called '%s'. There is "
-                        "screen, input, files, session and debug\n",
+        /* The sections are read off the table rather than listed here, so
+         * that adding a setting in a new one cannot leave this saying there
+         * is no such place to put it */
+        fprintf(stderr, "%s:%d: there is no section called '%s'. There is",
                 where, line, named);
+        {
+            int said = 0;
+            int j;
+
+            for (i = 0; i < SETTINGS; i++)
+            {
+                for (j = 0; j < i; j++)
+                    if (strcmp(settings[j].section, settings[i].section) == 0)
+                        break;
+
+                if (j < i)
+                    continue;   /* Said already, by an earlier setting in it */
+
+                fprintf(stderr, "%s %s", said++ ? "," : "",
+                        settings[i].section);
+            }
+        }
+        fprintf(stderr, "\n");
         return;
     }
 

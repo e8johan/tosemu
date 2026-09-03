@@ -67,9 +67,14 @@
   one, and that wants checking against a resource file that has more than one.
 - Investigate how to support non-planar modes (up to 16bpp currently) and 
   planar modes without having to rewrite the entire VDI stack.
-- Add a configuration item (or command line option) to select the memory size 
-  from what the various Atari models (ST, TT and Falcon) offered, and then the
-  maximum possible given the restrictions of the APIs.- wind_update takes no
+- The system variables that say where memory begins and ends - phystop at
+  0x42e, _membot and _memtop, and v_bas_ad at 0x44e - are all nought, because
+  nothing has ever written them. A program that asks GEMDOS how much memory
+  there is gets the right answer, and one that reads the variables the way a
+  Supexec'd routine of the period does is told the machine has none. It is
+  worth doing now that how much there is can be chosen, since that is the
+  answer they would be carrying.
+- wind_update takes no
   lock, and with a process per application there is
   nothing yet for it to protect: each has a screen of its own and what reaches
   the desktop are its windows, so two applications cannot reach each other's
