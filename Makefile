@@ -2,7 +2,7 @@
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
-              gfx.c screen.c settings.c scrap.c scraptext.c \
+              gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -89,12 +89,19 @@ LD = gcc
 DBUSFLAGS = $(shell pkg-config --cflags dbus-1 2>/dev/null && echo -DHAVE_DBUS)
 DBUSLIBS  = $(shell pkg-config --libs dbus-1 2>/dev/null)
 
-CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS)
+# And libpng, for the picture half of the clipboard, looked for the same way
+# and for the same reason: a machine without it should get a session with a
+# working text clipboard rather than a build that will not finish. When it is
+# missing the scrap goes on holding pictures for GEM applications only.
+PNGFLAGS = $(shell pkg-config --cflags libpng 2>/dev/null && echo -DHAVE_PNG)
+PNGLIBS  = $(shell pkg-config --libs libpng 2>/dev/null)
+
+CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
 # looks for them
-LIBS = -lc $(WAYLANDLIBS)
+LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS)
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -316,9 +323,9 @@ settings-check: bin/settingstest
 # built for the same reason as the rest of these: an emulated program can say
 # what it read back, but not whether the bytes in between were right, and it
 # cannot be handed a malformed UTF-8 sequence to be unbothered by.
-bin/scraptest: scraptest.c scraptext.o
+bin/scraptest: scraptest.c scraptext.o scrapimg.o
 	@mkdir -p bin/
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(PNGLIBS) -o $@
 
 scrap-check: bin/scraptest
 	./bin/scraptest

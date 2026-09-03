@@ -469,6 +469,22 @@ check: all
 	test ! -e offered.txt
 	$(RM) -r out out2 watcher.pid scrapdir offered.txt offer.txt
 	#
+	# A picture, and nothing but a picture, which is what a clipboard holds
+	# every time somebody uses a screenshot tool. The stand-in says which
+	# of the two it is offering by what is in it - a PNG says so in its
+	# first eight bytes - so the same setting covers both without a second
+	# one to keep in step. bin/scraptest writes the file, because asking
+	# every machine that builds this for something that can write a PNG
+	# when the thing being tested already can would be silly.
+	$(RM) -r scrapdir offer.png
+	../bin/scraptest --write-png offer.png
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.png \
+	  $(TOSEMU) test-c-scrap picture > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	test ! -e scrapdir/SCRAP.TXT
+	$(RM) -r out scrapdir offer.png
+	#
 	# A wait nothing could ever answer, with a scrap being watched. The
 	# emulator has to say so and stop rather than sit there, and the watch
 	# is what makes that hard: it puts a descriptor in the wait that can
