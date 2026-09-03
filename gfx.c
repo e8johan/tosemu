@@ -1712,6 +1712,41 @@ void gfx_forget(void)
     memset(&w, 0, sizeof w);
 }
 
+/*
+ * Why there will be no windows.
+ *
+ * Failing to connect used to be answered with silence, on the grounds that a
+ * machine with nobody logged in is the ordinary case and says nothing worth
+ * hearing. On a desktop it is not ordinary at all, and the silence is the worst
+ * part of it: the emulator starts, the application runs, the screen is drawn -
+ * into memory, where nobody can see it - and nothing that happens afterwards
+ * explains why no window ever appeared.
+ *
+ * An X session is the case worth naming outright. tosemu shows its windows on
+ * Wayland and only on Wayland, so a person logged into Xorg, which is still
+ * what some machines are given by default, gets a program that looks like it
+ * started and then stopped. Neither is a fault to fix here - one is how the
+ * emulator has always run without a compositor - so what this does is say
+ * which of them happened.
+ *
+ * The two names read here are the session's own rather than tosemu's, which is
+ * why they are read directly instead of through settings.c. Nobody sets either
+ * of them to tell this program anything; they are how a program finds out what
+ * kind of session it is in.
+ */
+static void say_why_there_is_no_window(void)
+{
+    if (getenv("WAYLAND_DISPLAY"))
+        printf("GFX: there is a Wayland session here but connecting to it "
+               "failed, so the screen stays in memory\n");
+    else if (getenv("DISPLAY"))
+        printf("GFX: this is an X session, and tosemu shows its windows on "
+               "Wayland, so the screen stays in memory\n");
+    else
+        printf("GFX: there is no desktop session here, so the screen stays in "
+               "memory\n");
+}
+
 int gfx_open(struct surface *screen)
 {
     memset(&w, 0, sizeof w);
@@ -1728,7 +1763,10 @@ int gfx_open(struct surface *screen)
 
     w.display = wl_display_connect(0);
     if (!w.display)
-        return 0;   /* Nobody is logged in, which is the ordinary case here */
+    {
+        say_why_there_is_no_window();
+        return 0;
+    }
 
     w.registry = wl_display_get_registry(w.display);
     wl_registry_add_listener(w.registry, &registry_listener, 0);
