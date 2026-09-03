@@ -71,6 +71,7 @@ void host_surface_select(void *base, UWORD width, UWORD height, UWORD planes);
 /* The AES's own VDI interface, aes/gemgsxif.c */
 void gsx_init(void);
 void ob_draw(OBJECT *tree, WORD obj, WORD depth);
+void gsx_sclip(const GRECT *pt);
 
 /* Reads a pixel back the long way round, from the plane words, so that the
  * printout is evidence about the memory rather than about the drawing code */
@@ -326,6 +327,27 @@ int main(void)
     gsx_init();
     {
         static OBJECT tree[3];
+
+        /*
+         * Where the drawing may go, which the AES holds on its own
+         * workstation rather than taking as an argument - so it has to be
+         * said before ob_draw the way emuvdi_objc_draw says it, and nothing
+         * says it for a workstation that has only just been opened.
+         *
+         * Without it there is nothing to stop the drawing: an OUTLINED box
+         * draws its outline outside the object, and the box below starts one
+         * pixel in from a corner, so the outline lands off the surface
+         * entirely and the VDI reads and writes whatever is next to it. That
+         * is out of bounds however the memory happens to be laid out - it
+         * only became a crash when something else moved.
+         */
+        GRECT clip;
+
+        clip.g_x = 0;
+        clip.g_y = 0;
+        clip.g_w = WIDTH;
+        clip.g_h = HEIGHT;
+        gsx_sclip(&clip);
 
         tree[0].ob_next = -1; tree[0].ob_head = 1; tree[0].ob_tail = 2;
         tree[0].ob_type = G_BOX;
