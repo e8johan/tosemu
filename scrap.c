@@ -67,9 +67,12 @@
 #include <time.h>
 
 #include "aesclient.h"
+#include "emuvdi/emuvdi.h"
 #include "files.h"
 #include "gfx.h"
+#include "scrapimg.h"
 #include "scraptext.h"
+#include "screen.h"
 #include "settings.h"
 
 #ifndef PATH_MAX
@@ -103,13 +106,53 @@
 #define DEFAULT_SCRAP "C:\\CLIPBRD\\"
 
 /*
- * What the two sides call text.
+ * What the two sides call the things in the scrap.
  *
- * SCRAP.TXT is the name GEM gave it, and every application that pastes text
- * looks for that name. Pictures are the same idea under SCRAP.IMG and are not
- * here yet.
+ * SCRAP is the name GEM gave the file and the extension says what kind of
+ * thing it is, so an application that pastes looks for the kinds it can read
+ * and takes the first it finds. Both may be there at once - the same cut said
+ * two ways - which is why offering to the desktop offers whatever is present
+ * rather than one thing.
  */
-#define SCRAP_TEXT "SCRAP.TXT"
+#define SCRAP_TEXT  "SCRAP.TXT"
+#define SCRAP_IMAGE "SCRAP.IMG"
+
+/* And what a desktop calls a picture. One name, unlike text: everything means
+ * the same thing by it and has done for thirty years. */
+static const char *const image_kinds[] = { "image/png" };
+
+#define IMAGE_KINDS (1)
+
+/*
+ * The machine's colours, for a picture that is not black and white.
+ *
+ * An IMG holds an index per pixel and the palette is not in the file, so the
+ * one that gives those indices meaning is whichever the machine has - the same
+ * one the VDI draws with and the same one a screenshot is written through.
+ */
+#define PALETTE (16)
+
+static const uint32_t *palette_now(void)
+{
+    static uint32_t colours[PALETTE];
+    int i;
+
+    for (i = 0; i < PALETTE; i++)
+        colours[i] = emuvdi_palette_argb(i);
+
+    return colours;
+}
+
+/* How many planes a picture coming in should be split into, which is however
+ * many the screen it will be shown on has */
+static int planes_now(void)
+{
+    int16_t w, h, p;
+
+    screen_mode(&w, &h, &p);
+
+    return (p >= 1 && p <= 8) ? (int)p : 1;
+}
 
 static struct {
     /* Where it is, as an application spells it, and where that lands on the
@@ -443,6 +486,69 @@ static const char *standing_in(void)
 }
 
 /*
+ * Which of the two the stand-in is offering, decided by looking at it.
+ *
+ * A PNG says so in its first eight bytes, and nothing else that anybody would
+ * put on a clipboard begins that way. Deciding by the content rather than by
+ * adding a second setting keeps the stand-in the same shape as the thing it
+ * stands in for: a desktop offers one selection and says what forms it can
+ * produce, and so does this.
+ */
+static int standing_in_is_png(void)
+{
+    const char *file = standing_in();
+    unsigned char first[8];
+    FILE *f;
+    size_t got;
+
+    if (!file)
+        return 0;
+
+    f = fopen(file, "rb");
+    if (!f)
+        return 0;
+
+    got = fread(first, 1, sizeof first, f);
+    fclose(f);
+
+    return got == sizeof first
+           && memcmp(first, "\x89PNG\r\n\x1a\n", 8) == 0;
+}
+
+/* Whether there is text to be had, from a desktop or from the stand-in */
+static int offering_text(void)
+{
+    int i;
+
+    if (standing_in())
+        return !standing_in_is_png();
+
+    for (i = 0; i < TEXT_KINDS; i++)
+        if (gfx_selection_has(text_kinds[i]))
+            return 1;
+
+    return 0;
+}
+
+/* And whether there is a picture */
+static int offering_image(void)
+{
+    int i;
+
+    if (!scrap_img_available())
+        return 0;
+
+    if (standing_in())
+        return standing_in_is_png();
+
+    for (i = 0; i < IMAGE_KINDS; i++)
+        if (gfx_selection_has(image_kinds[i]))
+            return 1;
+
+    return 0;
+}
+
+/*
  * When what the desktop is offering arrived, or 0 when it is offering nothing
  * that can be used.
  *
@@ -450,19 +556,24 @@ static const char *standing_in(void)
  * is doing rather than whatever is really on the clipboard of the machine the
  * suite happens to be running on.
  */
+/*
+ * When what the desktop is offering arrived, or 0 when it is offering nothing
+ * that can be used.
+ *
+ * A picture counts as much as text. Asking only about text meant a desktop
+ * with nothing but a picture on its clipboard read as one offering nothing at
+ * all, so the picture was never fetched - and a picture on its own is what a
+ * clipboard holds every time somebody uses a screenshot tool.
+ */
 static unsigned long long offer_when(void)
 {
-    const char *file = standing_in();
-    int i;
+    if (!offering_text() && !offering_image())
+        return 0;
 
-    if (file)
-        return written_at(file);
+    if (standing_in())
+        return written_at(standing_in());
 
-    for (i = 0; i < TEXT_KINDS; i++)
-        if (gfx_selection_has(text_kinds[i]))
-            return gfx_selection_when();
-
-    return 0;
+    return gfx_selection_when();
 }
 
 /* And the offer itself, as UTF-8. Allocates. */
@@ -470,6 +581,9 @@ static char *offer_utf8(size_t *length)
 {
     const char *file = standing_in();
     int i;
+
+    if (!offering_text())
+        return 0;
 
     if (file)
         return contents(file, length);
@@ -524,18 +638,52 @@ void scrap_refresh(void)
         return;
 
     utf8 = offer_utf8(&utf8_length);
-    if (!utf8)
-        return;
 
-    atari = scrap_text_from_utf8(utf8, utf8_length, &atari_length);
-    free(utf8);
+    if (utf8)
+    {
+        atari = scrap_text_from_utf8(utf8, utf8_length, &atari_length);
+        free(utf8);
 
-    if (!atari)
-        return;
+        if (atari)
+        {
+            put(dir, SCRAP_TEXT, atari, atari_length, when);
+            free(atari);
+        }
+    }
 
-    put(dir, SCRAP_TEXT, atari, atari_length, when);
+    /*
+     * And a picture, if the desktop has one and this build can read it.
+     *
+     * Beside the text rather than instead of it: an application that can only
+     * paste one of the two should find the one it can, and GEM's own answer to
+     * "which of these do you want" is which file the reader opens.
+     */
+    if (offering_image())
+    {
+        char picture[SCRAP_PATH];
+        void *png = 0;
+        size_t png_length = 0;
 
-    free(atari);
+        snprintf(picture, sizeof picture, "%s/%s", dir, SCRAP_IMAGE);
+
+        if (when > written_at(picture)
+            && (standing_in()
+                ? (png = contents(standing_in(), &png_length)) != 0
+                : gfx_selection_take(image_kinds[0], &png, &png_length)))
+        {
+            void *img = 0;
+            size_t img_length = 0;
+
+            if (scrap_img_from_png(png, png_length, palette_now(), PALETTE,
+                                   planes_now(), &img, &img_length))
+            {
+                put(dir, SCRAP_IMAGE, img, img_length, when);
+                free(img);
+            }
+
+            free(png);
+        }
+    }
 }
 
 /*
@@ -547,18 +695,25 @@ void scrap_refresh(void)
  * does: read the file, spell it the way the desktop spells text, hand over the
  * bytes.
  */
-static void offer_text(void)
+/*
+ * Hands whatever a GEM application cut out to the desktop.
+ *
+ * Both kinds if both are there, which is what GEM's scrap is: the same cut
+ * written twice, once as text and once as a picture, with the program pasting
+ * choosing which it can read. A desktop says the same thing by offering one
+ * selection in several forms, so the two ideas line up exactly.
+ */
+static void offer_scrap(void)
 {
     char source[SCRAP_PATH];
     const char *where;
     char *atari;
-    char *utf8;
-    size_t atari_length, utf8_length;
+    char *utf8 = 0;
+    void *png = 0;
+    size_t atari_length, utf8_length = 0, png_length = 0;
     FILE *f;
 
     where = setting("TOSEMU_SCRAP_OUT");
-
-    snprintf(source, sizeof source, "%s/%s", scrap.host, SCRAP_TEXT);
 
     /*
      * What came from the desktop does not go back to it.
@@ -575,21 +730,48 @@ static void offer_text(void)
      * and a cut a person actually made is later than the offer by however long
      * it took them to choose Copy.
      */
-    if (written_at(source) <= offer_when())
+    snprintf(source, sizeof source, "%s/%s", scrap.host, SCRAP_TEXT);
+
+    if (written_at(source) > offer_when())
+    {
+        atari = contents(source, &atari_length);
+
+        if (atari)
+        {
+            utf8 = scrap_text_to_utf8(atari, atari_length, &utf8_length);
+            free(atari);
+        }
+    }
+
+    /* And the picture, under the same rule */
+    if (scrap_img_available())
+    {
+        char picture[SCRAP_PATH];
+
+        snprintf(picture, sizeof picture, "%s/%s", scrap.host, SCRAP_IMAGE);
+
+        if (written_at(picture) > offer_when())
+        {
+            size_t img_length;
+            char *img = contents(picture, &img_length);
+
+            if (img)
+            {
+                if (!scrap_img_to_png(img, img_length, palette_now(), PALETTE,
+                                      &png, &png_length))
+                    png = 0;
+
+                free(img);
+            }
+        }
+    }
+
+    if (!utf8 && !png)
         return;
 
-    atari = contents(source, &atari_length);
-    if (!atari)
-        return;
-
-    utf8 = scrap_text_to_utf8(atari, atari_length, &utf8_length);
-    free(atari);
-
-    if (!utf8)
-        return;
-
-    /* Where a test looks, there being no desktop in one to look at */
-    if (where && where[0])
+    /* Where a test looks, there being no desktop in one to look at. The text,
+     * because that is the half a test can read back. */
+    if (utf8 && where && where[0])
     {
         f = fopen(where, "wb");
 
@@ -603,23 +785,41 @@ static void offer_text(void)
     }
 
     /*
-     * And the desktop itself. This can refuse - no compositor, or nothing the
-     * person has done that this program saw, which is the serial a selection
-     * has to be taken with - and a refusal is not worth reporting: the scrap
-     * is still on disk and another GEM application can still paste it.
+     * And the desktop itself, with the picture beside the text when there is
+     * one - the same cut said two ways, and the program pasting picks.
+     *
+     * This can refuse: no compositor, or nothing the person has done that this
+     * program saw, which is the serial a selection has to be taken with. A
+     * refusal is not worth reporting - the scrap is still on disk and another
+     * GEM application can still paste it.
      */
     {
-        struct gfx_offer what;
+        struct gfx_offer what[2];
+        int n = 0;
 
-        what.mimes = text_kinds;
-        what.mimes_n = TEXT_KINDS;
-        what.bytes = utf8;
-        what.length = utf8_length;
+        if (utf8)
+        {
+            what[n].mimes = text_kinds;
+            what[n].mimes_n = TEXT_KINDS;
+            what[n].bytes = utf8;
+            what[n].length = utf8_length;
+            n++;
+        }
 
-        gfx_selection_give(&what, 1);
+        if (png)
+        {
+            what[n].mimes = image_kinds;
+            what[n].mimes_n = IMAGE_KINDS;
+            what[n].bytes = png;
+            what[n].length = png_length;
+            n++;
+        }
+
+        gfx_selection_give(what, n);
     }
 
     free(utf8);
+    free(png);
 }
 
 int scrap_fd(void)
@@ -655,10 +855,12 @@ void scrap_pump(void)
 
             at += (ssize_t)sizeof(struct inotify_event) + (ssize_t)e->len;
 
-            if (!e->len || strcasecmp(e->name, SCRAP_TEXT) != 0)
+            if (!e->len
+                || (strcasecmp(e->name, SCRAP_TEXT) != 0
+                    && strcasecmp(e->name, SCRAP_IMAGE) != 0))
                 continue;
 
-            offer_text();
+            offer_scrap();
         }
     }
 }

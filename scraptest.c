@@ -33,10 +33,12 @@
  */
 
 #include "scraptext.h"
+#include "scrapimg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 static int n;
 static int fails;
@@ -120,10 +122,77 @@ static char *in(const char *utf8, size_t *length)
     return scrap_text_from_utf8(utf8, strlen(utf8), length);
 }
 
-int main(void)
+/*
+ * The reference picture, in the one place both the test and the suite can
+ * reach it. Written by netpbm's pbmtogem and copied here rather than described
+ * from memory: it uses three of the four ways a row can be encoded, and the
+ * counts are the part that goes wrong quietly - a solid run counts bytes and
+ * not pixels, and reading it the other way gives a picture stretched into
+ * stripes rather than a failure anybody notices.
+ *
+ * 64 pixels by 6: three rows of white, one of black, then two half and half.
+ */
+static const unsigned char gem_raster[] = {
+    0x00, 0x01,             /* version */
+    0x00, 0x08,             /* header length, in words */
+    0x00, 0x01,             /* planes */
+    0x00, 0x01,             /* pattern length */
+    0x01, 0x74, 0x01, 0x74, /* pixel size, in millionths of a metre */
+    0x00, 0x40,             /* width */
+    0x00, 0x06,             /* height */
+
+    0x00, 0x00, 0xff, 0x03, /* the next row, three times */
+    0x08,                   /*   eight bytes of white */
+    0x88,                   /* eight bytes of black */
+    0x00, 0x00, 0xff, 0x02, /* the next row, twice */
+    0x80, 0x08,             /*   eight bytes, as they are */
+    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
+};
+
+/*
+ * Writes that picture out as a PNG, for the suite to stand a desktop up with.
+ *
+ * Here rather than in a script because the alternative is asking every machine
+ * that builds this to have something that can write a PNG, when the thing
+ * being tested already can. It is not a test and says nothing; the checks that
+ * follow are what says the conversion is right.
+ */
+static int write_png(const char *path)
+{
+    uint32_t palette[16];
+    void *png = 0;
+    size_t png_length = 0;
+    FILE *f;
+    int i;
+
+    for (i = 0; i < 16; i++)
+        palette[i] = (uint32_t)(i * 0x111111);
+
+    if (!scrap_img_to_png(gem_raster, sizeof gem_raster, palette, 16,
+                          &png, &png_length))
+        return 1;
+
+    f = fopen(path, "wb");
+    if (!f)
+    {
+        free(png);
+        return 1;
+    }
+
+    fwrite(png, 1, png_length, f);
+    fclose(f);
+    free(png);
+
+    return 0;
+}
+
+int main(int argc, char **argv)
 {
     char *s;
     size_t length;
+
+    if (argc == 3 && strcmp(argv[1], "--write-png") == 0)
+        return write_png(argv[2]);
 
     /* Text that means the same on both machines */
     s = out("Hello", &length);
@@ -289,6 +358,90 @@ int main(void)
     check(scrap_text_codepoint(0xE6), 0x00B5, "0xE6 is a micro sign");
     check(scrap_text_codepoint(0xFF), 0x00AF, "0xFF is a macron");
     check(scrap_text_codepoint(0x00), 0, "and nothing below a space is a character");
+
+    /*
+     * Pictures, over the reference file at the top of this file.
+     */
+    {
+        uint32_t palette[16];
+        void *png = 0, *again = 0;
+        void *img = 0;
+        size_t png_length = 0, again_length = 0, img_length = 0;
+        int i;
+
+        for (i = 0; i < 16; i++)
+            palette[i] = (uint32_t)(i * 0x111111);
+
+        if (!scrap_img_available())
+        {
+            printf("# built without libpng, so pictures are not converted\n");
+        }
+        else
+        {
+            check(scrap_img_to_png(gem_raster, sizeof gem_raster,
+                                   palette, 16, &png, &png_length),
+                  1, "a GEM picture becomes a PNG");
+
+            check(png_length > 8 && memcmp(png, "\x89PNG\r\n\x1a\n", 8) == 0,
+                  1, "and one that says it is a PNG");
+
+            check(scrap_img_from_png(png, png_length, palette, 16, 1,
+                                     &img, &img_length),
+                  1, "and a PNG becomes a GEM picture");
+
+            /* The header is what a reader looks at before anything else, and
+             * everything after it is meaningless if it is wrong */
+            check(img_length > 16, 1, "with a header and something after it");
+            /* Word n is bytes 2n and 2n+1, big endian, so the low half of
+             * each is the odd one. Every field here is small enough to live
+             * in it. */
+            check(((unsigned char *)img)[1], 1, "saying it is version one");
+            check(((unsigned char *)img)[3], 8, "and eight words of header");
+            check(((unsigned char *)img)[5], 1, "and one plane");
+            check(((unsigned char *)img)[7], 1, "and a pattern of one byte");
+            check(((unsigned char *)img)[13], 0x40, "and sixty four across");
+            check(((unsigned char *)img)[15], 6, "and six rows");
+
+            /*
+             * Round tripped rather than compared to the original bytes,
+             * because there is more than one right encoding of the same
+             * picture and this one does not use every form netpbm does. What
+             * has to survive is the picture.
+             */
+            check(scrap_img_to_png(img, img_length, palette, 16,
+                                   &again, &again_length),
+                  1, "and converting it back works");
+
+            check(again_length == png_length
+                  && memcmp(again, png, png_length) == 0,
+                  1, "and the picture came through both ways unchanged");
+
+            free(png);
+            free(img);
+            free(again);
+
+            png = 0;
+
+            /* What is in the scrap directory is whatever an application put
+             * there, so being handed nonsense is a thing that happens */
+            check(scrap_img_to_png("not a picture", 13, palette, 16,
+                                   &png, &png_length),
+                  0, "something that is not a picture is refused");
+
+            {
+                unsigned char broken[sizeof gem_raster];
+
+                memcpy(broken, gem_raster, sizeof broken);
+                broken[13] = 0xff;      /* a width nothing after it can fill */
+
+                check(scrap_img_to_png(broken, sizeof broken, palette, 16,
+                                       &png, &png_length),
+                      1, "a picture that stops early still converts");
+
+                free(png);
+            }
+        }
+    }
 
     printf("1..%d\n", n);
 

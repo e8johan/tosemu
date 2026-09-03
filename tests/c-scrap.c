@@ -22,8 +22,8 @@
  * The clipboard in both directions, and the thing that must not break while
  * either of them works.
  *
- * This is the same program four times over, because what it has to establish
- * needs one process for some of it and two for the rest.
+ * This is the same program several times over, because what it has to
+ * establish needs one process for some of it and two for the rest.
  *
  * With no argument it is the paste: nothing has copied anything in GEM, and
  * asking where the scrap is has to answer somewhere, and SCRAP.TXT has to be
@@ -34,6 +34,10 @@
  * scrap and waits, and what it establishes is not in here at all - an
  * application cannot see its own clipboard, so it is the Makefile that looks
  * at what the desktop was handed.
+ *
+ * With "picture" it is a paste again, of a desktop offering a picture and no
+ * text at all - which is what a clipboard holds after somebody uses a
+ * screenshot tool, and which was once read as a desktop offering nothing.
  *
  * With "send" and "wait" it is two GEM applications passing a scrap between
  * themselves while the desktop is offering something else entirely. That case
@@ -244,6 +248,35 @@ int main(int argc, char **argv)
         fflush(stdout);
 
         evnt_keybd();
+    }
+    else if (argc > 1 && strcmp(argv[1], "picture") == 0)
+    {
+        /*
+         * Pasting a picture, which the desktop can offer without offering any
+         * text at all - a screenshot tool puts nothing else on a clipboard.
+         *
+         * That case was once read as the desktop offering nothing, because
+         * what decided whether there was anything worth fetching only ever
+         * asked about text. So this checks a scrap that has a picture in it
+         * and no SCRAP.TXT beside it.
+         */
+        unsigned char head[16];
+        int got;
+
+        check(scrp_read(path), 1, "scrp_read answers with a picture on offer");
+
+        strcat(path, "SCRAP.IMG");
+
+        got = scrap_read(path, (char *)head, (int)sizeof head);
+
+        check(got, 16, "and a GEM picture was written for it");
+
+        if (got == 16)
+        {
+            check(head[1], 1, "which says it is version one");
+            check((head[12] << 8) | head[13], 64, "and is sixty four across");
+            check((head[14] << 8) | head[15], 6, "and six rows deep");
+        }
     }
     else if (argc > 1 && strcmp(argv[1], "copy") == 0)
     {
