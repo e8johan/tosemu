@@ -51,6 +51,7 @@
 #include <string.h>
 
 #include "emuvdi/emuvdi.h"
+#include "surface.h"
 
 /* What a window is made of, http://toshyp.atari.org/en/008002.html */
 #define W_NAME     (0x0001)
@@ -617,4 +618,75 @@ void aes_frame_draw(const struct aes_frame *frame)
     emuvdi_objc_draw(tree, F_BOX, 8, frame->x, frame->y, frame->w, frame->h);
 
     emuvdi_tree_free(tree);
+}
+
+/*
+ * A title bar for a window that has none of its own.
+ *
+ * A GEM window wears the frame above and needs nothing here. A dialog and the
+ * menu bar have no frame at all - GEM never gave them one, because on an ST
+ * they were drawn straight onto the screen and there was nothing to take hold
+ * of them by - so they ask the desktop to put its own frame round the outside.
+ * That is not everywhere a thing a desktop will do. GNOME draws no frames round
+ * a Wayland window and has said it will not, and a window with no frame
+ * anywhere has nothing to move it by, nothing to close it with and nothing
+ * saying what it is.
+ *
+ * So one is drawn, into a surface of the window's own that gfx.c shows as a
+ * strip along the top. It is drawn by the code above rather than by something
+ * new, which is the whole reason for this being here and not there: what comes
+ * out is the title bar of a GEM window, in the same font, with the same close
+ * box and the same light and dark for whether this is the window in front. A
+ * frame drawn to look like the desktop's would be an imitation of a desktop
+ * this program cannot see, and a frame drawn to look like neither would be a
+ * third kind of window on a screen that already has two.
+ *
+ * The surface is the caller's and is exactly the strip: the whole of it is the
+ * bar, and how tall that is is hbox, which is what gfx.c leaves room for. It
+ * says how wide as well, because a surface is a whole number of words across
+ * and a window is whatever width it is - so the bar is drawn to the window's
+ * width and the surface may be a few pixels wider than that.
+ */
+void host_frame_strip(struct surface *into, int16_t width, const char *name,
+                      int active, int closer)
+{
+    struct aes_frame frame;
+    struct surface *was;
+    int16_t handle, wchar, hchar, wbox, hbox;
+
+    if (!into)
+        return;
+
+    emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
+
+    memset(&frame, 0, sizeof frame);
+
+    /* A close box on everything that can be closed, and a window that is
+     * dragged by its title bar - which is what W_MOVE says, and is true here
+     * however the dragging is actually done */
+    frame.kind = W_NAME | W_MOVE | (closer ? W_CLOSE : 0);
+    frame.x = 0;
+    frame.y = 0;
+    frame.w = width;
+    frame.h = hbox;
+
+    /* Not copied and not written to, the way every other name here is not */
+    frame.name = (char *)name;
+    frame.active = active;
+
+    /*
+     * Onto the strip, whatever else is being drawn into.
+     *
+     * This is reached from the compositor's side rather than from a GEM call -
+     * a window is being opened, or the person has just made another one the
+     * one in front - so what is selected is whatever the application was last
+     * drawing into, and it has to be given back untouched.
+     */
+    was = surface_selected();
+
+    surface_select(into);
+    aes_frame_draw(&frame);
+
+    if (was)
+        surface_select(was);
 }

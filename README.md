@@ -88,8 +88,16 @@ the size box runs the desktop's own resize drag. The desktop is asked to put
 nothing round the outside, because a title bar inside a title bar is the
 picture of another computer again. Say `TOSEMU_DECORATIONS=desktop` to have it
 the other way round: the desktop's frame, and GEM's title bar left out of what
-is shown. Dialogs and the menu bar always take the desktop's, having no frame
-of their own to wear.
+is shown.
+
+Dialogs and the menu bar have no frame of their own to wear, so they ask the
+desktop for one. Not every desktop draws them: GNOME draws no frames at all
+round a Wayland window and has said it will not, which used to leave a dialog
+with nothing to move it by and nothing to close it with. Where the desktop
+draws none, one is drawn here instead - a GEM title bar, by the code that draws
+the ones on windows, so what appears is the bar of a GEM window and not an
+imitation of somebody else's desktop. `TOSEMU_DECORATIONS=gem` says to draw
+them that way everywhere without asking the desktop first.
 
 A resize drag shows a rubber band, which is what an ST did: the window becomes
 the size the drag has reached and what is in it is an outline of alternate black
