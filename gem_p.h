@@ -115,4 +115,9 @@ void gem_set_word(uint32_t array, int count, int index, int16_t value);
 uint32_t gem_long(uint32_t array, int count, int index);
 void gem_set_long(uint32_t array, int count, int index, uint32_t value);
 
+/* And an answer that goes in whatever the caller said about the array, for
+ * the one place a real AES writes without looking at the count - see the note
+ * above it in gem.c */
+void gem_put_long(uint32_t array, int index, uint32_t value);
+
 #endif /* GEM_P_H */
