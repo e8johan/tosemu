@@ -86,8 +86,8 @@
 #define THEBAR (1)
 
 /*
- * How narrow the bar's window may be made, which is however far its titles
- * reach.
+ * How far the bar's titles reach, which is the width its window opens at and
+ * the narrowest it may then be made.
  *
  * The window shows the left hand end of a bar the AES lays out across the whole
  * emulated screen, so making it narrower shows less of it - and the one thing
@@ -361,22 +361,37 @@ uint32_t AES_menu_bar()
             bar_tree = address;
             bar_shown = 1;
 
-            /* A frame round it: the bar is a strip of GEM's own drawing with
-             * nothing in it to take hold of. What it gets is a handle and a
-             * size box on the end - see host_frame_handle */
-            gfx_window_open(BAR_WINDOW, "Menu", 0, 0, emuvdi_screen_width(),
-                            emuvdi_menu_height(), 0);
-
             /*
-             * And how wide it may be made. No narrower than its own titles,
-             * no wider than the bar the AES laid out, and exactly one row tall
-             * whichever it is: how tall a menu bar is is not a matter of taste,
-             * and a bar of any other height is one the AES did not draw.
+             * A frame round it: the bar is a strip of GEM's own drawing with
+             * nothing in it to take hold of. What it gets is a handle and a
+             * size box on the end - see host_frame_handle.
+             *
+             * It opens at its titles rather than at the screen's width, so
+             * that the handle sits beside the last title instead of out at the
+             * far edge with the empty end of the bar between them. A tree with
+             * no titles in it opens at the width of an ST screen, there being
+             * nothing to measure and a strip of bar being better to take hold
+             * of than none.
              */
             {
-                int16_t least = titles_end(host);
+                int16_t wide = titles_end(host);
                 int16_t tall = emuvdi_menu_height();
+                int16_t least = wide;
 
+                if (wide <= 0)
+                    wide = 320;
+                if (wide > emuvdi_screen_width())
+                    wide = emuvdi_screen_width();
+
+                gfx_window_open(BAR_WINDOW, "Menu", 0, 0, wide, tall, 0);
+
+                /*
+                 * And how wide it may be made. No narrower than its own
+                 * titles, no wider than the bar the AES laid out, and exactly
+                 * one row tall whichever it is: how tall a menu bar is is not
+                 * a matter of taste, and a bar of any other height is one the
+                 * AES did not draw.
+                 */
                 if (least > 0)
                     gfx_window_limits(BAR_WINDOW, least, tall,
                                       emuvdi_screen_width(), tall);
