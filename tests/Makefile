@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap
 
 CC=m68k-atari-mint-gcc
 
@@ -50,6 +50,9 @@ test-c-vdi: c-vdi.c
 	$(CC) $< -lgem -o $@
 
 test-c-aesd: c-aesd.c
+	$(CC) $< -lgem -o $@
+
+test-c-scrap: c-scrap.c
 	$(CC) $< -lgem -o $@
 
 test-c-acc: c-acc.c
@@ -364,6 +367,49 @@ check: all
 	! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out accsaid accwas accd.pid acc.socket
+	#
+	# Pasting what the desktop is offering, with a file standing in for a
+	# desktop. There is no compositor in a test and there cannot be, so
+	# TOSEMU_SCRAP_IN is how the offer is made - see settings.c. The text in
+	# it has two letters an ST spells its own way and a line ending it
+	# spells with two bytes, which is the whole of the conversion in one
+	# short paragraph.
+	$(RM) -r scrapdir
+	printf '\303\204rade\nv\303\244nner\n' > offer.txt
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	  $(TOSEMU) test-c-scrap > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -r out scrapdir
+	#
+	# And two GEM applications passing a scrap between themselves while the
+	# desktop goes on offering something else. That worked before any of
+	# this existed and is what the bringing across is most likely to break:
+	# the sender's cut is newer than the offer, so the reader has to be
+	# given the sender's. A daemon is needed for the two to find each other
+	# at all, and gets a socket of its own so a session somebody is using is
+	# left alone.
+	$(RM) -r scrapdir
+	TOSEMU_AESD=$(CURDIR)/scrap.socket ../bin/tosaesd --no-config & \
+	  echo $$! > scrapd.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/scrap.socket \
+	    TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ \
+	    TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	    $(TOSEMU_FOR_A_WHILE) test-c-scrap wait > out & \
+	  echo $$! > waiter.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/scrap.socket \
+	    TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ \
+	    TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	    $(TOSEMU_FOR_A_WHILE) test-c-scrap send 'TEST-C-S' > out2; \
+	  wait `cat waiter.pid` || true; \
+	  kill `cat scrapd.pid`
+	! grep -q '^not ok' out
+	! grep -q '^not ok' out2
+	grep -q '^1\.\.' out
+	grep -q '^1\.\.' out2
+	$(RM) -r out out2 scrapd.pid waiter.pid scrap.socket scrapdir offer.txt
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

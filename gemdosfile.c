@@ -44,6 +44,7 @@
 #include "gemdos_p.h"
 #include "gemdosdrive_p.h"
 #include "files.h"
+#include "scrap.h"
 
 /* File structures ***********************************************************/
 
@@ -937,7 +938,11 @@ uint32_t GEMDOS_Fsfirst()
     err = path_from_tos(buf, ubuf);
     if (err)
         return err;
-    
+
+    /* An application finding out which formats the scrap holds globs SCRAP.*
+     * in it, which is a paste about to happen. See scrap.h. */
+    scrap_refresh_for(ubuf);
+
     /* TODO, take attr into account */
     
     if ((i = glob(ubuf, 0, 0, gres)) == 0) {
@@ -1116,6 +1121,16 @@ uint32_t GEMDOS_Fopen()
     FUNC_TRACE_ARGS {
         printf("    path: '%s' -> '%s'\n", buf, ubuf);
     }
+
+    /*
+     * Opening a file in the scrap directory to read it is a paste, whether or
+     * not the application announced one: plenty ask scrp_read once at startup
+     * and then open SCRAP.TXT directly ever after. Opening one to write is not,
+     * and must not bring anything across - that would be dropping the desktop's
+     * clipboard into the file the application is about to replace.
+     */
+    if ((mode & 0x3) != 1)
+        scrap_refresh_for(ubuf);
 
     f = fopen(ubuf, m);
     if (f == NULL)

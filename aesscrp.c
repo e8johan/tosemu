@@ -43,6 +43,7 @@
 
 #include "aesclient.h"
 #include "m68k.h"
+#include "scrap.h"
 
 /* A TOS path, which is short: a drive, directories of eight and three, and a
  * separator between each */
@@ -59,7 +60,16 @@ uint32_t AES_scrp_read()
     if (!buffer)
         return AES_ERROR;
 
-    aes_client_scrap_get(path, sizeof path);
+    /*
+     * An application asking where the scrap is is an application about to
+     * paste, which is the moment to bring across whatever the desktop is
+     * offering. It does nothing unless the desktop has something newer than
+     * what is in the directory already - see scrap.c, where deciding that is
+     * the whole of the difficulty.
+     */
+    scrap_refresh();
+
+    scrap_where(path, sizeof path);
 
     FUNC_TRACE_ARGS {
         printf("    scrap: [%s]\n", path);
@@ -104,6 +114,7 @@ uint32_t AES_scrp_write()
     }
 
     aes_client_scrap_set(path);
+    scrap_watch(path);
 
     return AES_E_OK;
 }

@@ -70,6 +70,20 @@ static const struct {
 
     { "TOS_BASE_PATH",      "files",   "base",        0 },
 
+    { "TOSEMU_SCRAP",       "scrap",   "dir",         0 },
+    { "TOSEMU_NO_SCRAP",    "scrap",   "clipboard",   1 },
+
+    /*
+     * What stands in for a desktop, the way TOSEMU_KEYS and TOSEMU_CLICKS
+     * stand in for a person. A compositor is not something a test can arrange
+     * and neither is somebody pressing Copy in another program, so these are
+     * the only way the bridge can be checked at all: one names a file holding
+     * what the desktop is offering, the other where to put what a GEM
+     * application offered it.
+     */
+    { "TOSEMU_SCRAP_IN",    "scrap",   "paste",       0 },
+    { "TOSEMU_SCRAP_OUT",   "scrap",   "copy",        0 },
+
     { "TOSEMU_AESD",        "session", "socket",      0 },
 
     { "TOSEMU_SCREENSHOT",  "debug",   "screenshot",  0 },
