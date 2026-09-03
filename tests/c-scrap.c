@@ -19,14 +19,21 @@
  */
 
 /*
- * Pasting from the desktop, and the thing that must not break while it works.
+ * The clipboard in both directions, and the thing that must not break while
+ * either of them works.
  *
- * This is the same program in three parts, because what it has to establish
- * needs one process for half of it and two for the other half.
+ * This is the same program four times over, because what it has to establish
+ * needs one process for some of it and two for the rest.
  *
- * With no argument it is the paste: nothing has copied anything, and asking
- * where the scrap is has to answer somewhere, and SCRAP.TXT has to be there
- * with what the desktop was offering in it, spelled the way an ST spells text.
+ * With no argument it is the paste: nothing has copied anything in GEM, and
+ * asking where the scrap is has to answer somewhere, and SCRAP.TXT has to be
+ * there with what the desktop was offering in it, spelled the way an ST spells
+ * text.
+ *
+ * With "copy" it is the other direction, which nothing announces. It writes a
+ * scrap and waits, and what it establishes is not in here at all - an
+ * application cannot see its own clipboard, so it is the Makefile that looks
+ * at what the desktop was handed.
  *
  * With "send" and "wait" it is two GEM applications passing a scrap between
  * themselves while the desktop is offering something else entirely. That case
@@ -187,6 +194,55 @@ int main(int argc, char **argv)
         check_bytes(got, length, "FROM GEM", 8,
                     "and read what the other application cut, not the desktop's");
     }
+    else if (argc > 1 && strcmp(argv[1], "hang") == 0)
+    {
+        /*
+         * Waiting for a key that cannot arrive, with a scrap directory being
+         * watched.
+         *
+         * The emulator is supposed to notice that nothing could ever answer
+         * this and say so, rather than sitting there. Asking where the scrap
+         * is first is what makes it interesting: that starts the watch, which
+         * puts a file descriptor in the wait that can never end one - it
+         * serves the desktop, not this program - and a loop that counts
+         * descriptors rather than asking which of them could answer is fooled
+         * by exactly that into hanging silently.
+         *
+         * Nothing after this line runs. What is being checked is what the
+         * emulator printed on its way out.
+         */
+        check(scrp_read(path), 1, "the scrap was found before the wait");
+
+        printf("1..%d\n", n);
+        fflush(stdout);
+
+        evnt_keybd();
+    }
+    else if (argc > 1 && strcmp(argv[1], "copy") == 0)
+    {
+        /*
+         * A GEM application cutting something out, which is the direction
+         * nothing announces. What is being established is not in this file at
+         * all - it is in what the desktop was handed, which the Makefile looks
+         * at afterwards. All this has to do is write a scrap and then wait,
+         * because waiting is where the watch on the directory is read, and it
+         * is where a GEM program goes the moment after it has copied anything.
+         */
+        FILE *f;
+
+        check(scrap_file(path), 1, "the scrap has somewhere to be cut into");
+
+        f = fopen(path, "wb");
+        check(f != 0, 1, "and could be written");
+
+        if (f)
+        {
+            fwrite("\x8E" "rade\r\n", 1, 7, f);
+            fclose(f);
+        }
+
+        evnt_timer(500);
+    }
     else
     {
         /* Nobody has copied anything in GEM, and the desktop is offering
@@ -209,6 +265,17 @@ int main(int argc, char **argv)
         check_bytes(got, length, wanted, (int)sizeof wanted - 1,
                     "spelled the way an ST spells text, with CR LF between "
                     "lines");
+
+        /*
+         * Waits, so that the watch on the scrap directory is read at least
+         * once with the file that has just been put there in it. Bringing the
+         * desktop's clipboard in writes into the very directory being watched,
+         * and what must not happen next is that write being read back out and
+         * offered to the desktop it came from. Nothing here can see that; the
+         * Makefile checks it by giving this run somewhere to offer to and
+         * finding nothing was.
+         */
+        evnt_timer(500);
     }
 
     printf("1..%d\n", n);

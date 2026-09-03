@@ -410,6 +410,54 @@ check: all
 	grep -q '^1\.\.' out
 	grep -q '^1\.\.' out2
 	$(RM) -r out out2 scrapd.pid waiter.pid scrap.socket scrapdir offer.txt
+	#
+	# And the other direction, which nothing announces: a GEM application
+	# writes SCRAP.TXT and says nothing at all, so the file appearing is the
+	# only notice there is and a watch on the directory is the only way to
+	# take it. What the desktop would have been offered goes to
+	# TOSEMU_SCRAP_OUT, and it is the file rather than the test that says
+	# whether this worked - the application cannot see its own clipboard.
+	$(RM) -r scrapdir offered.txt
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_OUT=$(CURDIR)/offered.txt \
+	  $(TOSEMU) test-c-scrap copy > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	printf '\303\204rade\n' > wanted.txt
+	cmp offered.txt wanted.txt
+	$(RM) -r out scrapdir offered.txt wanted.txt
+	#
+	# And the two of them at once, which is where they can chase each other.
+	# Bringing the desktop's clipboard in means writing into the directory
+	# being watched, and the watch cannot tell that write from an
+	# application's - so without something to stop it, what the desktop
+	# offered is read straight back out and offered to the desktop it came
+	# from. There is nowhere inside GEM that shows: what says it happened is
+	# a file appearing here that nothing should have written.
+	$(RM) -r scrapdir offered.txt
+	printf '\303\204rade\nv\303\244nner\n' > offer.txt
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	  TOSEMU_SCRAP_OUT=$(CURDIR)/offered.txt $(TOSEMU) test-c-scrap > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	test ! -e offered.txt
+	$(RM) -r out scrapdir offered.txt offer.txt
+	#
+	# A wait nothing could ever answer, with a scrap being watched. The
+	# emulator has to say so and stop rather than sit there, and the watch
+	# is what makes that hard: it puts a descriptor in the wait that can
+	# never end one, because it serves the desktop and not the program. A
+	# loop that counts descriptors instead of asking which could answer is
+	# fooled by exactly that, and the honest message becomes a silent hang -
+	# which is what the timeout below would catch.
+	$(RM) -r scrapdir
+	timeout 10 env TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_NO_WINDOW=1 \
+	  $(NO_DAEMON) ../bin/tosemu --no-config test-c-scrap hang > out 2>&1; \
+	  echo "$$?" > code
+	test "`cat code`" != 124
+	grep -q 'no window for either to arrive at' out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -r out code scrapdir
 
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))

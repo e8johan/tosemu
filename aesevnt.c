@@ -49,6 +49,7 @@
 #include "gem_p.h"
 #include "aesclient.h"
 #include "gfx.h"
+#include "scrap.h"
 #include "tossystem.h"
 #include "m68k.h"
 
@@ -209,11 +210,11 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
     for (;;)
     {
-        struct pollfd fds[2];
+        struct pollfd fds[3];
         int nfds = 0;
         long left;
-        int wayland, daemon;
-        int wayland_slot = -1, daemon_slot = -1;
+        int wayland, daemon, scrap;
+        int wayland_slot = -1, daemon_slot = -1, scrap_slot = -1;
 
         /*
          * The menu bar, before the application hears about anything.
@@ -440,6 +441,20 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             nfds++;
         }
 
+        /*
+         * And the scrap directory, which is how a cut reaches the desktop. A
+         * GEM application never says it copied anything, so a file appearing
+         * is the only notice there is, and this is where it is noticed.
+         */
+        scrap = scrap_fd();
+        if (scrap >= 0)
+        {
+            scrap_slot = nfds;
+            fds[nfds].fd = scrap;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
+
         if (deadline < 0)
             left = -1;
         else
@@ -450,11 +465,18 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         }
 
         /*
-         * Nothing is watching a device yet, so there is nothing in the set and
-         * this is a sleep. The compositor's connection and the daemon's socket
-         * go here, and then it is a wait on all three at once.
+         * Nothing that could ever answer this wait, and no timer to give up
+         * after.
+         *
+         * Asked about the two that could answer it rather than about how many
+         * things are in the set, and the difference matters. The scrap
+         * directory is in the set as well, and nothing that arrives there can
+         * end a wait: it serves the desktop, not the application, so a program
+         * waiting for a key it will never get would sit here for ever with a
+         * watch keeping the count above nought. That is the honest message
+         * below turning into a silent hang.
          */
-        if (nfds == 0 && left < 0)
+        if (wayland_slot < 0 && daemon_slot < 0 && left < 0)
         {
             /*
              * Waiting for ever with nothing that could end the wait: no
@@ -484,6 +506,9 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
         if (daemon_slot >= 0 && (fds[daemon_slot].revents & POLLIN))
             aes_client_pump();
+
+        if (scrap_slot >= 0 && (fds[scrap_slot].revents & POLLIN))
+            scrap_pump();
     }
 }
 
