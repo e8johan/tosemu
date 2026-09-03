@@ -113,6 +113,15 @@
  */
 #define SPEC_BAR      (0x00011101L)
 #define SPEC_TITLE    (0x00011101L)
+
+/*
+ * The handle at the end of the menu bar, which is a box of the same hatching
+ * the name of the window in front is drawn on - TOPPED_COLOR as a box's own
+ * colours rather than a TEDINFO's, the word meaning the same thing in both.
+ * Plain when the bar is not the one being worked in, the same way and for the
+ * same reason a title bar is.
+ */
+#define SPEC_HANDLE   (0x000111a1L)
 #define SPEC_SLIDE    (0x00011111L)
 #define SPEC_ELEV     (0x00011101L)
 #define SPEC_CLOSER   (0x05011101L)
@@ -689,4 +698,73 @@ void host_frame_strip(struct surface *into, int16_t width, const char *name,
 
     if (was)
         surface_select(was);
+}
+
+/*
+ * And the furniture on the end of the menu bar.
+ *
+ * The bar is a window like any other and needs the two things a window needs:
+ * something to move it by and something to change its size with. A title bar
+ * above it would be wrong twice over - it would say the name of an application
+ * whose name is already the first thing on the bar, and it would put a second
+ * strip above a strip that is one row tall by definition. So the furniture goes
+ * beside the menu rather than above it, at the right hand end where the titles
+ * have run out: a handle to drag, and a size box past it at the very edge.
+ *
+ * The handle is hatched when this is the application being worked in, which is
+ * what a title bar does and is worth more here than there. Several TOS programs
+ * can be running, each with a bar of its own, and the hatching is what says
+ * which bar belongs to the one that will get what you type.
+ *
+ * Only the width can be changed, and what changing it does is show more or less
+ * of the bar - the AES lays the bar out across the whole emulated screen either
+ * way, and an application is never told. So the size box is a size box in the
+ * one direction, and the height is whatever a menu bar is tall.
+ *
+ * The tree is built here rather than through the frame above it. Three objects
+ * with no gadgets, no sliders and no name is not what lay_out is for, and
+ * saying it directly is shorter than the arrangement that would let it fit.
+ */
+void host_frame_handle(struct surface *into, int16_t width, int16_t height,
+                       int active)
+{
+    struct surface *was;
+    void *tree;
+    int16_t handle, wchar, hchar, wbox, hbox;
+
+    if (!into || width <= 0 || height <= 0)
+        return;
+
+    emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
+
+    /* Nothing is drawn where there is no room for both pieces, which is a
+     * width nothing asks for: gfx.c works this out from the same wbox */
+    if (width <= wbox)
+        return;
+
+    tree = emuvdi_tree_alloc(3);
+    if (!tree)
+        return;
+
+    emuvdi_tree_set(tree, 0, NONE, 1, 2, G_IBOX, 0, 0,
+                    (void *)(uintptr_t)0, 0, 0, width, height);
+    emuvdi_tree_set(tree, 1, 2, NONE, NONE, G_BOX, 0, 0,
+                    (void *)(uintptr_t)(active ? SPEC_HANDLE : SPEC_TITLE),
+                    0, 0, (int16_t)(width - wbox), height);
+
+    /* The last object in a tree says so, which is how the drawing knows where
+     * to stop */
+    emuvdi_tree_set(tree, 2, 0, NONE, NONE, G_BOXCHAR, 0x20, 0,
+                    (void *)(uintptr_t)SPEC_SIZER,
+                    (int16_t)(width - wbox), 0, wbox, height);
+
+    was = surface_selected();
+
+    surface_select(into);
+    emuvdi_objc_draw(tree, 0, 8, 0, 0, width, height);
+
+    if (was)
+        surface_select(was);
+
+    emuvdi_tree_free(tree);
 }

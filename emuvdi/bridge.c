@@ -243,6 +243,28 @@ uint16_t emuvdi_tree_state(void *tree, int index)
     return ((OBJECT *)tree + index)->ob_state;
 }
 
+void emuvdi_tree_get(void *tree, int index, int16_t *next, int16_t *head,
+                     int16_t *tail, int16_t *x, int16_t *y,
+                     int16_t *w, int16_t *h)
+{
+    const OBJECT *o = (const OBJECT *)tree + index;
+
+    if (next)
+        *next = o->ob_next;
+    if (head)
+        *head = o->ob_head;
+    if (tail)
+        *tail = o->ob_tail;
+    if (x)
+        *x = o->ob_x;
+    if (y)
+        *y = o->ob_y;
+    if (w)
+        *w = o->ob_width;
+    if (h)
+        *h = o->ob_height;
+}
+
 /*
  * A USERBLK, likewise, and for the same reason: ub_code is a function pointer
  * and ub_parm a LONG, so it is eight bytes in the machine and sixteen here.

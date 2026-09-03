@@ -80,6 +80,51 @@
 #define BAR_WINDOW (9)
 
 /*
+ * The object in a menu tree that holds the titles, which is what GEM calls the
+ * bar - see gemmnlib.c, where the AES finds a title the same way.
+ */
+#define THEBAR (1)
+
+/*
+ * How narrow the bar's window may be made, which is however far its titles
+ * reach.
+ *
+ * The window shows the left hand end of a bar the AES lays out across the whole
+ * emulated screen, so making it narrower shows less of it - and the one thing
+ * that must not be lost is a title, there being no way to reach a menu whose
+ * title is not on the screen. Everything to the right of the last one is empty
+ * bar, and that is what a person narrowing it is trimming away.
+ *
+ * The chain of children runs back to the parent rather than to nothing, which
+ * is how it is known to have ended. The count is there because this is the
+ * application's tree rather than one built here, and a tree that points at
+ * itself should stop this rather than hang it.
+ */
+static int16_t titles_end(void *tree)
+{
+    int16_t child = 0;
+    int16_t least = 0;
+    int steps;
+
+    emuvdi_tree_get(tree, THEBAR, 0, &child, 0, 0, 0, 0, 0);
+
+    for (steps = 0; steps < 256 && child > THEBAR; steps++)
+    {
+        int16_t x, y, w, next;
+
+        emuvdi_objc_offset(tree, child, &x, &y);
+        emuvdi_tree_get(tree, child, &next, 0, 0, 0, 0, &w, 0);
+
+        if (x + w > least)
+            least = (int16_t)(x + w);
+
+        child = next;
+    }
+
+    return least;
+}
+
+/*
  * The accessories, as this application sees them.
  *
  * The names are kept here because the AES keeps the pointer rather than the
@@ -316,10 +361,26 @@ uint32_t AES_menu_bar()
             bar_tree = address;
             bar_shown = 1;
 
-            /* The desktop's frame round it: the bar is a strip of GEM's own
-             * drawing with nothing in it to take hold of */
+            /* A frame round it: the bar is a strip of GEM's own drawing with
+             * nothing in it to take hold of. What it gets is a handle and a
+             * size box on the end - see host_frame_handle */
             gfx_window_open(BAR_WINDOW, "Menu", 0, 0, emuvdi_screen_width(),
                             emuvdi_menu_height(), 0);
+
+            /*
+             * And how wide it may be made. No narrower than its own titles,
+             * no wider than the bar the AES laid out, and exactly one row tall
+             * whichever it is: how tall a menu bar is is not a matter of taste,
+             * and a bar of any other height is one the AES did not draw.
+             */
+            {
+                int16_t least = titles_end(host);
+                int16_t tall = emuvdi_menu_height();
+
+                if (least > 0)
+                    gfx_window_limits(BAR_WINDOW, least, tall,
+                                      emuvdi_screen_width(), tall);
+            }
 
             aes_tree_out();
             aes_tree_done();

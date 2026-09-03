@@ -148,6 +148,17 @@ void emuvdi_tree_set(void *tree, int index, int16_t next, int16_t head,
 uint16_t emuvdi_tree_state(void *tree, int index);
 
 /*
+ * And reading an object back, for a tree this program did not build.
+ *
+ * The menu bar's is the one that has to be read: it is the application's tree,
+ * and where the last of its titles ends is what says how narrow the bar may be
+ * made. Anything not wanted is asked for with a null.
+ */
+void emuvdi_tree_get(void *tree, int index, int16_t *next, int16_t *head,
+                     int16_t *tail, int16_t *x, int16_t *y,
+                     int16_t *w, int16_t *h);
+
+/*
  * A USERBLK, which is what an object the application draws itself points at.
  *
  * It holds two things and neither means anything on this side: a routine that
