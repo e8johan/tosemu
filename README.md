@@ -99,16 +99,6 @@ the ones on windows, so what appears is the bar of a GEM window and not an
 imitation of somebody else's desktop. `TOSEMU_DECORATIONS=gem` says to draw
 them that way everywhere without asking the desktop first.
 
-The menu bar goes at the top of the display, where a menu bar goes. Wayland
-gives a client no way to put a window anywhere, so this is asked for the way a
-desktop's own panels ask for it - the layer shell, which anchors a surface to an
-edge of a display above the ordinary windows, with no frame and nothing to drag
-it by. The description of that protocol is not part of wayland-protocols and is
-carried in `protocols/` rather than being another thing to install. It is an
-attempt rather than the way it is done: where the compositor has no layer shell,
-and GNOME does not, the bar is an ordinary window wherever the desktop decides
-to put it.
-
 A resize drag shows a rubber band, which is what an ST did: the window becomes
 the size the drag has reached and what is in it is an outline of alternate black
 and white pixels with the desktop showing through. The application hears nothing

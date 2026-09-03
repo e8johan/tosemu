@@ -37,19 +37,11 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 # The header is generated too, but only the source becomes an object
-#
-# One of the descriptions is carried rather than found. Layer shell is how the
-# panels and bars of a desktop are made, and it is what puts the menu bar at
-# the top of the display instead of wherever a window would go; it is not part
-# of wayland-protocols and is not packaged anywhere to depend on, so the file
-# itself is in protocols/. See the note above bar_create in gfx.c.
 WAYLANDGENERATED = gen/xdg-shell-protocol.c gen/xdg-dialog-protocol.c \
-                   gen/xdg-decoration-protocol.c \
-                   gen/wlr-layer-shell-protocol.c
+                   gen/xdg-decoration-protocol.c
 WAYLANDHEADERS = gen/xdg-shell-client-protocol.h \
                  gen/xdg-dialog-v1-client-protocol.h \
-                 gen/xdg-decoration-unstable-v1-client-protocol.h \
-                 gen/wlr-layer-shell-unstable-v1-client-protocol.h
+                 gen/xdg-decoration-unstable-v1-client-protocol.h
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 
@@ -359,15 +351,6 @@ gen/xdg-decoration-protocol.c:
 gen/xdg-decoration-unstable-v1-client-protocol.h:
 	@mkdir -p gen/
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
-
-# The one description that is carried here rather than found on the machine
-gen/wlr-layer-shell-protocol.c: protocols/wlr-layer-shell-unstable-v1.xml
-	@mkdir -p gen/
-	$(WAYLAND_SCANNER) private-code $< $@
-
-gen/wlr-layer-shell-unstable-v1-client-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml
-	@mkdir -p gen/
-	$(WAYLAND_SCANNER) client-header $< $@
 
 gfx.o: $(WAYLANDHEADERS)
 
