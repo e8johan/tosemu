@@ -1063,6 +1063,18 @@ int main(int argc, char **argv)
      * process that tells it. */
     screen_mode(&screen_width, &screen_height, &screen_planes);
 
+    /* And said out loud, because it is the one thing about the session that
+     * nobody can be told twice. Everything that arrives afterwards lays itself
+     * out for this and never mentions it again, so when a dialog comes out the
+     * wrong size the first question is which screen it was drawn for - and the
+     * screens that are as large as the display are a number nobody chose. */
+    if (talkative)
+    {
+        printf("tosaesd: the screen is %dx%d in %d colours\n",
+               screen_width, screen_height, 1 << screen_planes);
+        fflush(stdout);
+    }
+
     said = setting("TOSEMU_AESD");
     if (said && *said)
         snprintf(socket_path, sizeof socket_path, "%s", said);
