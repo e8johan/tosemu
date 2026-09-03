@@ -72,6 +72,7 @@
 #include "xdg-shell-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #endif
 
 #include "surface.h"
@@ -156,6 +157,12 @@ struct window {
     struct xdg_popup *popup;
     struct xdg_dialog_v1 *dialog;
     struct zxdg_toplevel_decoration_v1 *decoration;
+
+    /* The menu bar, when the desktop lets a bar be a bar. It is a surface of
+     * the layer shell's rather than a window of the desktop's, so it has no
+     * xdg_surface and no toplevel and nothing below here uses either on it -
+     * see bar_create. */
+    struct zwlr_layer_surface_v1 *layer;
 
     struct wl_buffer *buffer;
     uint32_t *pixels;
@@ -288,6 +295,8 @@ static struct {
     struct xdg_wm_base *wm_base;
     struct xdg_wm_dialog_v1 *wm_dialog;
     struct zxdg_decoration_manager_v1 *decorations;
+    struct zwlr_layer_shell_v1 *layer_shell;
+    uint32_t layer_version;
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
@@ -1781,7 +1790,7 @@ static void registry_global(void *data, struct wl_registry *registry,
                             uint32_t name, const char *interface,
                             uint32_t version)
 {
-    (void)data; (void)version;
+    (void)data;
 
     if (!strcmp(interface, wl_compositor_interface.name))
         w.compositor = wl_registry_bind(registry, name,
@@ -1797,6 +1806,21 @@ static void registry_global(void *data, struct wl_registry *registry,
     else if (!strcmp(interface, xdg_wm_dialog_v1_interface.name))
         w.wm_dialog = wl_registry_bind(registry, name,
                                        &xdg_wm_dialog_v1_interface, 1);
+    /*
+     * The first version has everything a bar needs to be a bar: a size, an edge
+     * to hang off and a menu that can be dropped from it. The fourth adds the
+     * one thing a bar of this kind needs and an ordinary panel does not - a
+     * surface that takes the keyboard when it is clicked, which is what an
+     * application whose only window is its menu bar is typed into. So the
+     * fourth if it is there and whatever is there if it is not.
+     */
+    else if (!strcmp(interface, zwlr_layer_shell_v1_interface.name))
+    {
+        w.layer_version = version < 4 ? version : 4;
+        w.layer_shell = wl_registry_bind(registry, name,
+                                         &zwlr_layer_shell_v1_interface,
+                                         w.layer_version);
+    }
     else if (!strcmp(interface, wl_seat_interface.name))
     {
         w.seat = wl_registry_bind(registry, name, &wl_seat_interface, 5);
@@ -2242,6 +2266,8 @@ static void window_destroy(struct window *win)
         xdg_dialog_v1_destroy(win->dialog);
     if (win->popup)
         xdg_popup_destroy(win->popup);
+    if (win->layer)
+        zwlr_layer_surface_v1_destroy(win->layer);
     if (win->toplevel)
         xdg_toplevel_destroy(win->toplevel);
     if (win->xdg_surface)
@@ -2389,6 +2415,18 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
         return;
 
     gfx_window_close(handle);
+
+    /* The menu bar goes at the top of the display where a bar belongs, when
+     * the desktop has a way of saying so - see bar_create */
+    if (handle == MENUBAR && w.layer_shell)
+    {
+        if (bar_create(&w.windows[handle], w.screen, sw, sh))
+            w.windows[handle].handle = handle;
+        else
+            window_destroy(&w.windows[handle]);
+
+        return;
+    }
 
     if (window_create(&w.windows[handle], title, w.screen, x, y, sw, sh, 0,
                       own_frame))
@@ -2714,9 +2752,23 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
         XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
         | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
 
-    win->popup = xdg_surface_get_popup(win->xdg_surface, bar->xdg_surface,
+    /*
+     * Whose popup it is.
+     *
+     * A menu belongs to the bar either way. A bar that is a window of the
+     * desktop's is named as the parent outright; one that is a surface of the
+     * layer shell's is not a window and cannot be named that way, so the popup
+     * is made with no parent and the bar is told to adopt it - which is what
+     * the layer shell has get_popup for, and is how every panel on a desktop
+     * drops a menu.
+     */
+    win->popup = xdg_surface_get_popup(win->xdg_surface,
+                                       bar->layer ? 0 : bar->xdg_surface,
                                        where);
     xdg_positioner_destroy(where);
+
+    if (bar->layer)
+        zwlr_layer_surface_v1_get_popup(bar->layer, win->popup);
 
     xdg_popup_add_listener(win->popup, &popup_listener, win);
 
@@ -3040,6 +3092,11 @@ void gfx_present()
      * its own time; this is only the window going. */
     if (w.windows[MENU].gone)
         gfx_menu_close();
+
+    /* And a bar the compositor has taken away, which is what happens to a
+     * layer surface when the display it was anchored to goes */
+    if (w.windows[MENUBAR].gone)
+        window_destroy(&w.windows[MENUBAR]);
 
     for (i = 0; i < WINDOWS; i++)
         window_present(&w.windows[i]);
