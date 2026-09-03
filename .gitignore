@@ -1,28 +1,7 @@
 *~
-tests/test-*
-tests/out
-tests/settings.tosemu
-tests/out2
-tests/TEST.RSC
-tests/devpac/*.PRG
-tests/devpac/out
-tests/devpac/out2
-tests/lattice/*.PRG
-tests/lattice/*.ttp
-tests/lattice/*.lnk
-tests/lattice/*.q
-tests/lattice/out
-tests/lattice/out2
-*.o
+# Everything the build makes is in one of two directories: the objects, the
+# generated sources, the tests, the demos and everything a test run leaves
+# behind land under build/, and the programs that come out land in bin/. See
+# the top level Makefile.
+build/
 bin/
-gen/
-emuvdi/obj/
-emuvdi/*.d
-demos/dialog
-demos/window
-demos/menu
-demos/fsel
-demos/userdef
-demos/DEMO.ACC
-rsc/tray-icon.h
-

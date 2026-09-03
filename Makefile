@@ -1,4 +1,21 @@
-# Source files for TOS emulator
+# Where everything is.
+#
+# src/ is what somebody wrote, build/ is what the compiler made of it, and
+# nothing is ever in both: objects, generated sources and the dependency files
+# beside them all land under build/. That is what makes a clean tree one
+# directory deletion rather than a hunt through the sources for what does not
+# belong there, and it is what makes a source directory listing readable.
+#
+# bin/ is the other half of the same idea - the programs that come out, which
+# are the part somebody runs rather than the part the build had to make on the
+# way there.
+SRC   = src
+BUILD = build
+OBJ   = $(BUILD)/obj
+GEN   = $(BUILD)/gen
+BIN   = bin
+
+# Source files for TOS emulator, named as they are found under $(SRC)
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
@@ -8,11 +25,16 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c
 # Hand-written Musashi files
 MUSASHIFILES = Musashi/m68kcpu.c Musashi/m68kdasm.c
 
-# Generated Musashi files
-MUSASHIGENERATEDFILES = gen/m68kops.c gen/m68kopac.c gen/m68kopdm.c gen/m68kopnz.c gen/m68kops.h
+# Generated Musashi files. They are written rather than kept, so they live
+# under $(GEN) with everything else nobody wrote - the header among them, which
+# is why it is named separately from the sources that become objects.
+MUSASHIGENERATEDSOURCES = $(GEN)/m68kops.c $(GEN)/m68kopac.c $(GEN)/m68kopdm.c \
+                          $(GEN)/m68kopnz.c
+MUSASHIGENERATEDFILES = $(MUSASHIGENERATEDSOURCES) $(GEN)/m68kops.h
 
 # The VDI, which comes from EmuTOS. These are built as they stand, out of the
-# submodule, and everything that adapts them is in emuvdi/ - see emuvdi/README.
+# submodule, and everything that adapts them is in src/emuvdi/ - see
+# src/emuvdi/README.
 EMUTOS = 3rdparty/emutos
 EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/vdi/vdi_line.c $(EMUTOS)/vdi/vdi_fill.c \
@@ -37,11 +59,11 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 # The header is generated too, but only the source becomes an object
-WAYLANDGENERATED = gen/xdg-shell-protocol.c gen/xdg-dialog-protocol.c \
-                   gen/xdg-decoration-protocol.c
-WAYLANDHEADERS = gen/xdg-shell-client-protocol.h \
-                 gen/xdg-dialog-v1-client-protocol.h \
-                 gen/xdg-decoration-unstable-v1-client-protocol.h
+WAYLANDGENERATED = $(GEN)/xdg-shell-protocol.c $(GEN)/xdg-dialog-protocol.c \
+                   $(GEN)/xdg-decoration-protocol.c
+WAYLANDHEADERS = $(GEN)/xdg-shell-client-protocol.h \
+                 $(GEN)/xdg-dialog-v1-client-protocol.h \
+                 $(GEN)/xdg-decoration-unstable-v1-client-protocol.h
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
 
@@ -96,7 +118,11 @@ DBUSLIBS  = $(shell pkg-config --libs dbus-1 2>/dev/null)
 PNGFLAGS = $(shell pkg-config --cflags libpng 2>/dev/null && echo -DHAVE_PNG)
 PNGLIBS  = $(shell pkg-config --libs libpng 2>/dev/null)
 
-CFLAGS = -Igen -IMusashi -I. -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS)
+# $(GEN) is on the include path for the same reason $(SRC) is: the generated
+# headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
+# - are included by name, and where they were written is the build's business
+# rather than something every source has to know.
+CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
@@ -105,8 +131,8 @@ LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS)
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
-# emuvdi/ comes first on the include path, which is how asm.h, intmath.h and
-# the two trap binding headers there are reached instead of EmuTOS's own.
+# src/emuvdi/ comes first on the include path, which is how asm.h, intmath.h
+# and the two trap binding headers there are reached instead of EmuTOS's own.
 #
 # __mcoldfire__ is EmuTOS's switch for a target without m68k inline assembly,
 # which is what the host is. It selects the C rotates, the C bit_blt and the C
@@ -122,7 +148,7 @@ LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS)
 # is what lets the rest of the VDI go unedited, so the two halves of every word
 # are the other way round and the glyph lands in the wrong one. Turning it off
 # sends all text through normal_blit, which works in words and does not care.
-EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
+EMUTOSFLAGS = -I$(SRC)/emuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
               -I$(EMUTOS)/aes -I$(EMUTOS)/desk -D__mcoldfire__ \
               -DCONF_WITH_BLITTER=0 -DCONF_WITH_VIDEL=0 -DCONF_WITH_TT_SHIFTER=0 \
               -DCONF_WITH_VDI_16BIT=0 -DCONF_WITH_VDI_TEXT_SPEEDUP=0 \
@@ -149,10 +175,10 @@ EMUTOSFLAGS = -Iemuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
 # points at something mapped, so it draws rubbish rather than crashing.
 EMUTOSLDFLAGS = -no-pie
 
-all: bin/tosemu bin/tosaesd
+all: $(BIN)/tosemu $(BIN)/tosaesd
 
-.PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check screen-check settings-check scrap-check demos
+.PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
+        emuvdi-check screen-check settings-check scrap-check demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -164,50 +190,84 @@ $(EMUTOS)/%.c:
 	@echo "    git submodule update --init"
 	@false
 
+# The programs run under the emulator. Their sources are in tests/ and demos/
+# and what is built from them lands under $(BUILD) - see tests/Makefile, which
+# explains why the suite runs there rather than where it is written.
 tests:
 	$(MAKE) -C tests/
 
 # Programs meant to be looked at rather than checked. They need a compositor
 # to be worth running: with one there is a window, and without one the screen
 # is only in memory.
-demos: bin/tosemu
+demos: $(BIN)/tosemu
 	$(MAKE) -C demos/
 
 # Test cases assembled by tosemu itself, using Devpac's GEN.TTP. These need a
 # Devpac 3.10 installation, see tests/devpac/Makefile.
-devpac-tests: bin/tosemu
+devpac-tests: $(BIN)/tosemu
 	$(MAKE) -C tests/devpac
 
 # Test cases compiled by tosemu itself, using Lattice C's LC1, LC2 and CLink.
 # These need a Lattice C 5.60 installation, see tests/lattice/Makefile.
-lattice-tests: bin/tosemu
+lattice-tests: $(BIN)/tosemu
 	$(MAKE) -C tests/lattice
 
-OBJECTS = $(addsuffix .o,$(basename $(SOURCEFILES) $(MUSASHIFILES) $(MUSASHIGENERATEDFILES) $(WAYLANDGENERATED)))
+# Every object mirrors the path of the source it was compiled from, under
+# $(OBJ) rather than next to it. The generated sources have no place in src/ to
+# mirror, so they get one of their own under $(OBJ)/gen.
+OBJECTS = $(patsubst %.c,$(OBJ)/%.o,$(SOURCEFILES) $(MUSASHIFILES)) \
+          $(patsubst $(GEN)/%.c,$(OBJ)/gen/%.o,$(MUSASHIGENERATEDSOURCES) $(WAYLANDGENERATED))
 # Objects from the submodule are built outside it. It is a checkout of somebody
 # else's tree, and leaving build output in it means git reports it as dirty for
 # work nobody did.
-EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,emuvdi/obj/%.o,$(EMUTOSFILES)) \
-                $(addsuffix .o,$(basename $(EMUVDIFILES)))
+EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,$(OBJ)/emutos/%.o,$(EMUTOSFILES)) \
+                $(patsubst %.c,$(OBJ)/%.o,$(EMUVDIFILES))
+# The daemon's own two, which are none of the emulator's business and so are
+# not in the list above. It links screen.o and settings.o from there as well -
+# see bin/tosaesd below for why those two and nothing else.
+DAEMONOBJECTS = $(OBJ)/aesd.o $(OBJ)/aesdtray.o
+
+# How each of the four kinds of source is compiled. There is no built-in rule
+# to fall back on any more - the built-in one writes the object next to its
+# source, which is the whole of what this file is arranged to stop - so each
+# says so for itself.
+#
+# All of them are written with -MMD -MP, which records the headers each object
+# was built from in a .d file beside it. Without that, editing a header relinks
+# stale objects: make has no other way to know that aesproto.h or screen.h has
+# anything to do with an object built from a .c that includes it.
+#
+# And all of them depend on this file. Half of what the flags here do is choose
+# between paths through the code rather than merely how to compile it -
+# NO_WAYLAND takes half of gfx.c out, and the EmuTOS switches below decide what
+# the VDI does - so changing a flag changes the program, and make has no other
+# way to see that the objects are stale.
+$(OBJ)/%.o: $(SRC)/%.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+$(OBJ)/gen/%.o: $(GEN)/%.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 # The EmuTOS sources and the code adapting them are the only ones built with
-# EMUTOSFLAGS, so they need rules of their own rather than the built-in one.
-#
-# They depend on this file as well as on their source. Half of what EMUTOSFLAGS
-# does is choose between paths inside EmuTOS rather than merely how to compile
-# them, so changing a flag changes the program, and make has no other way to
-# know that the objects are stale.
-emuvdi/obj/%.o: $(EMUTOS)/%.c Makefile
+# EMUTOSFLAGS, hence a pair of rules of their own. Which of the two applies is
+# decided by the shorter stem, so an object under $(OBJ)/emuvdi comes from here
+# rather than from the general rule above.
+$(OBJ)/emutos/%.o: $(EMUTOS)/%.c Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(EMUTOSFLAGS) -MMD -MP -c -o $@ $<
 
-emuvdi/%.o: emuvdi/%.c Makefile
+$(OBJ)/emuvdi/%.o: $(SRC)/emuvdi/%.c Makefile
+	@mkdir -p $(dir $@)
 	$(CC) $(EMUTOSFLAGS) -MMD -MP -c -o $@ $<
 
 # Which headers each object was built from, written by -MMD above. The shim
-# headers in emuvdi/ shadow EmuTOS's, so editing one changes what the sources
-# in the submodule compile to, and there is no other way for make to see that.
--include $(EMUTOSOBJECTS:.o=.d)
+# headers in src/emuvdi/ shadow EmuTOS's, so editing one changes what the
+# sources in the submodule compile to, and there is no other way for make to
+# see that.
+DEPFILES = $(OBJECTS:.o=.d) $(EMUTOSOBJECTS:.o=.d) $(DAEMONOBJECTS:.o=.d)
+-include $(DEPFILES)
 
 # And a .d that is not there yet is not something to go and make. It is written
 # as a side effect of compiling the object, so on a first build there are none
@@ -215,13 +275,13 @@ emuvdi/%.o: emuvdi/%.c Makefile
 #
 # Saying so stops make from looking for a way to build one, which it does by
 # way of the built-in rule that links a program from the object of the same
-# name: emuvdi/obj/vdi/vdi_main.d becomes a hunt for vdi_main.d.o and then for
-# vdi_main.d.c in the submodule, which is not there and never was, so the
-# $(EMUTOS)/%.c rule announces a missing submodule that is present. Thirty-two
+# name: build/obj/emutos/vdi/vdi_main.d becomes a hunt for vdi_main.d.o and
+# then for vdi_main.d.c in the submodule, which is not there and never was, so
+# the $(EMUTOS)/%.c rule announces a missing submodule that is present. Dozens
 # of those, one for each object, before the build has begun. An empty recipe is
 # what ends the hunt; make ignores the failure, so they were only ever noise,
 # but noise on the first line of the log somebody reads.
-$(EMUTOSOBJECTS:.o=.d): ;
+$(DEPFILES): ;
 
 # The parts of EmuTOS that are generated rather than carried.
 #
@@ -238,10 +298,10 @@ $(EMUTOSOBJECTS:.o=.d): ;
 #
 # They are made by EmuTOS's own Makefile rather than by a copy of its rules,
 # which is the same principle as the rest of the port: how the submodule builds
-# is its own business, and emuvdi/ adapts the result. None of the three needs a
-# cross compiler - the tools that write them are built for the host - and all
-# of them are ignored by EmuTOS's git, so making them leaves the submodule as
-# clean as it was found.
+# is its own business, and src/emuvdi/ adapts the result. They are also the one
+# thing this build writes outside $(BUILD), because where they go is EmuTOS's
+# decision and not ours - all three are ignored by its git, so making them
+# leaves the submodule as clean as it was found.
 EMUTOSGENERATED = $(EMUTOS)/aes/gem_rsc.c $(EMUTOS)/aes/gem_rsc.h \
                   $(EMUTOS)/aes/mforms.c $(EMUTOS)/aes/mforms.h \
                   $(EMUTOS)/include/i18nconf.h
@@ -262,12 +322,14 @@ $(EMUTOS)/include/i18nconf.h: $(EMUTOS)/localise.ctl
 	$(MAKE) -C $(EMUTOS) include/i18nconf.h
 
 # Every object built out of the submodule wants all of them there first. The
-# emuvdi/obj/%.o rule names only the source it compiles, and on a first build
-# there are no .d files yet to say which headers that source went on to read.
+# $(OBJ)/emutos/%.o rule names only the source it compiles, and on a first
+# build there are no .d files yet to say which headers that source went on to
+# read.
 $(EMUTOSOBJECTS): $(EMUTOSGENERATED)
 
 # Main emulator target
-bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
+$(BIN)/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
+	@mkdir -p $(BIN)
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
 # The daemon several emulators have in common. It links none of the emulator's
@@ -288,12 +350,18 @@ bin/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 #
 # It wants a rasteriser - rsvg-convert, ImageMagick or Inkscape - and does
 # without one by drawing a plain mark instead, rather than failing the build.
-rsc/tray-icon.h: rsc/tray.svg rsc/icon-to-c.py
-	python3 rsc/icon-to-c.py $< $@
+#
+# The header lands under $(GEN) rather than next to the picture it was drawn
+# from, and is reached the way every other generated header is: by name, off
+# the include path. See src/rsc/README.
+$(GEN)/rsc/tray-icon.h: $(SRC)/rsc/tray.svg $(SRC)/rsc/icon-to-c.py
+	@mkdir -p $(dir $@)
+	python3 $(SRC)/rsc/icon-to-c.py $< $@
 
-aesdtray.o: rsc/tray-icon.h
+$(OBJ)/aesdtray.o: $(GEN)/rsc/tray-icon.h
 
-bin/tosaesd: aesd.o aesdtray.o screen.o settings.o
+$(BIN)/tosaesd: $(DAEMONOBJECTS) $(OBJ)/screen.o $(OBJ)/settings.o
+	@mkdir -p $(BIN)
 	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) $(WAYLANDONLYLIBS) -o $@
 
 # Turning a display into a screen, checked without a display. Built for the
@@ -301,34 +369,34 @@ bin/tosaesd: aesd.o aesdtray.o screen.o settings.o
 # is: what is being checked is not something an application can reach. A
 # compositor's answer cannot be arranged by a test, so the asking is checked by
 # using it and the arithmetic is checked here.
-bin/screentest: screentest.c screen.o settings.o
-	@mkdir -p bin/
+$(BIN)/screentest: $(SRC)/screentest.c $(OBJ)/screen.o $(OBJ)/settings.o
+	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(WAYLANDONLYLIBS) -o $@
 
-screen-check: bin/screentest
-	./bin/screentest
+screen-check: $(BIN)/screentest
+	./$(BIN)/screentest
 
 # Reading a settings file, checked without one of somebody's own. Host-built
 # for the same reason as the two above: what is checked here - a remark
 # understood as a remark, a value said twice, a name spelled wrongly being
 # complained about - is not visible from inside the emulated machine.
-bin/settingstest: settingstest.c settings.o
-	@mkdir -p bin/
+$(BIN)/settingstest: $(SRC)/settingstest.c $(OBJ)/settings.o
+	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
-settings-check: bin/settingstest
-	./bin/settingstest
+settings-check: $(BIN)/settingstest
+	./$(BIN)/settingstest
 
 # The character set and the line endings, checked without an emulator. Host
 # built for the same reason as the rest of these: an emulated program can say
 # what it read back, but not whether the bytes in between were right, and it
 # cannot be handed a malformed UTF-8 sequence to be unbothered by.
-bin/scraptest: scraptest.c scraptext.o scrapimg.o
-	@mkdir -p bin/
+$(BIN)/scraptest: $(SRC)/scraptest.c $(OBJ)/scraptext.o $(OBJ)/scrapimg.o
+	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(PNGLIBS) -o $@
 
-scrap-check: bin/scraptest
-	./bin/scraptest
+scrap-check: $(BIN)/scraptest
+	./$(BIN)/scraptest
 
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
@@ -336,48 +404,41 @@ scrap-check: bin/scraptest
 #
 # settings.o comes along because hostfs.c asks whether it is to say which
 # directories were read, and that is a setting rather than a variable now.
-bin/vditest: emuvdi/vditest.c $(EMUTOSOBJECTS) settings.o
-	@mkdir -p bin/
+$(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(EMUTOSOBJECTS) $(OBJ)/settings.o
+	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
 
-emuvdi-check: bin/vditest
-	./bin/vditest | diff -u emuvdi/vditest.expected -
+emuvdi-check: $(BIN)/vditest
+	./$(BIN)/vditest | diff -u $(SRC)/emuvdi/vditest.expected -
 
 # The Wayland protocol code. wayland-scanner turns the protocol description
 # into the marshalling both sides of the socket agree on, so it is generated
 # here rather than carried.
-gen/xdg-shell-protocol.c:
-	@mkdir -p gen/
+$(GEN)/xdg-shell-protocol.c:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
 
-gen/xdg-shell-client-protocol.h:
-	@mkdir -p gen/
+$(GEN)/xdg-shell-client-protocol.h:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
 
-gen/xdg-dialog-protocol.c:
-	@mkdir -p gen/
+$(GEN)/xdg-dialog-protocol.c:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/xdg-dialog/xdg-dialog-v1.xml $@
 
-gen/xdg-dialog-v1-client-protocol.h:
-	@mkdir -p gen/
+$(GEN)/xdg-dialog-v1-client-protocol.h:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/xdg-dialog/xdg-dialog-v1.xml $@
 
-gen/xdg-decoration-protocol.c:
-	@mkdir -p gen/
+$(GEN)/xdg-decoration-protocol.c:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
 
-gen/xdg-decoration-unstable-v1-client-protocol.h:
-	@mkdir -p gen/
+$(GEN)/xdg-decoration-unstable-v1-client-protocol.h:
+	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
 
-gfx.o: $(WAYLANDHEADERS)
-
-# The two files NO_WAYLAND changes, which depend on this one as well as on
-# their source. What the flag decides is what those objects contain rather than
-# merely how they were compiled, and make has no other way to see that turning
-# it on or off has made them stale - the same reason the EmuTOS objects above
-# depend on this file.
-gfx.o screen.o: Makefile
+$(OBJ)/gfx.o: $(WAYLANDHEADERS)
 
 # Every object needs the generated m68kops.h, so none of them may be compiled
 # before m64kmake has run
@@ -386,37 +447,31 @@ $(OBJECTS): $(MUSASHIGENERATEDFILES)
 # Files generated using m64kmake. One run produces all of them, so they hang
 # off a single stamp target to keep parallel builds from running it more than
 # once at a time.
-$(MUSASHIGENERATEDFILES): gen/.stamp
+$(MUSASHIGENERATEDFILES): $(GEN)/.stamp
 
-gen/.stamp: bin/m64kmake Musashi/m68k_in.c
-	mkdir -p gen/
-	bin/m64kmake gen/ Musashi/m68k_in.c > /dev/null
+$(GEN)/.stamp: $(BIN)/m64kmake $(SRC)/Musashi/m68k_in.c
+	@mkdir -p $(GEN)
+	$(BIN)/m64kmake $(GEN)/ $(SRC)/Musashi/m68k_in.c > /dev/null
 	touch $@
 
 # The m64kmake generator. It is a build tool rather than part of tosemu, but
 # it is compiled with the same flags, so it needs the same link option to go
 # with the -fno-pie in them.
-bin/m64kmake: Musashi/m68kmake.c
-	mkdir -p bin/
+$(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
+	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: bin/tosemu bin/tosaesd screen-check settings-check scrap-check
+check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check
 	$(MAKE) -C tests check
 
-devpac-check: bin/tosemu
+devpac-check: $(BIN)/tosemu
 	$(MAKE) -C tests/devpac check
 
-lattice-check: bin/tosemu
+lattice-check: $(BIN)/tosemu
 	$(MAKE) -C tests/lattice check
 
-# Clean up the source tree
+# Clean up the source tree, which is now two directories rather than a hunt.
+# The tests and the demos are in there too - each of them builds into a
+# directory of its own under $(BUILD) - so there is nothing to recurse into.
 clean:
-	$(RM) *.o Musashi/*.o emuvdi/*.o emuvdi/*.d
-	$(RM) -r emuvdi/obj/
-	$(RM) gen/*
-	$(RM) bin/*
-	$(RM) -d gen/ bin/
-	$(MAKE) -C tests/ clean
-	$(MAKE) -C demos/ clean
-	$(MAKE) -C tests/devpac clean
-	$(MAKE) -C tests/lattice clean
+	$(RM) -r $(BUILD)/ $(BIN)/

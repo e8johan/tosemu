@@ -1,7 +1,7 @@
 # Working on tosemu
 
 Notes for anyone — person or agent — picking this up cold. `README.md` says what
-tosemu is and how to build it, `emuvdi/README` says how the EmuTOS VDI is
+tosemu is and how to build it, `src/emuvdi/README` says how the EmuTOS VDI is
 carried, and `TODO` says what is known to be missing. This file is about how
 work here is done, and about the things that have already gone wrong.
 
@@ -11,20 +11,27 @@ tosemu translates TOS calls rather than emulating a machine. A GEM application
 is real 68000 code running on Musashi; everything below it is host C. That seam
 runs through the whole program and most of the interesting bugs live on it.
 
-    main.c cpu.c memory.c      the machine and its memory
-    gemdos*.c bios.c xbios*.c  the OS calls, dispatched from traps
-    aes*.c                     the AES: windows, menus, objects, events
-    vdi.c                      the VDI trap, which hands arrays to emuvdi
-    emuvdi/                    EmuTOS's VDI and parts of its AES, hosted
-    3rdparty/emutos/           the submodule. Read only. Never edited.
-    gfx.c surface.c            the screen as memory, and as windows on Wayland
-    screen.c                   which screen the machine has
-    settings.c                 everything tosemu can be told, and where from
-    aesd.c aesclient.c         the daemon several emulators share, and the client
-    tests/                     68000 programs run under the emulator
+    src/                         the emulator. Everything below is in it
+      main.c cpu.c memory.c      the machine and its memory
+      gemdos*.c bios.c xbios*.c  the OS calls, dispatched from traps
+      aes*.c                     the AES: windows, menus, objects, events
+      vdi.c                      the VDI trap, which hands arrays to emuvdi
+      emuvdi/                    EmuTOS's VDI and parts of its AES, hosted
+      gfx.c surface.c            the screen as memory, and as windows
+      screen.c                   which screen the machine has
+      settings.c                 everything tosemu can be told, and where from
+      aesd.c aesclient.c         the daemon emulators share, and the client
+      Musashi/ rsc/              the 68000 core, and the mark for the panel
+    3rdparty/emutos/             the submodule. Read only. Never edited.
+    tests/ demos/                68000 programs run under the emulator
+    build/ bin/                  what the build makes of all of it
+
+Nothing built is ever next to what it was built from: objects, generated
+sources, the cross compiled tests and everything a test run leaves behind go
+under `build/`, and the programs come out in `bin/`. See the Makefile.
 
 `3rdparty/emutos` is a checkout of somebody else's tree pinned to `VERSION_1_4`.
-Nothing in it is edited — everything that adapts it lives in `emuvdi/`. It is
+Nothing in it is edited — everything that adapts it lives in `src/emuvdi/`. It is
 also the authority on what the AES and VDI are supposed to do: when something
 draws wrongly, read the EmuTOS source for the call before theorising.
 
@@ -34,8 +41,8 @@ The comments are the most visible convention and the easiest to get wrong. They
 are prose, they explain *why* rather than what, and they are written for someone
 who does not already know. A comment above a function says what the function is
 for and what would go wrong without it; a comment inside says why this is the
-way it is done rather than the obvious way. Look at `emuvdi/gemobjop.c` or
-`screen.c` before writing any.
+way it is done rather than the obvious way. Look at `src/emuvdi/gemobjop.c` or
+`src/screen.c` before writing any.
 
 Things that are not the style: `/* increment i */`, a comment restating the line
 below it, TODO markers left in code rather than in `TODO`, jargon where a plain
@@ -68,21 +75,19 @@ This sequence costs a few minutes and has caught more mistakes than it has cost:
 
 ## Traps that have actually bitten
 
-**Top-level objects do not rebuild when a header changes.** Only `emuvdi/`
-objects are built with `-MMD` (`Makefile:172-177`); everything at the top level
-uses make's built-in rule and tracks nothing. Edit `aesproto.h`, `screen.h`,
-`gem_p.h` or any other top-level header and `make` will happily relink stale
-objects. Delete them by hand:
-
-    rm -f gem.o aesd.o aesappl.o && make
-
-This is not theoretical — it made a mutation check appear to pass when the
-mutant was live.
+**Objects used not to rebuild when a header changed.** Every object is now
+compiled with `-MMD -MP` and depends on the Makefile as well, so editing
+`aesproto.h`, `screen.h` or `gem_p.h`, or changing a flag such as `NO_WAYLAND`,
+rebuilds what it reaches. Before that, only `emuvdi/` tracked headers and
+everything else used make's built-in rule and tracked nothing — which made a
+mutation check appear to pass when the mutant was live. If a result ever looks
+like a stale binary again, `make clean` is the whole of the answer now: the
+objects are all in `build/`.
 
 **The byte-order and word-size seam.** A 68000 `LONG` is four bytes, big endian.
 The host's `long` is eight, little endian, and the build is 64-bit. So
 `*(char *)pspec` finds the top byte of a spec on an Atari and the *last* byte
-here. That exact line has been wrong twice in `emuvdi/gemobjop.c`, for two
+here. That exact line has been wrong twice in `src/emuvdi/gemobjop.c`, for two
 different bytes of the same field. When EmuTOS points a narrow type at a wide
 one, shift instead — ask for the byte, not for the end it happens to be at.
 
@@ -131,10 +136,17 @@ Two kinds, and they are built differently.
 **Under the emulator**, in `tests/`: 68000 programs cross-compiled with
 `m68k-atari-mint-gcc`. C tests are named `c-something.c` and built as
 `test-c-something`; the ones that use GEM link `-lgem`. Add the name to
-`CTESTNAME`, add a `-lgem` rule if it needs one, and add a line to `check:`.
+`CTESTNAME`, add it to `GEMTESTNAME` as well if it needs the bindings, and add a
+line to `check:`.
+
+They are built and run in `build/tests`, not in `tests/`, and make hands the
+work to a copy of itself standing there — half of what these check is what a
+program does with a relative path, and that is answered from the working
+directory of the process. So a recipe names what it wants without a path, and
+anything a run writes lands somewhere that can be deleted.
 
 **On the host**: `bin/vditest` (`make emuvdi-check`) draws with the ported VDI
-and diffs against `emuvdi/vditest.expected`; `bin/screentest`
+and diffs against `src/emuvdi/vditest.expected`; `bin/screentest`
 (`make screen-check`) checks the display arithmetic; `bin/settingstest`
 (`make settings-check`) checks the reading of a settings file. These are for
 the things an application cannot reach — what a compositor answers is not
@@ -208,8 +220,9 @@ End the message with:
 
     Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-Do not commit `.o` files, anything in `bin/`, or generated sources — `.gitignore`
-covers them. Do not commit changes inside `3rdparty/`.
+Do not commit anything in `build/` or `bin/` — everything the build makes is in
+one of the two, and `.gitignore` covers them. Do not commit changes inside
+`3rdparty/`.
 
 ## Screens
 

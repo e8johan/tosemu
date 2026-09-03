@@ -160,10 +160,10 @@
   what it has not been watched doing is somebody picking a file out of the list
   with the mouse. Listing, walking into a folder and the drive buttons are all
   EmuTOS's and are as tested as the rest of the reused library; the part that
-  is new is underneath, in emuvdi/hostfs.c, and that is exercised by the
+  is new is underneath, in src/emuvdi/hostfs.c, and that is exercised by the
   listing appearing at all.
 
-- emuvdi/hostfs.c answers four of GEMDOS's calls against the host filesystem
+- src/emuvdi/hostfs.c answers four of GEMDOS's calls against the host filesystem
   rather than against tosemu's own GEMDOS, because every entrance to that
   reads its arguments off the 68000's stack. It is a second implementation of
   Fsfirst and Fsnext and should not become a third of anything: what it shares

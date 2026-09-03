@@ -30,6 +30,15 @@ Building
 A simple `make` should do it. The resulting binary can be found in the bin
 directory.
 
+The tree is arranged so that nothing built is ever next to what it was built
+from. Everything somebody wrote is under `src/`, `demos/` and `tests/`;
+everything the build makes goes under `build/` - the objects mirroring the
+source tree in `build/obj/`, the generated sources in `build/gen/`, and the
+programs run under the emulator in `build/tests/` and `build/demos/` - and the
+programs that come out land in `bin/`. So a source directory listing is what
+was written and nothing else, and `make clean` is the deletion of two
+directories rather than a hunt.
+
 The VDI comes from EmuTOS rather than being written again, so the tree is no
 longer self contained: it carries EmuTOS as a submodule in `3rdparty/emutos`.
 Clone with
@@ -41,7 +50,7 @@ or, in a tree that is already checked out,
     git submodule update --init
 
 The submodule is never edited. Everything that adapts EmuTOS to a hosted build
-lives in `emuvdi/`, which has a README of its own explaining how. The
+lives in `src/emuvdi/`, which has a README of its own explaining how. The
 `make emuvdi-check` target draws with the ported VDI and compares the result
 against what it should have drawn; unlike the other tests it builds for the
 host rather than for the emulated machine, because what it is checking is the
@@ -332,10 +341,11 @@ fills the cell with white and draws the glyph in white too, and the result is
 a solid block rather than a letter.
 
 `make demos` builds the programs in `demos/`, which are GEM applications meant
-to be looked at rather than checked - `./bin/tosemu demos/dialog` puts a dialog
-on the screen with buttons that can be clicked. See `demos/README`.
+to be looked at rather than checked - `./bin/tosemu build/demos/dialog` puts a
+dialog on the screen with buttons that can be clicked. See `demos/README`.
 
-The `make clean` target produces a clean source tree.
+The `make clean` target produces a clean source tree, which it does by deleting
+`build/` and `bin/` - the two directories everything built is in.
 
 
 
@@ -386,7 +396,10 @@ of tosemu. The tests are compiled with the m68k-atari-mint cross-tools built by
   http://vincent.riviere.free.fr/soft/m68k-atari-mint/
 
 To build the tests, simply run make tests, this will result in a set of binaries
-named test-* in the tests sub-directory. Run `make check` to build and run them.
+named test-* in `build/tests`, which is also where they are run: a test writes
+files, opens sockets and Pexecs its siblings, and all of that belongs somewhere
+that can be deleted rather than among the sources. Run `make check` to build and
+run them.
 
 Self-hosted tests
 -----------------
@@ -626,7 +639,7 @@ Additional Licenses
 TOSEMU depends on other components available under other licenses than GPLv2. 
 These are listed below:
 
-The contents of the `Musashi` subdirectory and `m68kconf.h`, derived from 
+The contents of the `src/Musashi` subdirectory and `src/m68kconf.h`, derived from 
 https://github.com/kstenerud/Musashi, is subject to the following license:
 
 > MUSASHI
@@ -683,7 +696,7 @@ any number of unit tests.
 
     make demos
     TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm \
-        TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
+        TOSEMU_CLICKS='112,114' ./bin/tosemu build/demos/dialog
 
 Every demo runs headless like that, which is how they are checked here. Run
 them without `TOSEMU_NO_WINDOW` to see them as windows on the desktop:
@@ -693,9 +706,9 @@ them without `TOSEMU_NO_WINDOW` to see them as windows on the desktop:
 accessories it starts, a mark in the panel, and applications coming and going.
 
     make demos
-    mkdir -p /tmp/gem && cp demos/DEMO.ACC /tmp/gem/
+    mkdir -p /tmp/gem && cp build/demos/DEMO.ACC /tmp/gem/
     ./bin/tosaesd -v /tmp/gem &
-    ./bin/tosemu demos/menu
+    ./bin/tosemu build/demos/menu
 
 To find out whether one is already running, start another: it says so and
 stops rather than taking the first one's place.
