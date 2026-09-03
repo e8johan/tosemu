@@ -2,7 +2,7 @@
 SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
-              gfx.c screen.c settings.c \
+              gfx.c screen.c settings.c scraptext.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -145,7 +145,7 @@ EMUTOSLDFLAGS = -no-pie
 all: bin/tosemu bin/tosaesd
 
 .PHONY: tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check screen-check settings-check demos
+        emuvdi-check screen-check settings-check scrap-check demos
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -312,6 +312,17 @@ bin/settingstest: settingstest.c settings.o
 settings-check: bin/settingstest
 	./bin/settingstest
 
+# The character set and the line endings, checked without an emulator. Host
+# built for the same reason as the rest of these: an emulated program can say
+# what it read back, but not whether the bytes in between were right, and it
+# cannot be handed a malformed UTF-8 sequence to be unbothered by.
+bin/scraptest: scraptest.c scraptext.o
+	@mkdir -p bin/
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+scrap-check: bin/scraptest
+	./bin/scraptest
+
 # Draws with the ported VDI and compares against what it should have drawn.
 # Built for the host rather than for the emulated machine: it is the port that
 # is being checked, not anything an application can reach yet.
@@ -382,7 +393,7 @@ bin/m64kmake: Musashi/m68kmake.c
 	mkdir -p bin/
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: bin/tosemu bin/tosaesd screen-check settings-check
+check: bin/tosemu bin/tosaesd screen-check settings-check scrap-check
 	$(MAKE) -C tests check
 
 devpac-check: bin/tosemu
