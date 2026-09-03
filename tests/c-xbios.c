@@ -195,7 +195,10 @@ int main(int argc, char **argv)
     Metainit(buffer);
     check(buffer[0] | buffer[4] | buffer[8], 0, "Metainit reports no MetaDOS");
 
-    Dbmsg(0x5abc, 0, 0L);
+    /* What becomes of the message is not something an application can ask
+     * about - it goes on the emulator's own output, beside this - so the check
+     * for it is a grep in tests/Makefile rather than a line here */
+    Dbmsg(5, 0xf100, (long)"a message for the debugger");
     survived("Dbmsg");
 
     /* Devices. Settings round trip, traffic is discarded, and nothing
