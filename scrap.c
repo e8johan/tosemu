@@ -41,6 +41,15 @@
  * person copying in a browser is newer than either; and a cut this process
  * failed to offer at all leaves the file newer than a stale offer, so nothing
  * overwrites what could not be exported.
+ *
+ * The same time answers the same question going the other way. A scrap brought
+ * in is stamped with the moment the offer arrived rather than with now, so a
+ * file no newer than what the desktop is currently offering is that offer and
+ * not a cut - and is not handed back. That has to be readable from another
+ * process for the same reason: every emulator in the session watches this
+ * directory, and one of them writing is a write all of them see, so the one
+ * that has to recognise it is usually not the one that made it. A note kept in
+ * memory cannot be read by the process that needs it. A time on the file can.
  */
 
 #include "scrap.h"
@@ -49,11 +58,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <fcntl.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <limits.h>
+#include <time.h>
 
 #include "aesclient.h"
 #include "files.h"
@@ -110,22 +121,11 @@ static struct {
     int notify;
     int watch;
 
-    /*
-     * How many writes of our own are still to come back.
-     *
-     * Bringing the desktop's clipboard in means writing into the very
-     * directory being watched, and the watch cannot tell that write from an
-     * application's. Without this the file would be read straight back out and
-     * offered to the desktop it just came from, which is a loop that ends only
-     * because the second offer looks identical to the first.
-     */
-    int ours;
-
     /* Said once rather than every time something looks: a scrap directory that
      * cannot be made is a thing to mention, not a thing to complain about
      * repeatedly while an application runs */
     int complained;
-} scrap = { "", "", -1, -1, 0, 0 };
+} scrap = { "", "", -1, -1, 0 };
 
 /* Whether the bridge is wanted at all */
 static int wanted(void)
@@ -350,10 +350,11 @@ static char *contents(const char *path, size_t *length)
  * one way to put a file somewhere without it ever being seen incomplete.
  */
 static int put(const char *dir, const char *name,
-               const char *bytes, size_t length)
+               const char *bytes, size_t length, unsigned long long when)
 {
     char temporary[SCRAP_PATH];
     char final[SCRAP_PATH];
+    struct timespec stamp[2];
     FILE *f;
 
     snprintf(temporary, sizeof temporary, "%s/.scrap-%d", dir, (int)getpid());
@@ -375,6 +376,34 @@ static int put(const char *dir, const char *name,
         remove(temporary);
         return 0;
     }
+
+    /*
+     * Stamped with the moment the desktop's offer arrived rather than with
+     * now, which is how anybody can tell afterwards where this file came from.
+     *
+     * That question has to be answerable from another process. Every emulator
+     * in the session is watching this directory, and a write is a write to all
+     * of them: without this, one of them bringing the desktop's clipboard in
+     * looks to the rest exactly like a GEM application cutting something out,
+     * and they hand it straight back to the desktop it came from. A count kept
+     * in this process cannot see that, because the process it needs to know
+     * about is not this one.
+     *
+     * Failing is harmless. The file keeps the time it was written, which is
+     * later than the offer, and the worst of it is the desktop being told
+     * something it already knew.
+     */
+    /*
+     * Stamped before the rename rather than after it, so that the file arrives
+     * under its own name already carrying the answer. Every emulator in the
+     * session is woken by that rename, and one that looked in between would
+     * see a scrap stamped with now and conclude somebody had cut it.
+     */
+    stamp[0].tv_sec = (time_t)(when / 1000000000ull);
+    stamp[0].tv_nsec = (long)(when % 1000000000ull);
+    stamp[1] = stamp[0];
+
+    utimensat(AT_FDCWD, temporary, stamp, 0);
 
     if (rename(temporary, final) != 0)
     {
@@ -504,12 +533,7 @@ void scrap_refresh(void)
     if (!atari)
         return;
 
-    /* The write is about to come back through the watch as though an
-     * application had made it. See scrap.ours. */
-    scrap.ours++;
-
-    if (!put(dir, SCRAP_TEXT, atari, atari_length))
-        scrap.ours--;
+    put(dir, SCRAP_TEXT, atari, atari_length, when);
 
     free(atari);
 }
@@ -535,6 +559,24 @@ static void offer_text(void)
     where = setting("TOSEMU_SCRAP_OUT");
 
     snprintf(source, sizeof source, "%s/%s", scrap.host, SCRAP_TEXT);
+
+    /*
+     * What came from the desktop does not go back to it.
+     *
+     * A scrap brought in is stamped with the moment the offer arrived, so a
+     * file no newer than the current offer is that offer rather than anything
+     * a GEM application cut. Asked this way round rather than by remembering
+     * what this process wrote, because every emulator in the session is
+     * watching this directory and sees the write - so the one that has to
+     * recognise it is usually not the one that made it.
+     *
+     * Not newer rather than exactly equal, because a file system that keeps
+     * times less finely than a nanosecond will have rounded the stamp down,
+     * and a cut a person actually made is later than the offer by however long
+     * it took them to choose Copy.
+     */
+    if (written_at(source) <= offer_when())
+        return;
 
     atari = contents(source, &atari_length);
     if (!atari)
@@ -615,17 +657,6 @@ void scrap_pump(void)
 
             if (!e->len || strcasecmp(e->name, SCRAP_TEXT) != 0)
                 continue;
-
-            /*
-             * A write of our own coming back. Not an application copying
-             * anything - it is what the desktop offered, on its way in - and
-             * offering it back would be telling the desktop what it just said.
-             */
-            if (scrap.ours > 0)
-            {
-                scrap.ours--;
-                continue;
-            }
 
             offer_text();
         }
