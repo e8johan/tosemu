@@ -57,6 +57,7 @@
 
 #include "aesclient.h"
 #include "files.h"
+#include "gfx.h"
 #include "scraptext.h"
 #include "settings.h"
 
@@ -384,9 +385,81 @@ static int put(const char *dir, const char *name,
     return 1;
 }
 
+/*
+ * The names text goes by on a desktop.
+ *
+ * Five for one thing, because there is no single answer everything accepts.
+ * The first is what anything written this century asks for; the last three are
+ * what X11 called them, and are still what a program running under Xwayland
+ * looks for. Offering all five costs nothing - they are names for the same
+ * bytes - and leaving them off means a paste that silently does nothing in
+ * whichever program wanted the name that was missing.
+ */
+static const char *const text_kinds[] = {
+    "text/plain;charset=utf-8",
+    "text/plain",
+    "UTF8_STRING",
+    "STRING",
+    "TEXT"
+};
+
+#define TEXT_KINDS ((int)(sizeof text_kinds / sizeof text_kinds[0]))
+
+/* Whether the stand-in is being used instead of a desktop, and what it names */
+static const char *standing_in(void)
+{
+    const char *said = setting("TOSEMU_SCRAP_IN");
+
+    return (said && said[0]) ? said : 0;
+}
+
+/*
+ * When what the desktop is offering arrived, or 0 when it is offering nothing
+ * that can be used.
+ *
+ * The stand-in wins when there is one, so that a test decides what the desktop
+ * is doing rather than whatever is really on the clipboard of the machine the
+ * suite happens to be running on.
+ */
+static unsigned long long offer_when(void)
+{
+    const char *file = standing_in();
+    int i;
+
+    if (file)
+        return written_at(file);
+
+    for (i = 0; i < TEXT_KINDS; i++)
+        if (gfx_selection_has(text_kinds[i]))
+            return gfx_selection_when();
+
+    return 0;
+}
+
+/* And the offer itself, as UTF-8. Allocates. */
+static char *offer_utf8(size_t *length)
+{
+    const char *file = standing_in();
+    int i;
+
+    if (file)
+        return contents(file, length);
+
+    for (i = 0; i < TEXT_KINDS; i++)
+    {
+        void *bytes;
+
+        if (gfx_selection_has(text_kinds[i])
+            && gfx_selection_take(text_kinds[i], &bytes, length))
+            return bytes;
+    }
+
+    return 0;
+}
+
 void scrap_refresh(void)
 {
-    const char *offering;
+    unsigned long long when;
     const char *dir;
     char target[SCRAP_PATH];
     char *utf8;
@@ -407,13 +480,8 @@ void scrap_refresh(void)
     if (!dir)
         return;
 
-    /*
-     * What the desktop is offering. A file standing in for it until there is a
-     * compositor to ask - see the note in settings.c about why the stand-in is
-     * the only way any of this can be checked.
-     */
-    offering = setting("TOSEMU_SCRAP_IN");
-    if (!offering || !offering[0])
+    when = offer_when();
+    if (!when)
         return;
 
     snprintf(target, sizeof target, "%s/%s", dir, SCRAP_TEXT);
@@ -423,10 +491,10 @@ void scrap_refresh(void)
      * current one - most likely another GEM application's, which is the case
      * that must not be trodden on.
      */
-    if (written_at(offering) <= written_at(target))
+    if (when <= written_at(target))
         return;
 
-    utf8 = contents(offering, &utf8_length);
+    utf8 = offer_utf8(&utf8_length);
     if (!utf8)
         return;
 
@@ -465,8 +533,6 @@ static void offer_text(void)
     FILE *f;
 
     where = setting("TOSEMU_SCRAP_OUT");
-    if (!where || !where[0])
-        return;
 
     snprintf(source, sizeof source, "%s/%s", scrap.host, SCRAP_TEXT);
 
@@ -480,13 +546,35 @@ static void offer_text(void)
     if (!utf8)
         return;
 
-    f = fopen(where, "wb");
-    if (f)
+    /* Where a test looks, there being no desktop in one to look at */
+    if (where && where[0])
     {
-        if (utf8_length)
-            fwrite(utf8, 1, utf8_length, f);
+        f = fopen(where, "wb");
 
-        fclose(f);
+        if (f)
+        {
+            if (utf8_length)
+                fwrite(utf8, 1, utf8_length, f);
+
+            fclose(f);
+        }
+    }
+
+    /*
+     * And the desktop itself. This can refuse - no compositor, or nothing the
+     * person has done that this program saw, which is the serial a selection
+     * has to be taken with - and a refusal is not worth reporting: the scrap
+     * is still on disk and another GEM application can still paste it.
+     */
+    {
+        struct gfx_offer what;
+
+        what.mimes = text_kinds;
+        what.mimes_n = TEXT_KINDS;
+        what.bytes = utf8;
+        what.length = utf8_length;
+
+        gfx_selection_give(&what, 1);
     }
 
     free(utf8);

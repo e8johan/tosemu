@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <signal.h>
 
 #include "m68k.h"
 
@@ -171,6 +172,16 @@ int main(int argc, char **argv)
     int no_config = 0;
 
     verbose = 0;
+
+    /*
+     * Handing the clipboard to another program means writing down a pipe that
+     * program owns, and it may stop reading half way through - a paste
+     * cancelled, or the window it was going into closed. The default for that
+     * is to kill this process, which would take the emulated machine and
+     * whatever it had not saved with it, over something that is not even a
+     * failure. tosaesd ignores it for the same reason, see the note there.
+     */
+    signal(SIGPIPE, SIG_IGN);
 
     /*
      * The emulator's own arguments, which stop at the name of the binary.
