@@ -10,7 +10,7 @@ whether something is right; these say what it looks like, which is a question
 only a person can answer.
 
     make demos
-    ./bin/tosemu demos/dialog
+    ./bin/tosemu build/demos/dialog
 
 `TOSEMU_SCALE` says how much larger than an ST pixel one on the desktop is,
 and three is the default.
@@ -19,7 +19,7 @@ With a compositor there is a window and the mouse and keyboard work. Without
 one the screen is only in memory, which is not very interesting, though
 TOSEMU_SCREENSHOT will still write out what was drawn:
 
-    TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu demos/dialog
+    TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm ./bin/tosemu build/demos/dialog
 
 and TOSEMU_KEYS and TOSEMU_CLICKS will press something, for when there is
 nobody to. Keys are characters, with \r for Return. Clicks are places to press
@@ -29,9 +29,9 @@ and release the left button, and can also drag or only move:
     x,y-x2,y2       press at the first, release at the second
     @x,y            move the pointer there, pressing nothing
 
-    TOSEMU_KEYS='\r' ./bin/tosemu demos/dialog
-    TOSEMU_CLICKS='112,114' ./bin/tosemu demos/dialog
-    TOSEMU_CLICKS='@96,5 @100,27 100,27' ./bin/tosemu demos/menu
+    TOSEMU_KEYS='\r' ./bin/tosemu build/demos/dialog
+    TOSEMU_CLICKS='112,114' ./bin/tosemu build/demos/dialog
+    TOSEMU_CLICKS='@96,5 @100,27 100,27' ./bin/tosemu build/demos/menu
 
 Moving without pressing is not a nicety: a GEM menu opens when the pointer
 arrives among the titles, so a menu cannot be worked by clicking alone.
@@ -160,7 +160,7 @@ rather than the copy the emulator has been drawing out of - this one reads the
 object's flags out of it to find out whether it is the default button, and the
 only tree it can read is its own.
 
-    ./bin/tosemu demos/userdef
+    ./bin/tosemu build/demos/userdef
 
 Hold a button down to see the routine draw the pressed state, which is its own
 doing rather than the AES inverting the rectangle: an object that draws itself
@@ -246,9 +246,9 @@ It needs a daemon, because the menu it appears in belongs to the other
 applications rather than to itself:
 
     make demos
-    mkdir -p /tmp/acc && cp demos/DEMO.ACC /tmp/acc/
+    mkdir -p /tmp/acc && cp build/demos/DEMO.ACC /tmp/acc/
     bin/tosaesd -v /tmp/acc &
-    bin/tosemu demos/menu
+    bin/tosemu build/demos/menu
 
 and the Desk menu has Demo in it, under a separator. Picking it prints a line
 from the accessory rather than doing anything to the menu demo, which is the

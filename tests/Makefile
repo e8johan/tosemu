@@ -1,3 +1,19 @@
+# The tests, and where they are built and run.
+#
+# Nothing built belongs next to what it was built from, and for these that is
+# more than tidiness: a run leaves programs, files the programs made, sockets,
+# process id files and whole directories behind, and every one of them used to
+# land among the sources. So the suite is built and run in a directory of its
+# own under build/, and this directory holds only what somebody wrote.
+#
+# Which means make itself has to run there, rather than merely writing there.
+# Half of what these tests check is what a program does with a relative path -
+# Pexec of a sibling program, Fcreate of a name with no directory in it,
+# Dgetpath answering for where it stands - and all of that is answered from the
+# working directory of the process. So make hands the work to a copy of itself
+# running in the build directory, and every recipe below names what it wants
+# without a path, the way it did when the two were the same place.
+#
 # Each testname in STESTNAME is built from a source file with the file name
 # extension .s, each one in CTESTNAME from a source file with the extension .c
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
@@ -5,7 +21,38 @@ STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           cmdline Malloc
 CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap
 
+# The ones that call the AES or the VDI, whose bindings live in their own
+# library rather than in the C one
+GEMTESTNAME=c-gem c-vdi c-aesd c-scrap c-acc c-userdef c-icon c-boxchar c-fsel \
+            c-watchbox c-mkstate c-screen c-menu c-frame c-resize
+
+# Where the sources are, found through the makefile that was read rather than
+# from the directory make happens to be standing in, since it is standing in
+# the build directory half the time. $(realpath) rather than $(abspath), so
+# that this still holds when the file was reached through a link.
+srcdir := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
+BUILDDIR := $(abspath $(srcdir)/../build/tests)
+
 CC=m68k-atari-mint-gcc
+
+ifneq ($(CURDIR),$(BUILDDIR))
+
+# Run from the source directory, which is not where any of this belongs: make
+# the build directory and hand the whole job to a copy of make standing in it.
+all check:
+	@mkdir -p $(BUILDDIR)
+	$(MAKE) -C $(BUILDDIR) -f $(srcdir)/Makefile $@
+
+clean:
+	$(RM) -r $(BUILDDIR)
+
+else
+
+# Only the sources are looked for over there. A blanket VPATH would also find
+# programs left behind by an older build in the source directory and take them
+# for something it had made itself.
+vpath %.c $(srcdir)
+vpath %.s $(srcdir)
 
 # A socket that is not there, so that a session somebody is using is not what
 # these run against. A daemon decides things a test has an opinion about -
@@ -26,13 +73,13 @@ NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu --no-config
+TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
 # otherwise wait for ever rather than fail. Which daemon, if any, is left to
 # the caller: most of these are the tests that want a real one.
-TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../bin/tosemu --no-config
+TOSEMU_FOR_A_WHILE=timeout 20 env TOSEMU_NO_WINDOW=1 ../../bin/tosemu --no-config
 
 all: $(addprefix test-,$(STESTNAME) $(CTESTNAME))
 
@@ -43,52 +90,17 @@ test-%: %.c
 	$(CC) $< -o $@
 
 # The AES and VDI bindings live in their own library rather than in the C one
-test-c-gem: c-gem.c
-	$(CC) $< -lgem -o $@
-
-test-c-vdi: c-vdi.c
-	$(CC) $< -lgem -o $@
-
-test-c-aesd: c-aesd.c
-	$(CC) $< -lgem -o $@
-
-test-c-scrap: c-scrap.c
-	$(CC) $< -lgem -o $@
-
-test-c-acc: c-acc.c
-	$(CC) $< -lgem -o $@
-
-test-c-userdef: c-userdef.c
-	$(CC) $< -lgem -o $@
-
-test-c-icon: c-icon.c
-	$(CC) $< -lgem -o $@
-
-test-c-boxchar: c-boxchar.c
-	$(CC) $< -lgem -o $@
-
-test-c-fsel: c-fsel.c
-	$(CC) $< -lgem -o $@
-
-test-c-watchbox: c-watchbox.c
-	$(CC) $< -lgem -o $@
-
-test-c-mkstate: c-mkstate.c
-	$(CC) $< -lgem -o $@
-
-test-c-screen: c-screen.c
-	$(CC) $< -lgem -o $@
-
-test-c-menu: c-menu.c
-	$(CC) $< -lgem -o $@
-
-test-c-frame: c-frame.c
-	$(CC) $< -lgem -o $@
-
-test-c-resize: c-resize.c
+$(addprefix test-,$(GEMTESTNAME)): test-%: %.c
 	$(CC) $< -lgem -o $@
 
 check: all
+	# Four of these open a file to see what a file that is there does, and
+	# the file they open is called Makefile - because when they were written
+	# there was one next to them and there is not one next to them now. So
+	# put one where they run. It has to be a real file with real contents:
+	# test-Fread reads the first hundred bytes of it and the check below
+	# compares them against the same hundred bytes.
+	ln -sfn $(srcdir)/Makefile Makefile
 	$(TOSEMU) test-Pterm0
 	$(TOSEMU) test-Pterm; test "$$?" = 42
 	$(TOSEMU) test-Bconout > out && test "`cat out`" = 'Hello World!'
@@ -185,7 +197,7 @@ check: all
 	# The same said in a settings file, which is where a machine that is not
 	# to change between one program and the next belongs
 	printf '[machine]\nmemory = 2m\n' > settings.tosemu
-	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c settings.tosemu \
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../../bin/tosemu -c settings.tosemu \
 	  test-c-memory 2m > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) settings.tosemu said
@@ -237,20 +249,20 @@ check: all
 	# reading of one; this checks that what it read reaches the machine,
 	# and that the environment still wins over it.
 	printf '[screen]\nmode = tt-medium\n' > settings.tosemu
-	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c settings.tosemu \
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../../bin/tosemu -c settings.tosemu \
 	  test-c-screen tt-medium > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	TOSEMU_SCREEN=high TOSEMU_NO_WINDOW=1 $(NO_DAEMON) \
-	  ../bin/tosemu -c settings.tosemu test-c-screen high > out; \
+	  ../../bin/tosemu -c settings.tosemu test-c-screen high > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# And a file named and not there is refused rather than ignored, since
 	# carrying on would be running on a machine nobody asked for
-	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c nosuch.tosemu \
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../../bin/tosemu -c nosuch.tosemu \
 	  test-c-screen high > out 2>/dev/null; test "$$?" != 0
 	$(RM) settings.tosemu
 	TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=medium \
-	  ../bin/tosaesd --no-config & \
+	  ../../bin/tosaesd --no-config & \
 	  echo $$! > screen.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/screen.socket TOSEMU_SCREEN=low \
@@ -325,7 +337,7 @@ check: all
 	# nought, appl_find always answers -1, and a message posted comes back
 	# to the sender. The daemon gets a socket of its own so that a test run
 	# does not disturb a session somebody is using.
-	TOSEMU_AESD=$(CURDIR)/aesd.socket ../bin/tosaesd --no-config & \
+	TOSEMU_AESD=$(CURDIR)/aesd.socket ../../bin/tosaesd --no-config & \
 	  echo $$! > aesd.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/aesd.socket $(TOSEMU_FOR_A_WHILE) test-c-aesd > out & \
@@ -351,7 +363,7 @@ check: all
 	mkdir -p accs
 	cp test-c-acc accs/TEST.ACC
 	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
-	  ../bin/tosaesd --no-config accs > accsaid 2>&1 & \
+	  ../../bin/tosaesd --no-config accs > accsaid 2>&1 & \
 	  echo $$! > accd.pid; \
 	  sleep 3; \
 	  pgrep -P `cat accd.pid` > accwas || true; \
@@ -384,11 +396,11 @@ check: all
 	# for afterwards is nobody's child - one that is would still answer
 	# while it waited to be collected, and read as alive.
 	TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
-	  ../bin/tosaesd --no-config > accsaid 2>&1 & \
+	  ../../bin/tosaesd --no-config > accsaid 2>&1 & \
 	  echo $$! > accd.pid; \
 	  sleep 1; \
 	  ( TOSEMU_NO_WINDOW=1 TOSEMU_AESD=$(CURDIR)/acc.socket \
-	      ../bin/tosemu --no-config test-c-acc & \
+	      ../../bin/tosemu --no-config test-c-acc & \
 	    echo $$! > accwas ); \
 	  sleep 3; \
 	  kill -INT `cat accd.pid`; \
@@ -431,7 +443,7 @@ check: all
 	# at all, and gets a socket of its own so a session somebody is using is
 	# left alone.
 	$(RM) -r scrapdir
-	TOSEMU_AESD=$(CURDIR)/scrap.socket ../bin/tosaesd --no-config & \
+	TOSEMU_AESD=$(CURDIR)/scrap.socket ../../bin/tosaesd --no-config & \
 	  echo $$! > scrapd.pid; \
 	  sleep 1; \
 	  TOSEMU_AESD=$(CURDIR)/scrap.socket \
@@ -525,8 +537,8 @@ check: all
 	# here to check. So ask first and say so, the way bin/scraptest says it
 	# about the same checks of its own.
 	$(RM) -r scrapdir offer.png
-	if ../bin/scraptest --png-available; then \
-	  ../bin/scraptest --write-png offer.png || exit 1; \
+	if ../../bin/scraptest --png-available; then \
+	  ../../bin/scraptest --write-png offer.png || exit 1; \
 	  TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.png \
 	    $(TOSEMU) test-c-scrap picture > out || exit 1; \
 	  ! grep -q '^not ok' out || exit 1; \
@@ -546,7 +558,7 @@ check: all
 	# which is what the timeout below would catch.
 	$(RM) -r scrapdir
 	timeout 10 env TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_NO_WINDOW=1 \
-	  $(NO_DAEMON) ../bin/tosemu --no-config test-c-scrap hang > out 2>&1; \
+	  $(NO_DAEMON) ../../bin/tosemu --no-config test-c-scrap hang > out 2>&1; \
 	  echo "$$?" > code
 	test "`cat code`" != 124
 	grep -q 'no window for either to arrive at' out
@@ -554,5 +566,12 @@ check: all
 	grep -q '^1\.\.' out
 	$(RM) -r out code scrapdir
 
+# Reached only by a make standing in the build directory, which is the one
+# place where deleting the directory itself is not an option
 clean:
 	$(RM) $(addprefix test-,$(STESTNAME) $(CTESTNAME))
+	$(RM) Makefile out out2 code said settings.tosemu
+
+endif
+
+.PHONY: all check clean
