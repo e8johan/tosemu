@@ -91,12 +91,144 @@ struct exec_header {
 #define BIOSRAMBASE (0xFA0000)
 #define BIOSRAMSIZE (0x10000)
 
-/* Where the machine's RAM stops, the cartridge range being what is above it */
-#define RAMTOP (0xF9FFFF)
+/* The most RAM the machine can have, which is where the cartridge range
+ * begins: nothing above that address was RAM on any of these machines, so it
+ * is the first byte a machine of the largest possible size does not have. */
+#define RAM_MAX (BIOSRAMBASE)
 
-/* The least RAM worth handing a program, below which a screen has taken so
- * much of the machine that there is no machine left */
-#define RAM_FOR_A_PROGRAM (0x100000)
+/* The least RAM worth handing a program, which is what has to be left over
+ * once the screen has been taken off the top. It is well under the smallest
+ * machine below, because what it guards against is not a small machine but a
+ * screen that has eaten one: a screen as large as a modern display is more
+ * than a megabyte of planes, which is the whole of a 520ST. */
+#define RAM_FOR_A_PROGRAM (0x20000)
+
+/*
+ * How much RAM the machine has, which is a setting because a program of the
+ * period was written for a machine that had a particular amount.
+ *
+ * How much there is decides how large a document or a picture can be, and a
+ * program that sizes its own buffers from what Malloc reports behaves
+ * differently on one megabyte than on fourteen. It is also the only way to see
+ * what one does when memory runs out, which on a machine with fifteen
+ * megabytes in it never happens.
+ *
+ * The sizes are the ones the machines were sold with, named the way a person
+ * would say them. One contiguous block starting at zero, which is what an ST,
+ * an STE and a Falcon had - a TT's second sort of memory is not a size in this
+ * table: TT RAM is another area of the map altogether, at 0x01000000, and
+ * Mxalloc answering for it is what would make it real, so what the TT
+ * contributes here is its ST RAM and no more.
+ *
+ * `max` is the default and is not a machine. It is as much as the memory map
+ * has room for, and it is the right default because a program given more
+ * memory than any Atari had is not a program that goes wrong - whereas one
+ * given less than it was written for is - and because it is what tosemu has
+ * always handed out. Whoever wants the machine an application was written for
+ * says which it was.
+ */
+static const struct {
+    const char *name;
+    uint32_t bytes;
+} memories[] = {
+    { "512k",   512u * 1024 },  /* a 520ST, and half of what a 1040ST had */
+    { "1m",    1024u * 1024 },  /* a 1040ST, and a Falcon as it was sold */
+    { "2m",    2048u * 1024 },  /* a Mega ST 2, and a TT's ST RAM */
+    { "4m",    4096u * 1024 },  /* a Mega ST 4, and the most an STE takes */
+    { "14m",  14336u * 1024 },  /* the most a Falcon takes */
+    { "max",   RAM_MAX },       /* as much as the memory map has room for */
+};
+
+#define MEMORIES (int)(sizeof memories / sizeof memories[0])
+
+/* What the sizes are called, for a complaint about one that is not there */
+static void say_the_sizes(void)
+{
+    int i;
+
+    for (i = 0; i < MEMORIES; i++)
+        fprintf(stderr, "%s %s", i ? "," : "", memories[i].name);
+}
+
+/*
+ * Which of them the machine has, as the address of the first byte above its
+ * RAM - which is also how many bytes there are, the RAM starting at zero.
+ *
+ * A plain number with a k or an m after it is taken as well. The machines are
+ * the sizes worth naming rather than the only ones worth having: a 520ST with
+ * a third party board in it was whatever somebody soldered into it, and a
+ * program being tried at the size where it runs out of memory wants that size
+ * and not the one below it.
+ */
+static uint32_t machine_ram(void)
+{
+    const char *want = setting("TOSEMU_MEMORY");
+    unsigned long long bytes = 0;
+    char *end;
+    int i;
+
+    if (!want || !*want)
+        return RAM_MAX;
+
+    for (i = 0; i < MEMORIES; i++)
+        if (strcasecmp(want, memories[i].name) == 0)
+            return memories[i].bytes;
+
+    bytes = strtoull(want, &end, 10);
+
+    /*
+     * A number and then a k or an m, and the letter is not optional: nobody
+     * counts memory in bytes, so a bare 4 is somebody who meant megabytes and
+     * would otherwise be handed four bytes and a complaint about how few that
+     * is. Scaled before it is multiplied out, so that a number large enough to
+     * wrap round on the way is still a number too large.
+     */
+    if (end == want)
+        bytes = 0;
+    else if ((*end == 'k' || *end == 'K') && end[1] == '\0')
+        bytes = bytes > RAM_MAX ? RAM_MAX + 1ull : bytes * 1024;
+    else if ((*end == 'm' || *end == 'M') && end[1] == '\0')
+        bytes = bytes > RAM_MAX ? RAM_MAX + 1ull : bytes * 1024 * 1024;
+    else
+        bytes = 0;
+
+    /* Said and not understood, which is worth a word rather than a machine
+     * nobody asked for: how much memory there is is not something an
+     * application can be told twice */
+    if (bytes == 0)
+    {
+        fprintf(stderr, "TOSEMU_MEMORY: '%s' is not an amount of memory. "
+                        "There is", want);
+        say_the_sizes();
+        fprintf(stderr, ", or a number of kilobytes or megabytes such as "
+                        "640k.\n");
+
+        return RAM_MAX;
+    }
+
+    if (bytes > RAM_MAX)
+    {
+        fprintf(stderr, "TOSEMU_MEMORY: %s is more memory than the map has "
+                        "room for, the cartridge range beginning at 0x%lx, so "
+                        "the machine gets %luk instead.\n",
+                want, (unsigned long)RAM_MAX,
+                (unsigned long)(RAM_MAX / 1024));
+
+        return RAM_MAX;
+    }
+
+    if (bytes < RAM_FOR_A_PROGRAM)
+    {
+        fprintf(stderr, "TOSEMU_MEMORY: %s is not enough memory to run "
+                        "anything in, so the machine gets %luk, which is the "
+                        "least there is any point in.\n",
+                want, (unsigned long)(RAM_FOR_A_PROGRAM / 1024));
+
+        return RAM_FOR_A_PROGRAM;
+    }
+
+    return (uint32_t)bytes;
+}
 
 /* The stack an accessory is started on, which comes out of that RAM because it
  * is not the accessory's - see the stack field of a tos_environment. It only
@@ -472,6 +604,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     struct exec_header *header;
     const char *path;
     int16_t screen_w, screen_h, screen_planes;
+    uint32_t ramtop, screen_area;
 
     /* Ensure that binary is large enough to hold a header */
     if (size < sizeof(struct exec_header))
@@ -513,14 +646,21 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * else. A daemon deciding on a larger one is the case this can still fall
      * short of, because the machine has to be laid out before there is a
      * program to run, let alone one that has asked a daemon anything.
+     *
+     * How much RAM there is to take it off the top of is a setting as well,
+     * which is why the two are worked out together: a screen the size of a
+     * display is more than a small machine has room for at all.
      */
+    ramtop = machine_ram();
+
     screen_mode(&screen_w, &screen_h, &screen_planes);
     screen_size = screen_bytes(screen_w, screen_h, screen_planes);
 
-    if (screen_size == 0 || screen_size > RAMTOP - RAM_FOR_A_PROGRAM)
+    if (screen_size == 0 || screen_size + RAM_FOR_A_PROGRAM > ramtop)
     {
-        printf("Error: a %dx%d screen of %d planes leaves no machine to run "
-               "anything in\n", screen_w, screen_h, screen_planes);
+        printf("Error: a %dx%d screen of %d planes leaves no room to run "
+               "anything in a machine of %luk\n", screen_w, screen_h,
+               screen_planes, (unsigned long)(ramtop / 1024));
         return -1;
     }
 
@@ -528,8 +668,9 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * that rounding leaves over is slack above the screen rather than below
      * it, so an application writing the whole of what VgetSize reports has
      * memory under its pen the whole way. */
-    screen_base = (RAMTOP - screen_size) & ~0xffu;
-    te->screenmem = calloc(1, RAMTOP - screen_base);
+    screen_base = (ramtop - screen_size) & ~0xffu;
+    screen_area = ramtop - screen_base;
+    te->screenmem = calloc(1, screen_area);
 
     /* And the rest of it is the application's */
     te->size = screen_base - 0x000900;
@@ -639,7 +780,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x600-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
-    add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, RAMTOP - screen_base, te->screenmem);
+    add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, screen_area, te->screenmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
 

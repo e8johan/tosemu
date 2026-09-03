@@ -173,6 +173,28 @@ screen for everything sharing it - applications lay their windows out in it and
 are told where the others put theirs - so it belongs to the session, the way a
 resolution belonged to a machine rather than to a program running on it.
 
+`TOSEMU_MEMORY` says how much memory the machine has. The sizes the Ataris were
+sold in are `512k`, a 520ST; `1m`, a 1040ST and a Falcon as it came; `2m`, a
+Mega ST 2 and a TT's ST RAM; `4m`, a Mega ST 4 and the most an STE takes; and
+`14m`, the most a Falcon takes. `max` is the default and is not a machine: it
+is as much as the memory map has room for, which is everything below the
+cartridge range, and comes to a little under sixteen megabytes. A number with a
+`k` or an `m` after it - `640k`, `6m` - is a size as well, because the machines
+are the sizes worth naming rather than the only ones worth having.
+
+More memory than any Atari had is not something a program goes wrong on, which
+is why `max` is the default. Asking for less is for the program that was
+written for a particular machine: how much there is decides how large a
+document or a picture can be, and what a program does when memory runs out is a
+path through it that fifteen megabytes never take. The screen comes off the top
+of whatever there is, the way it did on the machine, so a screen as large as a
+modern display and a 520ST do not go together - the emulator says so rather
+than starting a machine with no room to load anything into.
+
+A TT's second sort of memory is not one of these. TT RAM is another area of the
+map altogether and `Mxalloc` answering for it is what would make it real, so
+what the TT contributes here is its ST RAM and no more.
+
 `TOSEMU_KEYS` hands over keystrokes and `TOSEMU_CLICKS` places to click, for
 when there is nobody to type or click - a test suite, mostly. Keys are
 characters with `\r` for Return. Clicks are `x,y` to press and release there,
@@ -216,6 +238,9 @@ be there rather than one that has to be.
     decorations = atari
     # output = DP-1
 
+    [machine]
+    memory = 4m
+
     [input]
     keys   = \r
     clicks = 100,50 200,60
@@ -240,6 +265,7 @@ Which is which:
 | `[screen] output`      | `TOSEMU_OUTPUT`      |
 | `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
 | `[screen] decorations` | `TOSEMU_DECORATIONS` |
+| `[machine] memory`     | `TOSEMU_MEMORY`      |
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |
 | `[files] base`         | `TOS_BASE_PATH`      |

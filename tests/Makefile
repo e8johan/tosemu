@@ -3,7 +3,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap
 
 CC=m68k-atari-mint-gcc
 
@@ -148,6 +148,42 @@ check: all
 	# call every compiler of the period makes before anything else
 	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# How much memory the machine has, which is the sizes the Ataris were
+	# sold in and then as much as the memory map has room for. Every one of
+	# them, because what each has to reach is both halves of the machine:
+	# the map, where the screen sits at the top of the RAM there is, and
+	# GEMDOS, which is the half an application sees when it asks for memory.
+	# The first without asking for anything, that being the default.
+	$(TOSEMU) test-c-memory max > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	for m in 512k 1m 2m 4m 14m max; do \
+	  TOSEMU_MEMORY=$$m $(TOSEMU) test-c-memory $$m > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
+	# A size that is a number rather than a machine, which is what somebody
+	# trying a program at the size it runs out of memory at asks for. 14336k
+	# is the Falcon's fourteen megabytes said the other way, so what it comes
+	# to is a machine the test already knows the shape of.
+	TOSEMU_MEMORY=14336k $(TOSEMU) test-c-memory 14m > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And a size that is neither is complained about rather than taken, the
+	# machine falling back to the one nobody asked for. A misspelt size that
+	# quietly became something else would be a machine of some other size,
+	# and how much memory there is is not something an application can be
+	# told twice.
+	TOSEMU_MEMORY=frog $(TOSEMU) test-c-memory max > out 2> said; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	grep -q 'TOSEMU_MEMORY' said
+	# The same said in a settings file, which is where a machine that is not
+	# to change between one program and the next belongs
+	printf '[machine]\nmemory = 2m\n' > settings.tosemu
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../bin/tosemu -c settings.tosemu \
+	  test-c-memory 2m > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) settings.tosemu said
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given
