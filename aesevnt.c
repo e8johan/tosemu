@@ -210,11 +210,12 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
     for (;;)
     {
-        struct pollfd fds[3];
+        struct pollfd fds[4];
         int nfds = 0;
         long left;
-        int wayland, daemon, scrap;
+        int wayland, daemon, scrap, giving;
         int wayland_slot = -1, daemon_slot = -1, scrap_slot = -1;
+        int giving_slot = -1;
 
         /*
          * The menu bar, before the application hears about anything.
@@ -455,6 +456,21 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             nfds++;
         }
 
+        /*
+         * And a scrap on its way to the desktop that would not all fit at
+         * once. What is on the other end is another program reading a pipe
+         * when it gets round to it, and finishing the write here would let a
+         * paste in somebody else's window stop the emulated machine.
+         */
+        giving = gfx_selection_fd();
+        if (giving >= 0)
+        {
+            giving_slot = nfds;
+            fds[nfds].fd = giving;
+            fds[nfds].events = POLLOUT;
+            nfds++;
+        }
+
         if (deadline < 0)
             left = -1;
         else
@@ -509,6 +525,9 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
         if (scrap_slot >= 0 && (fds[scrap_slot].revents & POLLIN))
             scrap_pump();
+
+        if (giving_slot >= 0 && fds[giving_slot].revents)
+            gfx_selection_flush();
     }
 }
 

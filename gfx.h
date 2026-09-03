@@ -22,6 +22,7 @@
 #define GFX_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 struct surface;
 
@@ -146,6 +147,70 @@ void gfx_dispatch();
 void gfx_dispatch_ready(void);
 
 void gfx_flush();
+
+/* The clipboard ***********************************************************/
+
+/*
+ * The desktop's clipboard, which is a selection on the seat rather than
+ * anything to do with a window.
+ *
+ * All of this is here rather than beside the rest of the scrap because taking
+ * a selection has to be answering something the person did, and the serial of
+ * that event is the proof - so it can only be done by something with a
+ * connection and a seat. See scrap.c, which decides what to do with it.
+ */
+
+/* Changes whenever the desktop's offer does, and is 0 while it is offering
+ * nothing. What a caller does with it is notice that it is not what it was. */
+unsigned gfx_selection_generation(void);
+
+/* When that offer arrived, in the units a file's modification time is in, so
+ * that the two can be compared. 0 when there is no offer. */
+unsigned long long gfx_selection_when(void);
+
+/* Whether the offer can be had in this form */
+int gfx_selection_has(const char *mime);
+
+/*
+ * Reads it, which means asking the compositor for a pipe and waiting for the
+ * program that owns the selection to fill it.
+ *
+ * That waiting is the one place this stops the emulated machine on somebody
+ * else's account, so it is bounded: a paste gives up rather than letting a
+ * program that never writes stop GEM for ever. Allocates; the caller frees.
+ */
+int gfx_selection_take(const char *mime, void **bytes, size_t *length);
+
+/*
+ * One thing to offer, and the names it answers to. Text answers to several,
+ * and copying it once per name to say so would be silly.
+ */
+struct gfx_offer {
+    const char *const *mimes;
+    int mimes_n;
+    const void *bytes;
+    size_t length;
+};
+
+/*
+ * Takes the selection, offering these. The bytes are copied, so the caller
+ * keeps its own.
+ *
+ * Answers 0 when there is nothing to take it with - no compositor, or no
+ * serial yet because the person has done nothing this program saw. That is a
+ * reason to leave the scrap where it is rather than an error: a cut nobody can
+ * be told about is still a cut another GEM application can paste.
+ */
+int gfx_selection_give(const struct gfx_offer *what, int n);
+
+/*
+ * A pipe with something still to go down it, for the event loop to wait on
+ * until it can be written, or -1 when nothing is waiting.
+ */
+int gfx_selection_fd(void);
+
+/* Writes what will fit, on everything that is waiting */
+void gfx_selection_flush(void);
 
 /* Puts what is in the surface on the screen, in every window showing part
  * of it */

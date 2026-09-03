@@ -64,6 +64,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <time.h>
+#include <errno.h>
 #include <sys/mman.h>
 
 #ifndef NO_WAYLAND
@@ -292,6 +294,17 @@ static struct {
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
     struct wl_pointer *pointer;
+
+    /*
+     * The clipboard, which Wayland calls the selection.
+     *
+     * It hangs off the seat rather than off a window, and taking it has to be
+     * answering something the person did - which is why it is here at all
+     * rather than in the daemon, where the scrap otherwise lives: a daemon has
+     * no seat, no focus and no serials to prove anything with. See scrap.c.
+     */
+    struct wl_data_device_manager *data_manager;
+    struct wl_data_device *data_device;
 
     struct xkb_context *xkb;
     struct xkb_keymap *keymap;
@@ -817,7 +830,11 @@ static void kb_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
 static void kb_enter(void *data, struct wl_keyboard *kb, uint32_t serial,
                      struct wl_surface *s, struct wl_array *keys)
 {
-    (void)data; (void)kb; (void)serial; (void)s; (void)keys;
+    (void)data; (void)kb; (void)s; (void)keys;
+
+    /* Being given the keyboard is something the person did, and its serial is
+     * one a request may be made with */
+    w.serial = serial;
 }
 
 static void kb_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
@@ -834,7 +851,15 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
     uint16_t scan, ch = 0;
     char utf8[8];
 
-    (void)data; (void)kb; (void)serial; (void)time;
+    (void)data; (void)kb; (void)time;
+
+    /*
+     * The last thing the person did, which taking the clipboard has to be
+     * answering. A copy is as often a key - a shortcut, or a menu walked with
+     * the cursor keys - as it is a click, and before this the only serials
+     * kept were the pointer's, so a copy nobody had clicked for was refused.
+     */
+    w.serial = serial;
 
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED || !w.xkb_state)
         return;
@@ -1146,6 +1171,340 @@ static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)
         w.pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(w.pointer, &pointer_listener, 0);
     }
+}
+
+/* The clipboard ***********************************************************/
+
+/*
+ * What the desktop is offering, and what is being offered to it.
+ *
+ * Both go through the seat's data device. Coming in, the compositor describes
+ * an offer - one event per form it can produce - and then says that offer is
+ * the selection; nothing is read until somebody asks for it, which is what
+ * lets a person copy a hundred times without this doing any work.
+ *
+ * Going out is where the serial matters. A client may only take the selection
+ * in answer to something the person did, and has to hand back the number the
+ * compositor gave that event. w.serial is the last one seen. Without it the
+ * request is refused, which is the whole reason this cannot live in tosaesd.
+ */
+
+#define MIME_LEN   (64)
+
+/*
+ * How many forms one offer may be described in.
+ *
+ * Generous because the number is not ours to choose and the cost of guessing
+ * low is a paste that silently does nothing. A plain text selection arrives
+ * with five, three of them X11 leftovers; a browser offers text, HTML, several
+ * pictures and a private form or two, and the one wanted here can be anywhere
+ * in the list.
+ */
+#define MIME_MAX   (24)
+
+/* What one thing being offered is: some bytes, and the names it answers to.
+ * Text answers to five, and copying it five times to say so would be silly. */
+struct given {
+    char mimes[MIME_MAX][MIME_LEN];
+    int mimes_n;
+    unsigned char *bytes;
+    size_t length;
+};
+
+/*
+ * A transfer in progress.
+ *
+ * The compositor hands over a pipe and the receiving program reads it when it
+ * gets round to it, so a write of any size can stop part way. Finishing it
+ * here would mean the emulated machine standing still until another program
+ * felt like reading, which is not something a paste in somebody else's window
+ * should be able to do - so what fits is written, and the rest waits for the
+ * pipe to be writable again like anything else in the event loop.
+ */
+#define SENDING (4)
+
+static struct {
+    struct wl_data_offer *building;         /* being described now */
+    char building_types[MIME_MAX][MIME_LEN];
+    int building_n;
+
+    struct wl_data_offer *offer;            /* and the one that is current */
+    char types[MIME_MAX][MIME_LEN];
+    int types_n;
+
+    /* Changes whenever the offer does, and when it arrived. The time is in the
+     * same units as a file's, because what it gets compared against is one. */
+    unsigned generation;
+    unsigned long long when;
+
+    struct wl_data_source *source;
+    struct given given[4];
+    int given_n;
+
+    struct {
+        int fd;
+        const unsigned char *bytes;
+        size_t length;
+        size_t sent;
+    } sending[SENDING];
+} clip;
+
+/* The wall clock in nanoseconds, which is what a modification time is */
+static unsigned long long now_ns(void)
+{
+    struct timespec t;
+
+    clock_gettime(CLOCK_REALTIME, &t);
+
+    return (unsigned long long)t.tv_sec * 1000000000ull
+           + (unsigned long long)t.tv_nsec;
+}
+
+static void offer_mime(void *data, struct wl_data_offer *offer,
+                       const char *mime)
+{
+    (void)data;
+
+    if (offer != clip.building || clip.building_n >= MIME_MAX)
+        return;
+
+    snprintf(clip.building_types[clip.building_n], MIME_LEN, "%s", mime);
+    clip.building_n++;
+}
+
+static void offer_source_actions(void *data, struct wl_data_offer *offer,
+                                 uint32_t actions)
+{
+    (void)data; (void)offer; (void)actions;
+}
+
+static void offer_action(void *data, struct wl_data_offer *offer,
+                         uint32_t action)
+{
+    (void)data; (void)offer; (void)action;
+}
+
+static const struct wl_data_offer_listener offer_listener = {
+    offer_mime,
+    offer_source_actions,
+    offer_action
+};
+
+/*
+ * A new offer, which arrives before anything has said what it is for.
+ *
+ * Only one is ever being described at a time - the compositor sends this, then
+ * the forms it can produce, then what it is for - so one slot is enough. It
+ * would not be if this took part in dragging, which sends offers for that as
+ * well; it does not, and a GEM application has no way to ask it to.
+ */
+static void device_offer(void *data, struct wl_data_device *device,
+                         struct wl_data_offer *offer)
+{
+    (void)data; (void)device;
+
+    clip.building = offer;
+    clip.building_n = 0;
+
+    wl_data_offer_add_listener(offer, &offer_listener, 0);
+}
+
+static void device_selection(void *data, struct wl_data_device *device,
+                             struct wl_data_offer *offer)
+{
+    int i;
+
+    (void)data; (void)device;
+
+    if (clip.offer && clip.offer != offer)
+        wl_data_offer_destroy(clip.offer);
+
+    clip.offer = offer;
+    clip.types_n = 0;
+
+    if (offer && offer == clip.building)
+    {
+        for (i = 0; i < clip.building_n; i++)
+            snprintf(clip.types[i], MIME_LEN, "%s", clip.building_types[i]);
+
+        clip.types_n = clip.building_n;
+    }
+
+    clip.building = 0;
+    clip.building_n = 0;
+
+    /*
+     * Noted rather than read. What the desktop has is wanted only at the
+     * moment a GEM application looks for a scrap, and reading it here would
+     * mean a pipe and a round trip every time anybody anywhere copied
+     * anything.
+     */
+    clip.generation++;
+    clip.when = now_ns();
+}
+
+/* Dragging, which this takes no part in */
+static void device_enter(void *data, struct wl_data_device *device,
+                         uint32_t serial, struct wl_surface *surface,
+                         wl_fixed_t x, wl_fixed_t y,
+                         struct wl_data_offer *offer)
+{
+    (void)data; (void)device; (void)serial; (void)surface;
+    (void)x; (void)y; (void)offer;
+}
+
+static void device_leave(void *data, struct wl_data_device *device)
+{
+    (void)data; (void)device;
+}
+
+static void device_motion(void *data, struct wl_data_device *device,
+                          uint32_t time, wl_fixed_t x, wl_fixed_t y)
+{
+    (void)data; (void)device; (void)time; (void)x; (void)y;
+}
+
+static void device_drop(void *data, struct wl_data_device *device)
+{
+    (void)data; (void)device;
+}
+
+static const struct wl_data_device_listener device_listener = {
+    device_offer,
+    device_enter,
+    device_leave,
+    device_motion,
+    device_drop,
+    device_selection
+};
+
+/* Lets go of what is being offered, once the desktop has stopped asking */
+static void given_free(void)
+{
+    int i;
+
+    for (i = 0; i < clip.given_n; i++)
+    {
+        free(clip.given[i].bytes);
+        clip.given[i].bytes = 0;
+    }
+
+    clip.given_n = 0;
+}
+
+/*
+ * Somebody wants what was offered, in one of the forms it was offered in.
+ *
+ * The pipe is made non-blocking first. What arrives here is a program on the
+ * other side of the desktop that may not read for a while, and a blocking
+ * write would stop the emulated machine until it did.
+ */
+static void source_send(void *data, struct wl_data_source *source,
+                        const char *mime, int32_t fd)
+{
+    int i, j, slot;
+
+    (void)data;
+
+    if (source != clip.source)
+    {
+        close(fd);
+        return;
+    }
+
+    for (i = 0; i < clip.given_n; i++)
+        for (j = 0; j < clip.given[i].mimes_n; j++)
+            if (strcmp(clip.given[i].mimes[j], mime) == 0)
+            {
+                for (slot = 0; slot < SENDING; slot++)
+                    if (!clip.sending[slot].bytes)
+                    {
+                        fcntl(fd, F_SETFL, O_NONBLOCK);
+
+                        clip.sending[slot].fd = fd;
+                        clip.sending[slot].bytes = clip.given[i].bytes;
+                        clip.sending[slot].length = clip.given[i].length;
+                        clip.sending[slot].sent = 0;
+
+                        gfx_selection_flush();
+                        return;
+                    }
+
+                /* More transfers at once than anybody asked for. Closing the
+                 * pipe says there is nothing rather than leaving them waiting. */
+                close(fd);
+                return;
+            }
+
+    close(fd);
+}
+
+/*
+ * Somebody else took the selection, so this no longer has it.
+ *
+ * Which is the ordinary way an offer ends - a person copies in another program
+ * - and is also how two emulators stop fighting over the same scrap when both
+ * noticed the same file appear.
+ */
+static void source_cancelled(void *data, struct wl_data_source *source)
+{
+    (void)data;
+
+    if (source != clip.source)
+    {
+        wl_data_source_destroy(source);
+        return;
+    }
+
+    wl_data_source_destroy(clip.source);
+    clip.source = 0;
+
+    given_free();
+}
+
+static void source_target(void *data, struct wl_data_source *source,
+                          const char *mime)
+{
+    (void)data; (void)source; (void)mime;
+}
+
+/* The rest belong to dragging, which this takes no part in */
+static void source_dnd_drop(void *data, struct wl_data_source *source)
+{
+    (void)data; (void)source;
+}
+
+static void source_dnd_finished(void *data, struct wl_data_source *source)
+{
+    (void)data; (void)source;
+}
+
+static void source_action(void *data, struct wl_data_source *source,
+                          uint32_t action)
+{
+    (void)data; (void)source; (void)action;
+}
+
+static const struct wl_data_source_listener source_listener = {
+    source_target,
+    source_send,
+    source_cancelled,
+    source_dnd_drop,
+    source_dnd_finished,
+    source_action
+};
+
+/* Takes the data device once there is both a manager and a seat, whichever of
+ * the two the compositor mentions second */
+static void clipboard_start(void)
+{
+    if (clip.source || w.data_device || !w.data_manager || !w.seat)
+        return;
+
+    w.data_device =
+        wl_data_device_manager_get_data_device(w.data_manager, w.seat);
+
+    wl_data_device_add_listener(w.data_device, &device_listener, 0);
 }
 
 static void seat_name(void *data, struct wl_seat *seat, const char *name)
@@ -1801,6 +2160,13 @@ static void registry_global(void *data, struct wl_registry *registry,
     {
         w.seat = wl_registry_bind(registry, name, &wl_seat_interface, 5);
         wl_seat_add_listener(w.seat, &seat_listener, 0);
+        clipboard_start();
+    }
+    else if (!strcmp(interface, wl_data_device_manager_interface.name))
+    {
+        w.data_manager = wl_registry_bind(registry, name,
+                                          &wl_data_device_manager_interface, 3);
+        clipboard_start();
     }
 }
 
@@ -2842,6 +3208,246 @@ void gfx_dispatch_ready(void)
         gfx_dispatch();
 }
 
+/* The clipboard ***********************************************************/
+
+/*
+ * How long a paste will wait for the program that owns the selection, and how
+ * much it will take from it.
+ *
+ * Both are there because what is on the other end is somebody else's program.
+ * A paste is the one place this stops the emulated machine on another
+ * program's account, and a program that says it has something and then never
+ * writes it must not be able to stop GEM for ever.
+ */
+#define TAKE_PATIENCE (2000)
+#define TAKE_LIMIT    (16u * 1024u * 1024u)
+
+unsigned gfx_selection_generation(void)
+{
+    return clip.offer ? clip.generation : 0;
+}
+
+unsigned long long gfx_selection_when(void)
+{
+    return clip.offer ? clip.when : 0;
+}
+
+int gfx_selection_has(const char *mime)
+{
+    int i;
+
+    if (!clip.offer)
+        return 0;
+
+    for (i = 0; i < clip.types_n; i++)
+        if (strcmp(clip.types[i], mime) == 0)
+            return 1;
+
+    return 0;
+}
+
+int gfx_selection_take(const char *mime, void **bytes, size_t *length)
+{
+    int pipes[2];
+    char *got = 0;
+    size_t have = 0, room = 0;
+
+    if (!w.display || !clip.offer || !gfx_selection_has(mime))
+        return 0;
+
+    /*
+     * Reading our own is a deadlock rather than a mistake: what would fill the
+     * pipe is this program answering the compositor, and this program is
+     * sitting here waiting for the pipe. There is also nothing to learn - the
+     * scrap it came from is still on disk.
+     */
+    if (clip.source)
+        return 0;
+
+    if (pipe2(pipes, O_CLOEXEC) != 0)
+        return 0;
+
+    wl_data_offer_receive(clip.offer, mime, pipes[1]);
+    close(pipes[1]);
+
+    /* The asking has to reach the compositor before anything can answer it,
+     * and nothing has flushed since it was queued */
+    wl_display_flush(w.display);
+
+    for (;;)
+    {
+        struct pollfd waiting;
+        ssize_t n;
+
+        if (have == room)
+        {
+            size_t bigger = room ? room * 2 : 4096;
+            char *more;
+
+            if (bigger > TAKE_LIMIT)
+                break;
+
+            more = realloc(got, bigger + 1);
+            if (!more)
+                break;
+
+            got = more;
+            room = bigger;
+        }
+
+        waiting.fd = pipes[0];
+        waiting.events = POLLIN;
+        waiting.revents = 0;
+
+        if (poll(&waiting, 1, TAKE_PATIENCE) <= 0)
+            break;
+
+        n = read(pipes[0], got + have, room - have);
+
+        /* Nought is the far end finishing, which is how a transfer ends */
+        if (n <= 0)
+            break;
+
+        have += (size_t)n;
+    }
+
+    close(pipes[0]);
+
+    if (!got)
+        return 0;
+
+    got[have] = 0;
+
+    *bytes = got;
+    *length = have;
+
+    return 1;
+}
+
+int gfx_selection_give(const struct gfx_offer *what, int n)
+{
+    int i, j;
+
+    /*
+     * No serial means the person has done nothing this program saw, and a
+     * compositor will refuse a selection taken out of nowhere - which is
+     * exactly the rule that keeps a program from stealing the clipboard while
+     * somebody works in another window.
+     */
+    if (!w.display || !w.data_manager || !w.data_device || !w.seat || !w.serial)
+        return 0;
+
+    if (n <= 0)
+        return 0;
+
+    if (n > (int)(sizeof clip.given / sizeof clip.given[0]))
+        n = (int)(sizeof clip.given / sizeof clip.given[0]);
+
+    if (clip.source)
+    {
+        wl_data_source_destroy(clip.source);
+        clip.source = 0;
+    }
+
+    given_free();
+
+    clip.source = wl_data_device_manager_create_data_source(w.data_manager);
+    if (!clip.source)
+        return 0;
+
+    wl_data_source_add_listener(clip.source, &source_listener, 0);
+
+    for (i = 0; i < n; i++)
+    {
+        struct given *g = &clip.given[clip.given_n];
+
+        g->bytes = malloc(what[i].length ? what[i].length : 1);
+        if (!g->bytes)
+            break;
+
+        memcpy(g->bytes, what[i].bytes, what[i].length);
+        g->length = what[i].length;
+        g->mimes_n = 0;
+
+        for (j = 0; j < what[i].mimes_n && j < MIME_MAX; j++)
+        {
+            snprintf(g->mimes[g->mimes_n], MIME_LEN, "%s", what[i].mimes[j]);
+            wl_data_source_offer(clip.source, g->mimes[g->mimes_n]);
+            g->mimes_n++;
+        }
+
+        clip.given_n++;
+    }
+
+    wl_data_device_set_selection(w.data_device, clip.source, w.serial);
+    wl_display_flush(w.display);
+
+    return 1;
+}
+
+int gfx_selection_fd(void)
+{
+    int i;
+
+    for (i = 0; i < SENDING; i++)
+        if (clip.sending[i].bytes)
+            return clip.sending[i].fd;
+
+    return -1;
+}
+
+void gfx_selection_flush(void)
+{
+    int i;
+
+    for (i = 0; i < SENDING; i++)
+    {
+        int done = 0;
+
+        if (!clip.sending[i].bytes)
+            continue;
+
+        while (!done)
+        {
+            size_t left = clip.sending[i].length - clip.sending[i].sent;
+            ssize_t n;
+
+            if (!left)
+            {
+                done = 1;
+                break;
+            }
+
+            n = write(clip.sending[i].fd,
+                      clip.sending[i].bytes + clip.sending[i].sent, left);
+
+            if (n > 0)
+            {
+                clip.sending[i].sent += (size_t)n;
+                continue;
+            }
+
+            /* The pipe is full. What is left goes when it drains, which the
+             * event loop finds out by waiting on it. */
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                break;
+
+            /* Anything else is the far end having gone - a paste cancelled
+             * half way, most likely - and there is nothing to report */
+            done = 1;
+        }
+
+        if (done)
+        {
+            close(clip.sending[i].fd);
+            clip.sending[i].fd = -1;
+            clip.sending[i].bytes = 0;
+            clip.sending[i].length = 0;
+            clip.sending[i].sent = 0;
+        }
+    }
+}
+
 /*
  * Puts the part of the screen a window shows into it.
  *
@@ -3180,6 +3786,53 @@ void gfx_flush()
 }
 
 void gfx_present()
+{
+}
+
+/*
+ * The clipboard, which needs a compositor for every part of it: the offer
+ * comes from one, and taking the selection needs a seat and the serial of
+ * something the person did. A build without Wayland says the desktop is
+ * offering nothing and that nothing can be offered to it, which leaves the
+ * scrap working the way it always did, between GEM applications.
+ */
+unsigned gfx_selection_generation(void)
+{
+    return 0;
+}
+
+unsigned long long gfx_selection_when(void)
+{
+    return 0;
+}
+
+int gfx_selection_has(const char *mime)
+{
+    (void)mime;
+
+    return 0;
+}
+
+int gfx_selection_take(const char *mime, void **bytes, size_t *length)
+{
+    (void)mime; (void)bytes; (void)length;
+
+    return 0;
+}
+
+int gfx_selection_give(const struct gfx_offer *what, int n)
+{
+    (void)what; (void)n;
+
+    return 0;
+}
+
+int gfx_selection_fd(void)
+{
+    return -1;
+}
+
+void gfx_selection_flush(void)
 {
 }
 
