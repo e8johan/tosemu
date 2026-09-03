@@ -106,6 +106,16 @@ void host_frame_strip(struct surface *into, int16_t width, const char *name,
                       int active, int closer);
 
 /*
+ * And the same for the menu bar, whose furniture goes beside it rather than
+ * above it: a handle to drag it by and a size box past that, both one row tall,
+ * where the titles have run out. A title bar above a strip that is one row tall
+ * by definition would be a second strip saying the name of an application whose
+ * name is already the first thing on the bar. See host_frame_handle.
+ */
+void host_frame_handle(struct surface *into, int16_t width, int16_t height,
+                       int active);
+
+/*
  * How much larger than an ST pixel one on the desktop is.
  *
  * A whole number, because anything else is a blur: an ST pixel becomes a
@@ -220,15 +230,21 @@ struct window {
      * it by, nothing to close it with and nothing saying what it is, which is
      * not a window so much as a rectangle that appeared.
      *
-     * So one is drawn - by the AES, into this surface, and shown as a strip
-     * across the top of the window above what the window is showing. The
-     * window is that much taller than the rectangle it shows and everything
-     * that works in buffer pixels has to allow for it, which is what frame_h
-     * is for: it is the offset between the two, and it is nought whenever
-     * somebody else is drawing the frame.
+     * So one is drawn - by the AES, into this surface, and shown as part of the
+     * window beside what the window is showing. The window is that much larger
+     * than the rectangle it shows and everything that works in buffer pixels
+     * has to allow for it, which is what the two sizes are for: they are the
+     * difference between the two, and both are nought whenever somebody else is
+     * drawing the frame.
+     *
+     * Which of them a window uses says which frame it has. A strip across the
+     * top is a title bar and is what everything but the menu bar gets;
+     * frame_w is the menu bar's handle and size box, which go on the end of the
+     * row rather than above it - see host_frame_handle.
      */
     struct surface *frame;
     int16_t frame_h;
+    int16_t frame_w;
 
     /* Whether GEM's own frame is in what this window shows, which settles the
      * question before it is asked: such a window wants nothing from the
@@ -297,7 +313,7 @@ static struct {
      * why the AES hears nothing about either.
      */
     int on_frame;
-    int frame_x;
+    int frame_x, frame_y;
 #endif /* NO_WAYLAND */
 
     /*
@@ -934,33 +950,38 @@ static void pointer_gone(void)
 
 static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
 {
-    int top;
+    int top, right;
 
     if (!win)
         return;
 
-    /* Where what the window is showing begins, which is under whatever strip
-     * the window drew for itself */
+    /* Where what the window is showing begins and ends: under whatever strip
+     * the window drew for itself, and short of whatever it drew beside it */
     top = win->frame_h * win->scale;
+    right = win->sw * win->scale;
+
+    w.frame_x = wl_fixed_to_int(x);
+    w.frame_y = wl_fixed_to_int(y);
 
     /*
-     * The strip is not a place on the emulated screen.
+     * What a window draws for itself is not a place on the emulated screen.
      *
      * Told as one it would come out as the first row of what the window shows,
-     * which is a row with things on it that can be clicked: the top of a
-     * dialog, or the menu bar itself. So the pointer being there is written
-     * down as being there, the AES is told nothing, and where it is on the
-     * screen stays what it last was - which is the honest answer, the pointer
-     * not being on the screen at all.
+     * or the last column of it, and both of those are places with things on
+     * them that can be clicked: the top of a dialog, or the right hand end of
+     * the menu bar. So the pointer being on the frame is written down as being
+     * there, the AES is told nothing, and where it is on the screen stays what
+     * it last was - which is the honest answer, the pointer not being on the
+     * screen at all.
      */
-    w.on_frame = wl_fixed_to_int(y) < top;
-    w.frame_x = wl_fixed_to_int(x);
+    w.on_frame = w.frame_y < top
+              || (win->frame_w && w.frame_x >= right);
 
     if (w.on_frame)
         return;
 
-    w.mouse_x = (int16_t)(win->sx + wl_fixed_to_int(x) / win->scale);
-    w.mouse_y = (int16_t)(win->sy + (wl_fixed_to_int(y) - top) / win->scale);
+    w.mouse_x = (int16_t)(win->sx + w.frame_x / win->scale);
+    w.mouse_y = (int16_t)(win->sy + (w.frame_y - top) / win->scale);
     w.mouse_known = 1;
 }
 
@@ -1173,6 +1194,7 @@ static void window_present(struct window *win);
 static int window_drag_preview(struct window *win, int width, int height);
 static int window_rebuffer(struct window *win, int width, int height,
                            uint32_t format);
+static int window_resize(struct window *win, int16_t sw, int16_t sh);
 
 /*
  * Whether the frames the desktop is not drawing are drawn here instead.
@@ -1187,20 +1209,34 @@ static int window_rebuffer(struct window *win, int width, int height,
  * has none to give - the answer is the same either way, and this is how to have
  * it without waiting to be refused.
  */
-static int frames_are_ours(void)
+static const char *decorations_wanted(void)
 {
+    static const char *said;
     static int asked;
-    static int wanted;
 
     if (!asked)
     {
-        const char *said = setting("TOSEMU_DECORATIONS");
-
-        wanted = said && strcmp(said, "gem") == 0;
+        said = setting("TOSEMU_DECORATIONS");
         asked = 1;
     }
 
-    return wanted;
+    return said;
+}
+
+static int frames_are_ours(void)
+{
+    const char *said = decorations_wanted();
+
+    return said && strcmp(said, "gem") == 0;
+}
+
+/* And the other way about: the desktop's frames asked for outright, which is
+ * what decides the one window that would otherwise never ask for them */
+static int frames_are_the_desktops(void)
+{
+    const char *said = decorations_wanted();
+
+    return said && strcmp(said, "desktop") == 0;
 }
 
 /* How large the box round a character is, which is what every strip of a
@@ -1221,27 +1257,39 @@ static void window_frame_paint(struct window *win)
     if (!win->frame)
         return;
 
-    host_frame_strip(win->frame, win->sw, win->name, win->active,
-                     win->frame_closer);
+    if (win->frame_w)
+        host_frame_handle(win->frame, win->frame_w, win->sh, win->active);
+    else
+        host_frame_strip(win->frame, win->sw, win->name, win->active,
+                         win->frame_closer);
 }
 
 /*
- * Somewhere for the strip to be drawn: as wide as the window and as tall as a
- * title bar, in the screen's own planes so that it is magnified and coloured
- * like everything else the window shows.
+ * Somewhere for the frame to be drawn, in the screen's own planes so that it is
+ * magnified and coloured like everything else the window shows.
  *
- * Made again whenever the window changes width, because a title bar is as wide
- * as the window it is on and there is nothing to be done with one that is not.
+ * A title bar is as wide as the window and as tall as one row; the menu bar's
+ * handle is as tall as the bar and as wide as it needs to be. Made again
+ * whenever the window changes in the direction the frame follows, there being
+ * nothing to be done with a title bar that is not as wide as its window.
  */
 static void window_frame_make(struct window *win)
 {
+    int16_t wide, tall;
+
     if (win->frame)
     {
         surface_free(win->frame);
         win->frame = 0;
     }
 
-    if (!win->frame_h || !w.screen || win->sw <= 0)
+    if (!w.screen || win->sw <= 0)
+        return;
+
+    wide = win->frame_w ? win->frame_w : win->sw;
+    tall = win->frame_w ? win->sh : win->frame_h;
+
+    if (wide <= 0 || tall <= 0)
         return;
 
     /*
@@ -1255,11 +1303,11 @@ static void window_frame_make(struct window *win)
      * up; a title bar is as wide as whatever window it is on, and a dialog is
      * whatever width the application made it.
      *
-     * The bar is still drawn as wide as the window. The few pixels past the end
-     * of it are never shown, the window being exactly as wide as it says.
+     * What is in it is still drawn to the width asked for. The few pixels past
+     * the end of that are never shown, the window being exactly as wide as it
+     * says it is.
      */
-    win->frame = surface_create((uint16_t)((win->sw + 15) & ~15),
-                                (uint16_t)win->frame_h,
+    win->frame = surface_create((uint16_t)((wide + 15) & ~15), (uint16_t)tall,
                                 surface_planes(w.screen));
 
     /* No room for one. The window then has no frame at all, which is what it
@@ -1267,6 +1315,7 @@ static void window_frame_make(struct window *win)
     if (!win->frame)
     {
         win->frame_h = 0;
+        win->frame_w = 0;
         return;
     }
 
@@ -1306,9 +1355,11 @@ static void window_sizes(struct window *win)
         least_h = most_h = win->sh;
     }
 
-    xdg_toplevel_set_min_size(win->toplevel, least_w * win->scale,
+    xdg_toplevel_set_min_size(win->toplevel,
+                              (least_w + win->frame_w) * win->scale,
                               (least_h + win->frame_h) * win->scale);
-    xdg_toplevel_set_max_size(win->toplevel, most_w * win->scale,
+    xdg_toplevel_set_max_size(win->toplevel,
+                              (most_w + win->frame_w) * win->scale,
                               (most_h + win->frame_h) * win->scale);
 }
 
@@ -1333,23 +1384,40 @@ static void window_frame_needed(struct window *win, int needed)
 {
     int16_t wbox, hbox;
 
-    if (needed == (win->frame_h != 0))
+    if (needed == (win->frame_h != 0 || win->frame_w != 0))
         return;
 
     if (needed)
     {
         frame_sizes(&wbox, &hbox);
-        win->frame_h = hbox;
+
+        /*
+         * The menu bar gets a handle and a size box on the end of its row and
+         * everything else gets a title bar across the top.
+         *
+         * Two character cells for the handle and one for the size box, which
+         * is what a close box and a full box are given at the other end of a
+         * window's title bar - and enough to take hold of at any scale, being
+         * measured in the same characters the bar itself is.
+         */
+        if (win == &w.windows[MENUBAR])
+            win->frame_w = (int16_t)(wbox * 3);
+        else
+            win->frame_h = hbox;
     }
     else
+    {
         win->frame_h = 0;
+        win->frame_w = 0;
+    }
 
     if (!win->used)
         return;
 
     window_frame_make(win);
     window_sizes(win);
-    window_rebuffer(win, win->width, (win->sh + win->frame_h) * win->scale,
+    window_rebuffer(win, (win->sw + win->frame_w) * win->scale,
+                    (win->sh + win->frame_h) * win->scale,
                     WL_SHM_FORMAT_XRGB8888);
 }
 
@@ -1449,6 +1517,31 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
 
         if (win->handle >= 1)
             host_window_activated(win->handle, (int16_t)active);
+    }
+
+    /*
+     * The menu bar answers for itself.
+     *
+     * Nothing above here lays it out. The AES draws the bar across the whole
+     * emulated screen and knows nothing of the window, so a width somebody has
+     * dragged to is a width this decides, and what it decides is how much of
+     * the bar is shown - the titles are at the left hand end and what is being
+     * trimmed away is the empty part after them.
+     *
+     * It is done on every frame of the drag rather than shown as a rubber band
+     * and answered when the button comes up. That is what the rubber band is
+     * for on a window, where the answer costs the emulated machine a redraw of
+     * its document; here there is no application in it at all and the whole of
+     * the work is a few thousand writes into a buffer.
+     */
+    if (win == &w.windows[MENUBAR])
+    {
+        int16_t shown = (int16_t)(width / win->scale - win->frame_w);
+
+        if (width > 0 && shown > 0 && shown != win->sw)
+            window_resize(win, shown, win->sh);
+
+        return;
     }
 
     /*
@@ -1648,7 +1741,8 @@ static void frame_press(struct window *win, int16_t buttons)
 
     frame_sizes(&wbox, &hbox);
 
-    if (buttons == 1 && win->frame_closer && w.frame_x < wbox * win->scale)
+    if (buttons == 1 && !win->frame_w && win->frame_closer
+        && w.frame_x < wbox * win->scale)
     {
         toplevel_close(win, win->toplevel);
         return;
@@ -1662,7 +1756,21 @@ static void frame_press(struct window *win, int16_t buttons)
 
     if (buttons == 2)
         xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.serial,
-                                      w.frame_x, 0);
+                                      w.frame_x, w.frame_y);
+    /*
+     * The size box on the end of the menu bar, which is at the very edge of it.
+     *
+     * It runs the desktop's own resize drag, the same way a GEM window's size
+     * box does, and from the right hand edge alone: what the drag changes is
+     * how much of the bar is shown, and how tall a menu bar is is not a matter
+     * of taste. The window is held to one height either way - see the limits
+     * the AES gives it - so a drag from the corner would only be a drag from
+     * the edge with a corner drawn on it.
+     */
+    else if (win->frame_w
+             && w.frame_x >= (win->sw + win->frame_w - wbox) * win->scale)
+        xdg_toplevel_resize(win->toplevel, w.seat, w.serial,
+                            XDG_TOPLEVEL_RESIZE_EDGE_RIGHT);
     else
         xdg_toplevel_move(win->toplevel, w.seat, w.serial);
 
@@ -1825,20 +1933,20 @@ static int window_resize(struct window *win, int16_t sw, int16_t sh)
     win->sh = sh;
     win->dragging = 0;
 
-    /* A title bar is as wide as the window it is on, so a window that has
-     * changed width needs another one */
-    if (sw != old_sw)
+    /* A frame follows the window in the direction it lies along: a title bar
+     * is as wide as the window it is on, and the menu bar's handle is as tall
+     * as the bar */
+    if ((win->frame_h && sw != old_sw) || (win->frame_w && sh != old_sh))
         window_frame_make(win);
 
-    if (!window_rebuffer(win, sw * win->scale,
+    if (!window_rebuffer(win, (sw + win->frame_w) * win->scale,
                          (sh + win->frame_h) * win->scale,
                          WL_SHM_FORMAT_XRGB8888))
     {
         win->sw = old_sw;
         win->sh = old_sh;
 
-        if (sw != old_sw)
-            window_frame_make(win);
+        window_frame_make(win);
 
         return 0;
     }
@@ -2026,16 +2134,26 @@ static int window_create(struct window *win, const char *title,
      * drawn here - see window_frame_needed, which is where that answer arrives.
      * A window with no manager to ask, or one told not to bother asking, knows
      * without asking.
+     *
+     * The menu bar never asks. What a desktop would put round it is a title bar
+     * above a strip that is one row tall, saying the name of an application
+     * whose name is already the first word on the bar - and the bar would then
+     * be the size the desktop's frame made it rather than the size of what is
+     * on it. So it draws the smallest frame that lets a bar be moved and
+     * resized, which is a handle and a size box on the end of the row. Asking
+     * for the desktop's frames outright is still asking, and that setting still
+     * wins.
      */
     if (own_frame)
         want = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
-    else if (w.decorations && !frames_are_ours())
-        want = ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
-    else
+    else if (frames_are_ours() || !w.decorations
+             || (win == &w.windows[MENUBAR] && !frames_are_the_desktops()))
     {
         want = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
         window_frame_needed(win, 1);
     }
+    else
+        want = ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
 
     if (w.decorations)
     {
@@ -2084,6 +2202,7 @@ static int window_create(struct window *win, const char *title,
      * make it that big.
      */
     window_frame_make(win);
+    win->width = (sw + win->frame_w) * win->scale;
     win->height = (sh + win->frame_h) * win->scale;
     window_sizes(win);
 
@@ -2741,19 +2860,20 @@ void gfx_dispatch_ready(void)
  * never answers is honestly showing what it kept.
  */
 /*
- * One rectangle of a surface into the buffer, magnified, starting at a row of
- * it.
+ * One rectangle of a surface into the buffer, magnified, starting at a corner
+ * of it.
  *
  * Everything a window shows goes through here: what the window is showing, and
- * the title bar above it when the window is drawing one. The row it starts at
- * is the whole of the difference between the two.
+ * whatever frame the window is drawing for itself - a title bar above it, or
+ * the menu bar's handle beside it. Where it starts is the whole of the
+ * difference between them.
  */
 static void window_magnify(struct window *win, struct surface *from,
                            int16_t fx, int16_t fy, int16_t fw, int16_t fh,
-                           int top)
+                           int left, int top)
 {
     int rows = top + fh * win->scale;
-    int columns = fw * win->scale;
+    int columns = left + fw * win->scale;
     int x, y, sx, sy;
 
     if (rows > win->height)
@@ -2770,7 +2890,7 @@ static void window_magnify(struct window *win, struct surface *from,
         {
             uint32_t argb;
 
-            if (x * win->scale >= columns)
+            if (left + x * win->scale >= columns)
                 break;
 
             argb = emuvdi_palette_argb(
@@ -2788,9 +2908,11 @@ static void window_magnify(struct window *win, struct surface *from,
             {
                 uint32_t *row = win->pixels
                               + (size_t)(top + y*win->scale + sy) * win->width
-                              + x*win->scale;
+                              + left + x*win->scale;
 
-                for (sx = 0; sx < win->scale && x*win->scale + sx < columns; sx++)
+                for (sx = 0;
+                     sx < win->scale && left + x*win->scale + sx < columns;
+                     sx++)
                     row[sx] = argb;
             }
         }
@@ -2805,8 +2927,12 @@ static void window_picture(struct window *win)
      * when it has one */
     int top = win->frame_h * win->scale;
 
+    /* And where what it shows ends, which is where the menu bar's handle
+     * begins when it is that window */
+    int right = win->sw * win->scale;
+
     int rows = top + win->sh * win->scale;
-    int columns = win->sw * win->scale;
+    int columns = right + win->frame_w * win->scale;
     int x, y;
 
     if (rows > win->height)
@@ -2829,10 +2955,12 @@ static void window_picture(struct window *win)
             row[x] = behind;
     }
 
-    if (win->frame)
-        window_magnify(win, win->frame, 0, 0, win->sw, win->frame_h, 0);
+    if (win->frame && win->frame_w)
+        window_magnify(win, win->frame, 0, 0, win->frame_w, win->sh, right, 0);
+    else if (win->frame)
+        window_magnify(win, win->frame, 0, 0, win->sw, win->frame_h, 0, 0);
 
-    window_magnify(win, win->shows, win->sx, win->sy, win->sw, win->sh, top);
+    window_magnify(win, win->shows, win->sx, win->sy, win->sw, win->sh, 0, top);
 }
 
 /*

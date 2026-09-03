@@ -90,14 +90,26 @@ picture of another computer again. Say `TOSEMU_DECORATIONS=desktop` to have it
 the other way round: the desktop's frame, and GEM's title bar left out of what
 is shown.
 
-Dialogs and the menu bar have no frame of their own to wear, so they ask the
-desktop for one. Not every desktop draws them: GNOME draws no frames at all
-round a Wayland window and has said it will not, which used to leave a dialog
-with nothing to move it by and nothing to close it with. Where the desktop
-draws none, one is drawn here instead - a GEM title bar, by the code that draws
-the ones on windows, so what appears is the bar of a GEM window and not an
-imitation of somebody else's desktop. `TOSEMU_DECORATIONS=gem` says to draw
-them that way everywhere without asking the desktop first.
+A dialog has no frame of its own to wear, so it asks the desktop for one. Not
+every desktop draws them: GNOME draws no frames at all round a Wayland window
+and has said it will not, which used to leave a dialog with nothing to move it
+by and nothing to close it with. Where the desktop draws none, one is drawn here
+instead - a GEM title bar, by the code that draws the ones on windows, so what
+appears is the bar of a GEM window and not an imitation of somebody else's
+desktop. `TOSEMU_DECORATIONS=gem` says to draw them that way everywhere without
+asking the desktop first.
+
+The menu bar never asks. A title bar above it would say the name of an
+application whose name is already the first word on the bar, and it would put a
+second strip above a strip that is one row tall by definition - so the bar wears
+the smallest frame that lets it be moved and resized, on the end of the row
+rather than above it: a handle where the titles have run out, hatched like the
+title bar of a window in front when it is the bar you are working in, and a size
+box past it at the very edge. The size box changes the width and nothing else,
+because how tall a menu bar is is not a matter of taste, and what changing the
+width does is show more or less of the bar - it stops at the titles, there being
+no way to reach a menu whose title is off the end of the window.
+`TOSEMU_DECORATIONS=desktop` gives it the desktop's frame like everything else.
 
 A resize drag shows a rubber band, which is what an ST did: the window becomes
 the size the drag has reached and what is in it is an outline of alternate black
