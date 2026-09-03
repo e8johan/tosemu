@@ -78,32 +78,29 @@
   and have to be composed from a single surface rather than shown side by
   side - which is the same piece of work as the surface router, and neither is
   needed until then.
-- Bridge the scrap to the desktop's own clipboard, so that copying in a GEM
-  program pastes into a modern one and the other way round.
+- A GEM application is told what the desktop has on its clipboard only while
+  one of its windows has the keyboard, which is Wayland's rule rather than
+  anything tosemu chooses: a client with no focused surface is sent no
+  selection at all. So an application that has opened no window cannot paste
+  from the desktop, and one whose window is not on top learns nothing new until
+  it is. Nothing is wrong and nothing is missing - it is worth writing down
+  because it looks exactly like the bridge being broken, and because it is the
+  first thing to check when a paste comes up empty.
 
-  Going out has to be watched for rather than waited for: a GEM program never
-  says it copied something. scrp_write only says which directory the scrap is
-  in, and the cut itself is a file appearing in it, so inotify on that
-  directory is not a shortcut but the only signal there is. Watch for
-  IN_CLOSE_WRITE rather than IN_MODIFY, or half a file gets read: SCRAP.TXT is
-  written by an ordinary program doing ordinary writes.
+  What would close it is the daemon holding the last offer for the session and
+  handing it to whichever application asks, rather than each one hearing it
+  separately. That is a real piece of work: the daemon cannot take a selection
+  itself, having no seat, but it can be told what the current one is by
+  whichever emulator does have focus, and pass the bytes on. Nothing needs it
+  yet, an application being pasted into normally being the one in front.
 
-  Where the code goes is decided by something less obvious. The daemon looks
-  like the place - it already holds the scrap path, it is session wide, and it
-  outlives any one application - but Wayland only lets a client take the
-  selection in answer to something the person did, and it wants the serial of
-  the input event to prove it. A daemon has no seat, no focus and no serials,
-  so it cannot take the selection at all. The application that wrote the scrap
-  can: it has a connection, and it has the serial of the click on Copy that
-  led to the write. So the watching belongs in the application process, and
-  what the daemon adds is telling the others to stop offering it.
+- A picture coming in is quantised to the screen's palette, which is the
+  machine's, and the machine's is whatever the application last set it to. A
+  screenshot pasted into a program that has loaded a palette of its own comes
+  out in that program's colours. That is what an ST would have done as well,
+  and it is not obviously the wrong answer, but it means the same picture
+  pasted into two applications arrives looking different.
 
-  Coming in is easier and is not inotify at all: when the desktop offers
-  something, write SCRAP.TXT into the scrap directory so that a GEM program
-  pasting finds one. The work there is the conversion. Text on an ST is the
-  Atari character set with CRLF between lines, and the desktop's is UTF-8 with
-  LF, and the two do not agree about anything above 127. SCRAP.IMG against
-  image/png is a second conversion and a larger one; text first.
 - Dragging a window's elevator follows the pointer only when the button goes
   down: a press says where to put it and the slider goes there, and moving the
   pointer while holding it does nothing until the next press. GEM tracked the
