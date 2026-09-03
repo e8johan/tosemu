@@ -113,28 +113,28 @@ polyline, a triangle
 
 objc_draw, an object tree from EmuTOS's AES object library
    +----------------------------------------------------------------+
- 0 |                                                                |
- 1 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
- 2 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
- 3 | MM                                                        MM   |
- 4 | MM   MMMMM  MMMMMM MM   MM                                MM   |
- 5 | MM  MM      MM     MMM MMM                                MM   |
- 6 | MM  MM      MM     MMMMMMM                                MM   |
- 7 | MM  MM MMM  MMMMM  MM M MM                                MM   |
- 8 | MM  MM  MM  MM     MM   MM                                MM   |
- 9 | MM  MM  MM  MM     MM   MM                                MM   |
-10 | MM   MMMMM  MMMMMM MM   MM       MMMMMMMMMMMMMMMMMMMMMM   MM   |
-11 | MM                               M    MMMM   MM  MM   M   MM   |
-12 | MM                               M   MM  MM  MM MM    M   MM   |
-13 | MM                               M   MM  MM  MMMM     M   MM   |
-14 | MM                               M   MM  MM  MMM      M   MM   |
-15 | MM                               M   MM  MM  MMMM     M   MM   |
-16 | MM                               M   MM  MM  MM MM    M   MM   |
-17 | MM                               M    MMMM   MM  MM   M   MM   |
-18 | MM                               M                    M   MM   |
-19 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM                    MMMMMM   |
-20 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM   |
-21 |                                                                |
+ 0 |                                                               M|
+ 1 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM  M|
+ 2 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM  M|
+ 3 | MM                                                        MM  M|
+ 4 | MM   MMMMM  MMMMMM MM   MM                                MM  M|
+ 5 | MM  MM      MM     MMM MMM                                MM  M|
+ 6 | MM  MM      MM     MMMMMMM                                MM  M|
+ 7 | MM  MM MMM  MMMMM  MM M MM                                MM  M|
+ 8 | MM  MM  MM  MM     MM   MM                                MM  M|
+ 9 | MM  MM  MM  MM     MM   MM                                MM  M|
+10 | MM   MMMMM  MMMMMM MM   MM       MMMMMMMMMMMMMMMMMMMMMM   MM  M|
+11 | MM                               M    MMMM   MM  MM   M   MM  M|
+12 | MM                               M   MM  MM  MM MM    M   MM  M|
+13 | MM                               M   MM  MM  MMMM     M   MM  M|
+14 | MM                               M   MM  MM  MMM      M   MM  M|
+15 | MM                               M   MM  MM  MMMM     M   MM  M|
+16 | MM                               M   MM  MM  MM MM    M   MM  M|
+17 | MM                               M    MMMM   MM  MM   M   MM  M|
+18 | MM                               M                    M   MM  M|
+19 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM                    MMMMMM  M|
+20 | MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM  M|
+21 |                                                               M|
 22 |                                                               M|
 23 |MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM|
    +----------------------------------------------------------------+
