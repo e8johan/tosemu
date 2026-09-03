@@ -1011,7 +1011,14 @@ int main(int argc, char **argv)
 
     for (i = 1; i < argc; i++)
     {
-        if (!strcmp(argv[i], "-v"))
+        /*
+         * Any number of v's, all meaning the same thing. tosemu counts them,
+         * because it has a program to watch and levels to watch it at; the
+         * daemon watches a session, which is one thing either way - and
+         * somebody who has learnt to type -vv should not be told off for it.
+         */
+        if (argv[i][0] == '-' && argv[i][1] == 'v'
+            && strspn(argv[i] + 1, "v") == strlen(argv[i] + 1))
             talkative = 1;
         else if (!strcmp(argv[i], "--no-config"))
             no_config = 1;
@@ -1026,6 +1033,9 @@ int main(int argc, char **argv)
         {
             printf("Usage: tosaesd [-v] [-c <file>] [--no-config] "
                    "[directory]\n\n"
+                   "-v says what the session was configured with and what\n"
+                   "happens in it. The daemon has the one level, and more\n"
+                   "v's than that are the same thing said louder.\n\n"
                    "The daemon several tosemu processes have in common: which\n"
                    "application is which, what the screen looks like, and\n"
                    "messages one sends another.\n\n"
@@ -1055,6 +1065,11 @@ int main(int argc, char **argv)
         settings_ignore_file();
     else if (!settings_load(config))
         return 1;
+
+    /* What it was told, the same as tosemu says at -v: a session is set up
+     * once and everything that joins lives with the result */
+    if (talkative)
+        settings_say("tosaesd");
 
     /* Which machine this session is, before anybody can arrive to be told.
      * The screens that are as large as the display ask the compositor here,

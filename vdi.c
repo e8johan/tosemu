@@ -365,10 +365,10 @@ void vdi_trap()
     pb.n_intout = VDI_INTOUT_MAX;
     pb.n_ptsout = VDI_PTSOUT_MAX;
 
-#ifdef ENABLE_VDI_TRACE
-    printf("VDI call %d: handle %d, sub %d, ptsin %d, intin %d\n",
-           pb.opcode, vdi_handle(), vdi_subfunction(), n_ptsin/2, n_intin);
-#endif
+    FUNC_TRACE_ARGS {
+        printf("VDI call %d: handle %d, sub %d, ptsin %d, intin %d\n",
+               pb.opcode, vdi_handle(), vdi_subfunction(), n_ptsin/2, n_intin);
+    }
 
     if (!emuvdi_implements(pb.opcode))
     {
@@ -445,8 +445,8 @@ void vdi_trap()
      * array afterwards */
     gem_set_word(pb.control, VDI_CONTROL_WORDS, 6, h_control[6]);
 
-#ifdef ENABLE_VDI_TRACE
-    printf("Return from %s: %d values, %d points\n",
-           vdi_name(pb.opcode), n_intout, n_ptsout/2);
-#endif
+    FUNC_TRACE_ARGS {
+        printf("Return from %s: %d values, %d points\n",
+               vdi_name(pb.opcode), n_intout, n_ptsout/2);
+    }
 }

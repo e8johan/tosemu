@@ -56,4 +56,15 @@ int setting_flag(const char *name);
 /* The usual place, for saying so in a usage message */
 const char *settings_default_path(void);
 
+/*
+ * Everything that was said, and where it was said, under the caller's name.
+ *
+ * For -v, and the reason it is worth a level of its own: a setting is read
+ * once, deep inside whatever cared about it, and never mentioned again - so a
+ * session behaving oddly is first a question of what it was told, and the
+ * answer is spread across an environment, a file, and whichever of the two
+ * won. This is the only place that knows all three.
+ */
+void settings_say(const char *who);
+
 #endif

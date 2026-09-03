@@ -261,10 +261,10 @@ void aes_trap()
     pb.n_addrin  = gem_word(pb.control, AES_CONTROL_WORDS, 3);
     pb.n_addrout = gem_word(pb.control, AES_CONTROL_WORDS, 4);
 
-#ifdef ENABLE_AES_TRACE
-    printf("AES call %d: intin %d, intout %d, addrin %d, addrout %d\n",
-           pb.opcode, pb.n_intin, pb.n_intout, pb.n_addrin, pb.n_addrout);
-#endif
+    FUNC_TRACE_ARGS {
+        printf("AES call %d: intin %d, intout %d, addrin %d, addrout %d\n",
+               pb.opcode, pb.n_intin, pb.n_intout, pb.n_addrin, pb.n_addrout);
+    }
 
     /*
      * A call from inside a routine that draws an object for itself.
@@ -303,9 +303,9 @@ void aes_trap()
         else if (f->kind == FN_STUB)
         {
             r = f->ret;
-#ifdef ENABLE_AES_TRACE
-            printf("Stubbed %s (%d)\n", f->name, pb.opcode);
-#endif
+            FUNC_TRACE_ARGS {
+                printf("Stubbed %s (%d)\n", f->name, pb.opcode);
+            }
         }
         else
         {
@@ -314,9 +314,9 @@ void aes_trap()
             return;
         }
 
-#ifdef ENABLE_AES_TRACE
-        printf("Return from %s: %d = 0x%x\n", f->name, r, r);
-#endif
+        FUNC_TRACE_ARGS {
+            printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+        }
 
         /* Every AES binding reads the return value out of intout[0], and the
          * AES leaves it in d0 as well. A function that declared no intout has
