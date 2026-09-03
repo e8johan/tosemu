@@ -144,6 +144,11 @@ check: all
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
+	# And what Dbmsg did with the message it was handed, which is on the
+	# emulator's own output rather than in anything the program can ask
+	# about: an application says something to whoever is debugging it, and
+	# tosemu is what there is.
+	grep -q 'Dbmsg: a message for the debugger' out
 	# Asking for memory and saying which kind it has to be, which is the
 	# call every compiler of the period makes before anything else
 	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out

@@ -227,6 +227,9 @@ uint32_t XBIOS_NVMaccess()
 
 /* Debugging *****************************************************************/
 
+/* What the first word of a Dbmsg has to be for it to be one */
+#define DBMSG_RESERVED (5)
+
 uint32_t XBIOS_Dbmsg()
 {
     uint16_t rsrvd = peek_u16(2);
@@ -238,10 +241,12 @@ uint32_t XBIOS_Dbmsg()
         printf("    rsrvd: 0x%x, msg_num: 0x%x, ptr: 0x%x\n", rsrvd, msg_num, ptr);
     }
 
-    /* An application uses this to say something to whoever is debugging it,
+    /*
+     * An application uses this to say something to whoever is debugging it,
      * and tosemu is the closest thing to a debugger it has. Message 0xF100
-     * means ptr is a string, http://toshyp.atari.org/en/004008.html */
-    if (rsrvd == 0x5abc && msg_num == 0xf100 && ptr)
+     * means ptr is a string, http://toshyp.atari.org/en/004008.html
+     */
+    if (rsrvd == DBMSG_RESERVED && msg_num == 0xf100 && ptr)
     {
         printf("Dbmsg: ");
         while ((ch = m68k_read_disassembler_8(ptr++)))
