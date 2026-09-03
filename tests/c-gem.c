@@ -739,6 +739,23 @@ int main(int argc, char **argv)
                       "a box's colours were left alone");
             }
 
+            /*
+             * And the same asked by a binding that described its own call
+             * wrongly. AtariWorks leaves the type it asked for in the addrout
+             * count, so a tree - type nought - is asked for with an array it
+             * says holds nothing, and nobody on a machine ever found out: the
+             * AES writes addrout[0] outright, having copied intout back for as
+             * many words as were declared. See gemsuper.c. An emulator that
+             * takes the count for the size of the array answers the call by
+             * not answering it.
+             */
+            intin[0] = 0;
+            intin[1] = 0;
+            addrout[0] = 0;
+            check(call_aes(112, 2, 1, 0, 0), 1,
+                  "rsrc_gaddr answers a caller that declared no addrout");
+            check(addrout[0] != 0, 1, "and the address still comes back");
+
             /* An index past the end is asked for by applications that guess */
             intin[0] = 0;
             intin[1] = 99;
