@@ -517,13 +517,24 @@ check: all
 	# one to keep in step. bin/scraptest writes the file, because asking
 	# every machine that builds this for something that can write a PNG
 	# when the thing being tested already can would be silly.
+	#
+	# Which it can only do where there is a libpng to do it with. That is
+	# looked for rather than required, so a build without one is a build
+	# that works - the picture half is compiled out and the text half goes
+	# on - and there is then no picture for a desktop to offer and nothing
+	# here to check. So ask first and say so, the way bin/scraptest says it
+	# about the same checks of its own.
 	$(RM) -r scrapdir offer.png
-	../bin/scraptest --write-png offer.png
-	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.png \
-	  $(TOSEMU) test-c-scrap picture > out
-	! grep -q '^not ok' out
-	grep -q '^1\.\.' out
-	test ! -e scrapdir/SCRAP.TXT
+	if ../bin/scraptest --png-available; then \
+	  ../bin/scraptest --write-png offer.png || exit 1; \
+	  TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.png \
+	    $(TOSEMU) test-c-scrap picture > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	  test ! -e scrapdir/SCRAP.TXT || exit 1; \
+	else \
+	  echo "# built without libpng, so the picture a desktop offered is not checked"; \
+	fi
 	$(RM) -r out scrapdir offer.png
 	#
 	# A wait nothing could ever answer, with a scrap being watched. The

@@ -191,6 +191,11 @@ int main(int argc, char **argv)
     char *s;
     size_t length;
 
+    /* Whether this build can make one at all, for a caller that has to decide
+     * whether to ask for one - see the picture check in tests/Makefile */
+    if (argc == 2 && strcmp(argv[1], "--png-available") == 0)
+        return !scrap_img_available();
+
     if (argc == 3 && strcmp(argv[1], "--write-png") == 0)
         return write_png(argv[2]);
 
