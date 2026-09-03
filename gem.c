@@ -475,3 +475,32 @@ void gem_set_long(uint32_t array, int count, int index, uint32_t value)
 
     m68k_write_memory_32(array + 4*index, value);
 }
+
+/*
+ * The same, without asking the caller whether it meant it.
+ *
+ * The counts in a parameter block are the binding's description of the call,
+ * and the AES does not read them to decide where to put an answer that is an
+ * address: EmuTOS's gemsuper.c copies intout back for as many words as were
+ * declared and then writes addrout[0] outright, rsrc_gaddr being the one call
+ * that answers with one. So the count was never in the way on a machine, and
+ * bindings get it wrong without anybody finding out - AtariWorks asks for a
+ * tree and leaves the type it asked for in the addrout count, which for a tree
+ * is nought.
+ *
+ * Refusing to write is answering the call by not answering it: the address
+ * goes nowhere and the application is left with whatever its own variable held,
+ * which is how it comes to report that it has no memory. The array is a fixed
+ * one in every binding there is, so writing into it is as safe here as it was
+ * there. Only the null pointer is still worth refusing.
+ */
+void gem_put_long(uint32_t array, int index, uint32_t value)
+{
+    if (array == 0)
+    {
+        printf("GEM: parameter block array is a null pointer\n");
+        return;
+    }
+
+    m68k_write_memory_32(array + 4*index, value);
+}

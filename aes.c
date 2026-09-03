@@ -97,7 +97,9 @@ void aes_set_intout(int index, int16_t value)
 
 void aes_set_addrout(int index, uint32_t value)
 {
-    gem_set_long(pb.addrout, pb.n_addrout, index, value);
+    /* Whatever the caller said the array holds, which is the one place the
+     * count is not a bound - see gem_put_long */
+    gem_put_long(pb.addrout, index, value);
 }
 
 uint32_t aes_global()
