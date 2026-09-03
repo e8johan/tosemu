@@ -194,6 +194,33 @@ int main(int argc, char **argv)
         check_bytes(got, length, "FROM GEM", 8,
                     "and read what the other application cut, not the desktop's");
     }
+    else if (argc > 2 && strcmp(argv[1], "watch") == 0)
+    {
+        /*
+         * An emulator that is only sitting there, watching the scrap while
+         * another one brings the desktop's clipboard in.
+         *
+         * It says where the scrap is rather than asking, because asking is
+         * what brings the clipboard across, and the whole point here is to be
+         * watching when somebody else does it. What must not happen is this
+         * one seeing that write, taking it for a GEM application cutting
+         * something out, and handing it back to the desktop it came from -
+         * which is what happens if the guard against that is a count kept in
+         * the process that made the write, because this is not that process.
+         *
+         * Nothing here can see the answer. The Makefile looks for a file that
+         * should not have been written.
+         */
+        check(scrp_write(argv[2]), 1, "the watcher was told where the scrap is");
+
+        printf("1..%d\n", n);
+        fflush(stdout);
+
+        { int k; for (k = 0; k < 4; k++) evnt_timer(1000); }
+
+        appl_exit();
+        return 0;
+    }
     else if (argc > 1 && strcmp(argv[1], "hang") == 0)
     {
         /*

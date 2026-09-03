@@ -442,6 +442,33 @@ check: all
 	test ! -e offered.txt
 	$(RM) -r out scrapdir offered.txt offer.txt
 	#
+	# And the same chase across two emulators, which is the case a guard
+	# kept inside one process cannot cover. One sits watching the scrap
+	# while the other brings the desktop's clipboard in; the write reaches
+	# both, and the watcher has to recognise it as the desktop's rather than
+	# as a GEM application cutting something out. It can, because the file
+	# carries the time the offer arrived rather than the time it was
+	# written, and that is a fact on the disk rather than a count in
+	# somebody's memory.
+	$(RM) -r scrapdir offered.txt
+	mkdir -p scrapdir
+	printf '\303\204rade\nv\303\244nner\n' > offer.txt
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	  TOSEMU_SCRAP_OUT=$(CURDIR)/offered.txt $(TOSEMU) \
+	  test-c-scrap watch 'C:$(CURDIR)/scrapdir/' > out & \
+	  echo $$! > watcher.pid; \
+	  sleep 2; \
+	  TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	    $(TOSEMU) test-c-scrap > out2; \
+	  wait `cat watcher.pid` || true
+	! grep -q '^not ok' out
+	! grep -q '^not ok' out2
+	grep -q '^1\.\.' out
+	grep -q '^1\.\.' out2
+	test -e scrapdir/SCRAP.TXT
+	test ! -e offered.txt
+	$(RM) -r out out2 watcher.pid scrapdir offered.txt offer.txt
+	#
 	# A wait nothing could ever answer, with a scrap being watched. The
 	# emulator has to say so and stop rather than sit there, and the watch
 	# is what makes that hard: it puts a descriptor in the wait that can
