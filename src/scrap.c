@@ -50,10 +50,19 @@
  * directory, and one of them writing is a write all of them see, so the one
  * that has to recognise it is usually not the one that made it. A note kept in
  * memory cannot be read by the process that needs it. A time on the file can.
+ *
+ * Deciding to bring one across is then deciding to replace what is there, all
+ * of it. A cut is however many files the application that made it could write,
+ * one format each, and the one pasting takes the format it likes best rather
+ * than the file that is newest - so a file left behind is what gets pasted,
+ * whatever was written beside it. That makes the time compared against the
+ * newest file's rather than one name's, and makes writing a scrap a write and
+ * then a delete of the rest.
  */
 
 #include "scrap.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -351,6 +360,53 @@ static unsigned long long written_at(const char *path)
            + (unsigned long long)about.st_mtim.tv_nsec;
 }
 
+/* Whether a name is one of the scrap's, which is SCRAP and an extension saying
+ * what kind of thing it is. Either case, the host not caring which. */
+static int is_scrap(const char *name)
+{
+    return strncasecmp(name, "SCRAP.", 6) == 0;
+}
+
+/*
+ * When the scrap was last cut into, or 0 when there is nothing in it.
+ *
+ * The newest of the files rather than SCRAP.TXT's, because a cut is however
+ * many of them the application that made it could write: one with a format of
+ * its own writes that as well, so that another copy of itself gets back what
+ * it cut with the formatting still on. Asking only about a name that
+ * application never wrote dates the scrap to before it copied, and the offer
+ * then wins a comparison it should have lost.
+ */
+static unsigned long long scrap_when(const char *dir)
+{
+    char path[SCRAP_PATH];
+    unsigned long long newest = 0;
+    struct dirent *entry;
+    DIR *d = opendir(dir);
+
+    if (!d)
+        return 0;
+
+    while ((entry = readdir(d)) != 0)
+    {
+        unsigned long long at;
+
+        if (!is_scrap(entry->d_name))
+            continue;
+
+        snprintf(path, sizeof path, "%s/%s", dir, entry->d_name);
+
+        at = written_at(path);
+
+        if (at > newest)
+            newest = at;
+    }
+
+    closedir(d);
+
+    return newest;
+}
+
 /* The whole of a file, with a NUL after it. Null when it cannot be read. */
 static char *contents(const char *path, size_t *length)
 {
@@ -455,6 +511,48 @@ static int put(const char *dir, const char *name,
     }
 
     return 1;
+}
+
+/*
+ * Takes away what the cut before this one left, keeping the files named.
+ *
+ * Putting something new in the scrap is deleting every SCRAP.* and then
+ * writing, which is the whole of how a scrap is replaced. It has to be: the
+ * files in it are one cut said in as many formats as the application managed,
+ * and the one pasting takes whichever format it likes best rather than
+ * whichever file is newest. So a file left over from the cut before is not an
+ * older copy that will be passed over - it is the one some application
+ * prefers, and writing beside it changes nothing that application will do.
+ *
+ * After the writing rather than before it, so that a conversion that fails
+ * leaves the scrap that was there rather than an empty directory. Anything
+ * newer than the offer is left where it is, for the reason everything else
+ * here is: it arrived afterwards, so it is a cut of its own.
+ */
+static void sweep(const char *dir, unsigned long long when,
+                  const char *keep_a, const char *keep_b)
+{
+    char path[SCRAP_PATH];
+    struct dirent *entry;
+    DIR *d = opendir(dir);
+
+    if (!d)
+        return;
+
+    while ((entry = readdir(d)) != 0)
+    {
+        if (!is_scrap(entry->d_name)
+            || (keep_a && strcasecmp(entry->d_name, keep_a) == 0)
+            || (keep_b && strcasecmp(entry->d_name, keep_b) == 0))
+            continue;
+
+        snprintf(path, sizeof path, "%s/%s", dir, entry->d_name);
+
+        if (written_at(path) <= when)
+            remove(path);
+    }
+
+    closedir(d);
 }
 
 /*
@@ -604,10 +702,10 @@ void scrap_refresh(void)
 {
     unsigned long long when;
     const char *dir;
-    char target[SCRAP_PATH];
     char *utf8;
     char *atari;
     size_t utf8_length, atari_length;
+    int wrote_text = 0, wrote_image = 0;
 
     if (!wanted())
         return;
@@ -627,14 +725,12 @@ void scrap_refresh(void)
     if (!when)
         return;
 
-    snprintf(target, sizeof target, "%s/%s", dir, SCRAP_TEXT);
-
     /*
      * The rule this file is for. Not newer means somebody else's cut is the
      * current one - most likely another GEM application's, which is the case
      * that must not be trodden on.
      */
-    if (when <= written_at(target))
+    if (when <= scrap_when(dir))
         return;
 
     utf8 = offer_utf8(&utf8_length);
@@ -646,7 +742,7 @@ void scrap_refresh(void)
 
         if (atari)
         {
-            put(dir, SCRAP_TEXT, atari, atari_length, when);
+            wrote_text = put(dir, SCRAP_TEXT, atari, atari_length, when);
             free(atari);
         }
     }
@@ -660,16 +756,12 @@ void scrap_refresh(void)
      */
     if (offering_image())
     {
-        char picture[SCRAP_PATH];
         void *png = 0;
         size_t png_length = 0;
 
-        snprintf(picture, sizeof picture, "%s/%s", dir, SCRAP_IMAGE);
-
-        if (when > written_at(picture)
-            && (standing_in()
-                ? (png = contents(standing_in(), &png_length)) != 0
-                : gfx_selection_take(image_kinds[0], &png, &png_length)))
+        if (standing_in()
+            ? (png = contents(standing_in(), &png_length)) != 0
+            : gfx_selection_take(image_kinds[0], &png, &png_length))
         {
             void *img = 0;
             size_t img_length = 0;
@@ -677,13 +769,23 @@ void scrap_refresh(void)
             if (scrap_img_from_png(png, png_length, palette_now(), PALETTE,
                                    planes_now(), &img, &img_length))
             {
-                put(dir, SCRAP_IMAGE, img, img_length, when);
+                wrote_image = put(dir, SCRAP_IMAGE, img, img_length, when);
                 free(img);
             }
 
             free(png);
         }
     }
+
+    /*
+     * And the cut before this one goes, now that this one is there to replace
+     * it. Only once something was written: a scrap that could not be brought
+     * across is a reason to leave the one already there alone.
+     */
+    if (wrote_text || wrote_image)
+        sweep(dir, when,
+              wrote_text ? SCRAP_TEXT : 0,
+              wrote_image ? SCRAP_IMAGE : 0);
 }
 
 /*

@@ -441,6 +441,40 @@ check: all
 	grep -q '^1\.\.' out
 	$(RM) -r out scrapdir
 	#
+	# The same, onto a scrap an application cut in a format of its own. A
+	# cut is one thing written in as many formats as the application
+	# managed, and the one pasting takes the format it likes best and not
+	# the newest file - so the leftover is what a paste reaches, and
+	# bringing the desktop's clipboard in has to take it away rather than
+	# write beside it. Dated well before the offer, which is what the cut
+	# before last is.
+	$(RM) -r scrapdir
+	mkdir -p scrapdir
+	printf 'THE CUT BEFORE' > scrapdir/SCRAP.STW
+	touch -d '2000-01-01 00:00:00' scrapdir/SCRAP.STW
+	printf '\303\204rade\nv\303\244nner\n' > offer.txt
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	  $(TOSEMU) test-c-scrap > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	test ! -e scrapdir/SCRAP.STW
+	$(RM) -r out scrapdir
+	#
+	# And not the other way about: a cut newer than the offer is the
+	# current one, and neither the format the emulator can read nor the one
+	# it cannot is anybody's to take away.
+	$(RM) -r scrapdir
+	mkdir -p scrapdir
+	printf 'THE CUT AFTER' > scrapdir/SCRAP.STW
+	TOSEMU_SCRAP=C:$(CURDIR)/scrapdir/ TOSEMU_SCRAP_IN=$(CURDIR)/offer.txt \
+	  $(TOSEMU) test-c-scrap copy > out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	test -e scrapdir/SCRAP.STW
+	printf '\216rade\r\n' > wanted.txt
+	cmp scrapdir/SCRAP.TXT wanted.txt
+	$(RM) -r out scrapdir wanted.txt
+	#
 	# And two GEM applications passing a scrap between themselves while the
 	# desktop goes on offering something else. That worked before any of
 	# this existed and is what the bringing across is most likely to break:
