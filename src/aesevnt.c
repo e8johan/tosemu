@@ -132,9 +132,10 @@ static long now_ms()
 /*
  * Waits until one of the things asked for happens, and says which.
  *
- * timeout is in milliseconds, or -1 to wait for as long as it takes. A
- * timeout of zero is a GEM idiom meaning "wait for ever" when MU_TIMER is
- * asked for, and the caller has already turned that into -1.
+ * timeout is in milliseconds, or -1 to wait for as long as it takes. A timeout
+ * of zero is a timer that has already expired: everything else is looked at
+ * once and then MU_TIMER is the answer, which is how an application asks what
+ * has happened without agreeing to wait for anything.
  */
 /* Whether the pointer is inside a rectangle, or outside it, which is the two
  * things a mouse rectangle event can be waiting for */
@@ -637,12 +638,18 @@ uint32_t AES_evnt_multi()
         printf("    wanted: 0x%x, timer: %ld ms\n", wanted, ms);
     }
 
-    /* A timer of zero milliseconds means no timer at all rather than one that
-     * has already expired */
-    if (!(wanted & MU_TIMER) || ms == 0)
-        timeout = -1;
-    else
+    /*
+     * A timer of zero milliseconds is one that has already expired, so the
+     * wait looks at everything else once and comes straight back with
+     * MU_TIMER. That is how an application asks what has happened without
+     * agreeing to wait for anything, and reading it as "no timer" - which
+     * leaves the wait with nothing but the message queue to end it - is a
+     * program that polls being stopped dead at the first poll.
+     */
+    if (wanted & MU_TIMER)
         timeout = ms;
+    else
+        timeout = -1;
 
     /* The two rectangles, which MU_M1 and MU_M2 wait for the pointer to enter
      * or to leave. The flag before each says which of the two. */
