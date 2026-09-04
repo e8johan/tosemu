@@ -99,6 +99,13 @@ picture of another computer again. Say `TOSEMU_DECORATIONS=desktop` to have it
 the other way round: the desktop's frame, and GEM's title bar left out of what
 is shown.
 
+Every window carries EmuTOS's generic application icon, which is what a task
+bar or a window switcher shows beside its name. It is read out of the icon
+resource EmuTOS ships and made larger by repeating its pixels, so what appears
+in the switcher is a thirty two pixel ST icon at whatever size the desktop asked
+for rather than a smoothed one. A desktop too old to have heard of window icons
+shows what it showed before, which is its own placeholder. See `src/rsc/README`.
+
 A dialog has no frame of its own to wear, so it asks the desktop for one. Not
 every desktop draws them: GNOME draws no frames at all round a Wayland window
 and has said it will not, which used to leave a dialog with nothing to move it

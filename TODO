@@ -252,6 +252,10 @@
   already knows how to start programs. That wants deciding rather than
   assuming, because the plan says otherwise.
 
-- No .desktop files are written for GEM programs, so one has no icon and no
-  name of its own in a launcher or a task bar. The windows already carry an
-  app_id, which is the half that needs no files.
+- No .desktop files are written for GEM programs, so one has no name of its own
+  in a launcher or a task bar, and no picture of its own either. The windows
+  already carry an app_id and EmuTOS's generic application icon, which are the
+  halves that need no files: a task bar shows what the desktop the program came
+  from would have shown for it, which is the right answer for a program that
+  never said what its own icon was. What a file would add is a name and a
+  picture belonging to the program rather than to the emulator running it.

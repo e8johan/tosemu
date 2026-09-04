@@ -1,6 +1,13 @@
 rsc - pictures
 ==============
 
+Two pictures, and neither of them is on the emulated screen. One is the mark
+tosaesd puts in the panel, which is tosemu's own; the other is what a task bar
+shows beside a window, which is EmuTOS's and is not kept here at all.
+
+The mark in the panel
+---------------------
+
 tray.svg is the mark that goes in the panel. Replace it with the real thing
 and run make; nothing else has to change.
 
@@ -37,3 +44,29 @@ mark drawn by the script instead, because needing a particular tool installed
 to build an emulator would be a poor trade for a nicer icon.
 
 Do not edit tray-icon.h. Edit the picture.
+
+The picture on the windows
+--------------------------
+
+There is no file here for that one, and there should not be. It is EmuTOS's
+generic application icon, and it is read out of the icon resource EmuTOS ships
+in the submodule - 3rdparty/emutos/extras/emuicon1.rsc, where it is icon number
+six, the number the EmuTOS desktop knows as IG_APPL. emuicon-to-c.py digs it
+out and writes window-icon.h next to tray-icon.h, and gfx.c puts it on every
+window it opens.
+
+Taking it rather than copying it is the point. It is somebody else's picture
+and the submodule is where it lives; a copy here would be a second one to keep
+up to date, and nothing would say when the two had drifted apart. What guards
+against the resource being renumbered under it is bin/icontest, which asks
+whether the picture that came out is still a window with a title bar.
+
+It is one thirty two pixel picture and no other size. A compositor says what
+sizes it would like and gfx.c answers with whole multiples of that one, made by
+repeating pixels - the same magnifying the emulated screen gets, and for the
+same reason. Making the sizes here instead would mean guessing them before the
+compositor had been asked.
+
+To use a different set, point the Makefile rule at emuicon0.rsc or emuicon2.rsc
+instead; they are the same icons in the same order, drawn by other people. See
+3rdparty/emutos/extras/readme.txt.

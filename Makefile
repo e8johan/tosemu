@@ -60,12 +60,19 @@ WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 # The header is generated too, but only the source becomes an object
 WAYLANDGENERATED = $(GEN)/xdg-shell-protocol.c $(GEN)/xdg-dialog-protocol.c \
-                   $(GEN)/xdg-decoration-protocol.c
+                   $(GEN)/xdg-decoration-protocol.c \
+                   $(GEN)/xdg-toplevel-icon-protocol.c
 WAYLANDHEADERS = $(GEN)/xdg-shell-client-protocol.h \
                  $(GEN)/xdg-dialog-v1-client-protocol.h \
-                 $(GEN)/xdg-decoration-unstable-v1-client-protocol.h
+                 $(GEN)/xdg-decoration-unstable-v1-client-protocol.h \
+                 $(GEN)/xdg-toplevel-icon-v1-client-protocol.h
 WAYLANDFLAGS = $(shell pkg-config --cflags wayland-client xkbcommon)
 WAYLANDLIBS = $(shell pkg-config --libs wayland-client xkbcommon)
+
+# The picture that goes on the windows, which only the half of gfx.c that
+# opens them wants - so it is named with the rest of what that half needs. See
+# the rule that makes it.
+WINDOWICON = $(GEN)/rsc/window-icon.h
 
 # Talking to the compositor without showing anything, which is what asking how
 # large the display is amounts to. The daemon wants this and not the rest: it
@@ -89,6 +96,7 @@ WAYLANDONLYLIBS = $(shell pkg-config --libs wayland-client)
 ifdef NO_WAYLAND
 WAYLANDGENERATED =
 WAYLANDHEADERS =
+WINDOWICON =
 WAYLANDFLAGS = -DNO_WAYLAND
 WAYLANDLIBS =
 WAYLANDONLYLIBS =
@@ -178,7 +186,8 @@ EMUTOSLDFLAGS = -no-pie
 all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check screen-check settings-check scrap-check demos clean
+        emuvdi-check screen-check settings-check scrap-check icon-check \
+        demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
 # directory, and "No rule to make target" says nothing about why. This catches
@@ -360,6 +369,21 @@ $(GEN)/rsc/tray-icon.h: $(SRC)/rsc/tray.svg $(SRC)/rsc/icon-to-c.py
 
 $(OBJ)/aesdtray.o: $(GEN)/rsc/tray-icon.h
 
+# The picture that goes on the windows, taken out of EmuTOS's own icons.
+#
+# A task bar shows an icon beside a window's name, and with nothing to show it
+# shows the compositor's placeholder - so a GEM application appeared under a
+# mark belonging to Wayland. What it should be is what the desktop the program
+# was written for would have shown for it, which is the generic application
+# icon in EMUICON.RSC, number six there and IG_APPL to the EmuTOS desktop.
+#
+# It is taken from the submodule rather than copied here, for the same reason
+# the VDI is compiled out of it: it is EmuTOS's picture and this is where
+# EmuTOS keeps it. Nothing is written back - the resource is read as it stands.
+$(GEN)/rsc/window-icon.h: $(EMUTOS)/extras/emuicon1.rsc $(SRC)/rsc/emuicon-to-c.py
+	@mkdir -p $(dir $@)
+	python3 $(SRC)/rsc/emuicon-to-c.py $< 6 $@
+
 $(BIN)/tosaesd: $(DAEMONOBJECTS) $(OBJ)/screen.o $(OBJ)/settings.o
 	@mkdir -p $(BIN)
 	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) $(WAYLANDONLYLIBS) -o $@
@@ -386,6 +410,20 @@ $(BIN)/settingstest: $(SRC)/settingstest.c $(OBJ)/settings.o
 
 settings-check: $(BIN)/settingstest
 	./$(BIN)/settingstest
+
+# The picture on the windows, checked without a task bar to put it in. Host
+# built for the same reason as the two above, and it checks the one half of
+# this that can be checked: which picture came out of somebody else's resource
+# file. What a compositor then does with it cannot be arranged by a test.
+#
+# It is built even when the emulator is not, because the header it reads is the
+# picture and not the Wayland half that shows it.
+$(BIN)/icontest: $(SRC)/icontest.c $(GEN)/rsc/window-icon.h
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
+
+icon-check: $(BIN)/icontest
+	./$(BIN)/icontest
 
 # The character set and the line endings, checked without an emulator. Host
 # built for the same reason as the rest of these: an emulated program can say
@@ -438,7 +476,15 @@ $(GEN)/xdg-decoration-unstable-v1-client-protocol.h:
 	@mkdir -p $(GEN)
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
 
-$(OBJ)/gfx.o: $(WAYLANDHEADERS)
+$(GEN)/xdg-toplevel-icon-protocol.c:
+	@mkdir -p $(GEN)
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml $@
+
+$(GEN)/xdg-toplevel-icon-v1-client-protocol.h:
+	@mkdir -p $(GEN)
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml $@
+
+$(OBJ)/gfx.o: $(WAYLANDHEADERS) $(WINDOWICON)
 
 # Every object needs the generated m68kops.h, so none of them may be compiled
 # before m64kmake has run
@@ -461,7 +507,8 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check
+check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
+       icon-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu
