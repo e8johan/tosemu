@@ -488,6 +488,42 @@ void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
     ob_draw(tree, start, depth);
 }
 
+/*
+ * vst_load_fonts, which is not the call an application thinks it is making.
+ *
+ * An application calls it with a handle and a select word and expects to be
+ * told how many extra faces it now has. EmuTOS implements the other end of
+ * that: the interface GDOS filled in on its way through, where the head of the
+ * font chain arrives in control[10-11] and a scratch buffer in control[7-8].
+ * Those words are not part of the call an application makes, so they hold
+ * whatever the last call through the same array left in them - and vdi_text.c
+ * takes the result for a pointer and walks it. Zero is the kind answer and
+ * still fatal, its loop being a do-while that reads the first font before
+ * asking whether there is one.
+ *
+ * So the call is answered here while there is nothing to answer it with. There
+ * are no loadable fonts yet - see the TODO - and "no faces you did not already
+ * have" is what a machine without them should be saying.
+ */
+#define VST_LOAD_FONTS_OP (119)
+
+static int loaded_fonts_answered(int16_t *control, int16_t *intout)
+{
+    if (control[0] != VST_LOAD_FONTS_OP)
+        return 0;
+
+    /* A handle naming no workstation is screen()'s to refuse, and it refuses
+     * by answering nothing at all rather than by answering zero */
+    if (!get_vwk_by_handle(control[6]))
+        return 1;
+
+    intout[0] = 0;
+    control[2] = 0;
+    control[4] = 1;
+
+    return 1;
+}
+
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
@@ -496,6 +532,9 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
     PTSIN = ptsin;
     INTOUT = intout;
     PTSOUT = ptsout;
+
+    if (loaded_fonts_answered(control, intout))
+        return;
 
     screen();
 }

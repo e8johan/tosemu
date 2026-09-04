@@ -19,12 +19,12 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
-GEMTESTNAME=c-gem c-vdi c-aesd c-scrap c-acc c-userdef c-icon c-boxchar c-fsel \
-            c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll
+GEMTESTNAME=c-gem c-vdi c-gdos c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
+            c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -218,6 +218,12 @@ check: all
 	grep -q '^1\.\.' out
 	TOSEMU_SCREEN=tt-medium $(TOSEMU) test-c-vdi tt-medium > out; \
 	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Asking about GDOS and asking it for fonts. The count line matters more
+	# here than anywhere: the call this checks used to read a font chain out
+	# of the caller's leftover control words, and an emulator that followed
+	# one never printed anything again.
+	$(TOSEMU) test-c-gdos > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
