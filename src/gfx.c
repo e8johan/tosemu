@@ -74,6 +74,21 @@
 #include "xdg-shell-client-protocol.h"
 #include "xdg-dialog-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-toplevel-icon-v1-client-protocol.h"
+
+/* The picture that goes on every window, which the build takes out of EmuTOS's
+ * own icons - see the rule in the Makefile and src/rsc/README. It is in the
+ * program rather than beside it because an icon looked for at run time is an
+ * icon that can be missing, and a window with none is back to the placeholder
+ * this is here to replace. */
+#include "rsc/window-icon.h"
+
+/* How many sizes of it are worth offering, and how much larger than it was
+ * drawn the largest of them may be. A compositor asks for one size or a few;
+ * these are only here so that a strange answer cannot ask for an unbounded
+ * amount of memory. */
+#define ICON_SIZES     (8)
+#define ICON_LARGEST   (8)
 #endif
 
 #include "surface.h"
@@ -290,6 +305,30 @@ static struct {
     struct xdg_wm_base *wm_base;
     struct xdg_wm_dialog_v1 *wm_dialog;
     struct zxdg_decoration_manager_v1 *decorations;
+
+    /*
+     * The picture a task bar shows beside a window's name, made once and put
+     * on every window there is.
+     *
+     * One icon does for all of them because that is what it is: an icon of
+     * this window belongs to the toplevel rather than to the application, and
+     * every one of these toplevels is the same GEM application. The protocol
+     * says as much - an icon may be set on any number of toplevels, and is
+     * fixed from the first time it is.
+     *
+     * The buffers it was built out of are kept because they have to be. A
+     * compositor reads them whenever it draws the icon, so they belong to it
+     * for as long as the icon does, and letting go of one is an error the
+     * protocol names.
+     */
+    struct xdg_toplevel_icon_manager_v1 *icon_manager;
+    struct xdg_toplevel_icon_v1 *icon;
+    struct wl_buffer *icon_buffers[ICON_SIZES];
+
+    /* What sizes the compositor said it would like, which it says once when
+     * the manager is bound and never again */
+    int icon_wanted[ICON_SIZES];
+    int icon_wanted_count;
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
@@ -2136,6 +2175,45 @@ static void frame_press(struct window *win, int16_t buttons)
     wl_display_flush(w.display);
 }
 
+/*
+ * What sizes of icon the compositor would like, which are noted and answered
+ * as nearly as a picture of this kind can answer them.
+ *
+ * It asks for whatever its task bar and its window switcher draw at - ninety
+ * six pixels on this desk, twenty two or forty eight on another. The icon is
+ * thirty two pixels of black and white drawn one at a time, so the only sizes
+ * it has an honest answer for are whole multiples of that: anything else is
+ * either a resampling, which is the smoothing this whole file exists to avoid,
+ * or pixels of two different widths side by side, which on straight lines
+ * looks like a mistake rather than like a large pixel.
+ *
+ * So each size asked for is answered with the nearest whole multiple, and
+ * whatever is left over is a scaling the compositor does - by a quarter at
+ * worst, rather than by whatever the difference happened to be. See icon_make.
+ */
+static void icon_size(void *data, struct xdg_toplevel_icon_manager_v1 *manager,
+                      int32_t size)
+{
+    (void)data; (void)manager;
+
+    if (size > 0 && w.icon_wanted_count < ICON_SIZES)
+        w.icon_wanted[w.icon_wanted_count++] = (int)size;
+}
+
+/* Nothing to do: what the sizes are for is settled in one go afterwards, and
+ * the roundtrip in gfx_open is what waits for them to have all arrived */
+static void icon_sizes_done(void *data,
+                            struct xdg_toplevel_icon_manager_v1 *manager)
+{
+    (void)data; (void)manager;
+}
+
+static const struct xdg_toplevel_icon_manager_v1_listener
+icon_manager_listener = {
+    icon_size,
+    icon_sizes_done,
+};
+
 static void registry_global(void *data, struct wl_registry *registry,
                             uint32_t name, const char *interface,
                             uint32_t version)
@@ -2156,6 +2234,14 @@ static void registry_global(void *data, struct wl_registry *registry,
     else if (!strcmp(interface, xdg_wm_dialog_v1_interface.name))
         w.wm_dialog = wl_registry_bind(registry, name,
                                        &xdg_wm_dialog_v1_interface, 1);
+    else if (!strcmp(interface, xdg_toplevel_icon_manager_v1_interface.name))
+    {
+        w.icon_manager =
+            wl_registry_bind(registry, name,
+                             &xdg_toplevel_icon_manager_v1_interface, 1);
+        xdg_toplevel_icon_manager_v1_add_listener(w.icon_manager,
+                                                  &icon_manager_listener, 0);
+    }
     else if (!strcmp(interface, wl_seat_interface.name))
     {
         w.seat = wl_registry_bind(registry, name, &wl_seat_interface, 5);
@@ -2222,6 +2308,160 @@ static int window_buffer(struct window *win, uint32_t format)
     close(fd);
 
     return win->buffer != 0;
+}
+
+/*
+ * Which sizes of the icon are worth building, given what the compositor asked
+ * for.
+ *
+ * Every one of them is a whole number of copies of each ST pixel, so a size
+ * that was asked for is answered with the multiple nearest it rather than
+ * exactly - ninety six is three of them and is answered exactly, forty eight
+ * is one and a half and is answered with sixty four.
+ *
+ * A compositor that asked for nothing has said it does not mind, and gets the
+ * picture and a doubling of it: one for a task bar and one for a switcher on a
+ * display where everything is twice the size.
+ */
+static int icon_multiples(int *multiples)
+{
+    int count = 0;
+    int i, j;
+
+    for (i = 0; i < w.icon_wanted_count; i++)
+    {
+        int want = (w.icon_wanted[i] + WINDOW_ICON_SIZE / 2) / WINDOW_ICON_SIZE;
+
+        if (want < 1)
+            want = 1;
+        if (want > ICON_LARGEST)
+            want = ICON_LARGEST;
+
+        /* Two sizes that round to the same multiple are one buffer, not two */
+        for (j = 0; j < count; j++)
+            if (multiples[j] == want)
+                break;
+
+        if (j == count)
+            multiples[count++] = want;
+    }
+
+    if (count == 0)
+    {
+        multiples[count++] = 1;
+        multiples[count++] = 2;
+    }
+
+    return count;
+}
+
+/*
+ * The icon, built once out of the picture compiled into the program.
+ *
+ * Every size goes in one piece of shared memory and one pool. They are handed
+ * over together and kept for as long as the program runs, so there is nothing
+ * to be gained by giving each its own file, and a compositor that would have
+ * had to map several maps one instead.
+ *
+ * Making the picture larger is repeating its pixels rather than resampling
+ * them, for the reason the emulated screen is magnified the same way: an ST
+ * pixel is a large old pixel and the only honest way to draw a large one is to
+ * draw a block. Doing it here rather than in the header is what lets the size
+ * be one the compositor asked for - which is not known until it has said so.
+ *
+ * The bytes in the header are alpha, red, green and blue in that order, and
+ * what the wire wants is one thirty two bit word of the four. Putting them
+ * together here rather than writing them out that way in the header is what
+ * keeps this from depending on which end of a word this machine puts first.
+ *
+ * Nothing is premultiplied because nothing needs to be: every pixel of a GEM
+ * icon is either there or not, and a transparent one is written as no colour
+ * at all rather than as a colour nobody can see.
+ */
+static void icon_make(void)
+{
+    int multiples[ICON_SIZES];
+    struct wl_shm_pool *pool;
+    size_t bytes = 0;
+    size_t at = 0;
+    uint32_t *pixels;
+    int count, fd, i;
+
+    if (!w.icon_manager)
+        return;
+
+    count = icon_multiples(multiples);
+
+    for (i = 0; i < count; i++)
+    {
+        size_t side = (size_t)multiples[i] * WINDOW_ICON_SIZE;
+        bytes += side * side * 4;
+    }
+
+    fd = memfd_create("tosemu-icon", MFD_CLOEXEC);
+    if (fd < 0)
+        return;
+
+    if (ftruncate(fd, (off_t)bytes) < 0)
+    {
+        close(fd);
+        return;
+    }
+
+    pixels = mmap(0, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (pixels == MAP_FAILED)
+    {
+        close(fd);
+        return;
+    }
+
+    pool = wl_shm_create_pool(w.shm, fd, (int32_t)bytes);
+
+    for (i = 0; i < count; i++)
+    {
+        int scale = multiples[i];
+        int side = scale * WINDOW_ICON_SIZE;
+        uint32_t *out = pixels + at / 4;
+        int x, y;
+
+        for (y = 0; y < side; y++)
+        {
+            for (x = 0; x < side; x++)
+            {
+                const unsigned char *p = window_icon_argb
+                    + ((y / scale) * WINDOW_ICON_SIZE + x / scale) * 4;
+
+                out[y * side + x] = ((uint32_t)p[0] << 24)
+                                  | ((uint32_t)p[1] << 16)
+                                  | ((uint32_t)p[2] << 8)
+                                  |  (uint32_t)p[3];
+            }
+        }
+
+        w.icon_buffers[i] = wl_shm_pool_create_buffer(pool, (int32_t)at,
+                                                      side, side, side * 4,
+                                                      WL_SHM_FORMAT_ARGB8888);
+        at += (size_t)side * side * 4;
+    }
+
+    wl_shm_pool_destroy(pool);
+
+    /* The compositor has its own view of the file now, and the pool held the
+     * only reference this end needed to it */
+    munmap(pixels, bytes);
+    close(fd);
+
+    w.icon = xdg_toplevel_icon_manager_v1_create_icon(w.icon_manager);
+
+    /*
+     * Every one is offered at a scale of one, which is what says they are
+     * several sizes of the same icon rather than one size drawn for several
+     * displays. Which of them a doubled display ends up with is then the
+     * compositor's arithmetic rather than a guess made here.
+     */
+    for (i = 0; i < count; i++)
+        if (w.icon_buffers[i])
+            xdg_toplevel_icon_v1_add_buffer(w.icon, w.icon_buffers[i], 1);
 }
 
 /*
@@ -2463,6 +2703,21 @@ static int window_create(struct window *win, const char *title,
     xdg_toplevel_add_listener(win->toplevel, &toplevel_listener, win);
     xdg_toplevel_set_title(win->toplevel, title);
     xdg_toplevel_set_app_id(win->toplevel, "se.e8johan.tosemu");
+
+    /*
+     * And the picture that goes with the name. Without it a task bar has
+     * nothing to show and shows the compositor's placeholder, which is a
+     * Wayland mark - so a GEM application appeared in the window list under
+     * somebody else's logo.
+     *
+     * The app_id would be the other way to answer it, but only for a program
+     * with a desktop entry file installed somewhere a compositor looks. This
+     * one is run out of its build directory as often as not, and there is no
+     * entry file for the GEM application it is running in any case. See TODO.
+     */
+    if (w.icon)
+        xdg_toplevel_icon_manager_v1_set_icon(w.icon_manager, win->toplevel,
+                                              w.icon);
 
     /*
      * A window that has not said otherwise cannot be resized, which is the
@@ -2710,6 +2965,22 @@ int gfx_open(struct surface *screen)
 
     xdg_wm_base_add_listener(w.wm_base, &wm_base_listener, 0);
 
+    /*
+     * A second roundtrip, for what the compositor has to say about icons.
+     *
+     * It says it when the manager is bound, which happened during the first
+     * one - so the answer is on its way but has not arrived, and asking again
+     * is what waits for it. Everything else here was answered by the bind
+     * itself and needed no second question.
+     */
+    if (w.icon_manager)
+        wl_display_roundtrip(w.display);
+
+    /* Before any window is opened, because a window is given the icon as it is
+     * created and there is nothing here that would go back and fit one to a
+     * window that had already appeared without it */
+    icon_make();
+
     w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
     /*
@@ -2727,6 +2998,16 @@ void gfx_close()
 
     for (i = 0; i < WINDOWS; i++)
         window_destroy(&w.windows[i]);
+
+    /* After the windows, because a buffer the icon was built from is one the
+     * compositor is entitled to read for as long as a window still wears it */
+    if (w.icon)
+        xdg_toplevel_icon_v1_destroy(w.icon);
+    for (i = 0; i < ICON_SIZES; i++)
+        if (w.icon_buffers[i])
+            wl_buffer_destroy(w.icon_buffers[i]);
+    if (w.icon_manager)
+        xdg_toplevel_icon_manager_v1_destroy(w.icon_manager);
 
     if (w.xkb_state)
         xkb_state_unref(w.xkb_state);
