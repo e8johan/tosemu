@@ -19,12 +19,12 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-aesd c-scrap c-acc c-userdef c-icon c-boxchar c-fsel \
-            c-watchbox c-mkstate c-screen c-menu c-frame c-resize
+            c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -328,6 +328,12 @@ check: all
 	# then pressed and not let go of, and none of it is waited for.
 	TOSEMU_CLICKS='@100,60 @150,80 !200,100' $(TOSEMU) test-c-mkstate > out; \
 	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Asking what has happened without agreeing to wait for it, which is a
+	# timer of nought milliseconds on a wait. Nothing is injected: with no
+	# compositor the timer is the only thing that can end one, so a wait
+	# that blocks stops the emulator and the count line goes missing.
+	$(TOSEMU) test-c-poll > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42
