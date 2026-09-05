@@ -90,11 +90,25 @@ void emuvdi_init()
      * pay for loading them, and one that does asks through vst_load_fonts.
      */
     gdos_assign_init((WORD)(Getrez() + 2));
+
+    /*
+     * And the faces that are not files at all. This has to come after the
+     * surface is selected, because how many dots to the inch the screen has is
+     * what decides how tall a point is - a medium resolution screen puts two
+     * hundred lines where a high resolution one puts four hundred, and Atari
+     * shipped a second set of font files for exactly that.
+     */
+    gdos_fsm_init();
 }
 
 int emuvdi_gdos_installed(void)
 {
-    return gdos_installed();
+    return gdos_installed() || gdos_fsm_faces() > 0;
+}
+
+int emuvdi_gdos_scalable(void)
+{
+    return gdos_fsm_faces() > 0;
 }
 
 void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
@@ -563,13 +577,35 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
     if (loaded_fonts_answered(control, intout))
         return;
 
+    /*
+     * The SpeedoGDOS calls first, then the ordinary text calls while an
+     * outline face is the one selected. Both answer 0 for anything that is not
+     * theirs, which is nearly everything, so the usual path is two comparisons
+     * and then EmuTOS.
+     */
+    if (gdos_fsm_call(control, intin, ptsin, intout, ptsout))
+        return;
+
+    if (gdos_fsm_text_call(control, intin, ptsin, intout, ptsout))
+        return;
+
     screen();
+
+    /* And the count of faces a workstation reports when it opens, which the
+     * outline ones are not in any font ring to be counted in */
+    gdos_fsm_opened(control, intout);
 }
 
 /*
- * The two ranges EmuTOS's jump tables cover, 1 to 39 and 100 to 134. screen()
- * simply returns for anything else, which would leave a caller waiting for an
- * answer that never comes and no sign of why, so tosemu asks first.
+ * The two ranges EmuTOS's jump tables cover, 1 to 39 and 100 to 134, and the
+ * SpeedoGDOS range above them which is served here instead. screen() simply
+ * returns for anything else, which would leave a caller waiting for an answer
+ * that never comes and no sign of why, so tosemu asks first.
+ *
+ * The range above 230 is only claimed when there is an outline engine behind
+ * it. A build without FreeType has none, vq_gdos says so, and an application
+ * that calls one of them anyway meets the same halt it always did rather than
+ * a call that answers nothing.
  */
 int emuvdi_implements(int16_t opcode)
 {
@@ -577,6 +613,9 @@ int emuvdi_implements(int16_t opcode)
         return 1;
 
     if (opcode >= 100 && opcode <= 134)
+        return 1;
+
+    if (opcode >= 232 && opcode <= 255 && gdos_fsm_faces() > 0)
         return 1;
 
     return 0;

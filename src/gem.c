@@ -402,7 +402,8 @@ void gem_trap()
              * entitled to knock before it has drawn anything.
              */
             if (gem_start() && emuvdi_gdos_installed())
-                m68k_set_reg(M68K_REG_D0, GDOS_FNT);
+                m68k_set_reg(M68K_REG_D0, emuvdi_gdos_scalable()
+                                          ? GDOS_FSM : GDOS_FNT);
             break;
         default:
             halt_execution();
