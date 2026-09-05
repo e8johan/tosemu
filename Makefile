@@ -102,7 +102,7 @@ WAYLANDLIBS =
 WAYLANDONLYLIBS =
 endif
 
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/textblit.c emuvdi/bridge.c \
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 
@@ -186,7 +186,7 @@ EMUTOSLDFLAGS = -no-pie
 all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check screen-check settings-check scrap-check icon-check \
+        emuvdi-check gdos-check screen-check settings-check scrap-check icon-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -442,12 +442,30 @@ scrap-check: $(BIN)/scraptest
 #
 # settings.o comes along because hostfs.c asks whether it is to say which
 # directories were read, and that is a setting rather than a variable now.
-$(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(EMUTOSOBJECTS) $(OBJ)/settings.o
+$(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(SRC)/emuvdi/hoststubs.c \
+                $(EMUTOSOBJECTS) $(OBJ)/settings.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
 
 emuvdi-check: $(BIN)/vditest
 	./$(BIN)/vditest | diff -u $(SRC)/emuvdi/vditest.expected -
+
+# Reading a font file, checked without one. Host-built like the two above and
+# for the same kind of reason: byte order, where a font's tables are and the
+# order a chain of them is put in are all underneath the emulator, and what an
+# application would see of a mistake in any of them is a word in the wrong
+# place rather than anything it could report.
+#
+# It writes its own sample fonts, so there is nothing to carry and nothing of
+# Atari's to redistribute. The same samples are what the test inside the
+# emulator loads, which is why this is built before tests/ is run.
+$(BIN)/gdostest: $(SRC)/emuvdi/gdostest.c $(SRC)/emuvdi/hoststubs.c \
+                 $(EMUTOSOBJECTS) $(OBJ)/settings.o
+	@mkdir -p $(BIN)
+	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
+
+gdos-check: $(BIN)/gdostest
+	./$(BIN)/gdostest
 
 # The Wayland protocol code. wayland-scanner turns the protocol description
 # into the marshalling both sides of the socket agree on, so it is generated
@@ -508,7 +526,7 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
-       icon-check
+       icon-check gdos-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu
