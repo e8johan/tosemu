@@ -93,13 +93,97 @@ static short name_of(short element, char *into)
     return vqt_name(handle, element, into);
 }
 
+/* And the id of the face with a given name, or 0. The list is walked rather
+ * than indexed because what is in it besides the loaded fonts depends on how
+ * the build was made. */
+static short face_called(const char *wanted, short faces)
+{
+    char name[33];
+    short i, id;
+
+    for (i = 1; i <= faces; i++)
+    {
+        id = name_of(i, name);
+
+        if (strcmp(name, wanted) == 0)
+            return id;
+    }
+
+    return 0;
+}
+
+/*
+ * How many pixels in a box are not the background, which is how a string that
+ * was drawn is told from one that was not. v_get_pixel answers with the colour
+ * index, and everything here is drawn in colour 1 on a screen that starts as
+ * colour 0.
+ */
+static int ink_between(short x1, short x2, short y1, short y2)
+{
+    short x, y, pel, index;
+    int ink = 0;
+
+    for (y = y1; y < y2; y++)
+        for (x = x1; x < x2; x++)
+        {
+            v_get_pixel(handle, x, y, &pel, &index);
+            if (index != 0)
+                ink++;
+        }
+
+    return ink;
+}
+
+/*
+ * The calls above 230, which have no bindings in the library: gemlib knows
+ * vq_gdos and vst_load_fonts and stops well short of v_ftext. So the parameter
+ * block is filled in by hand, which is all a binding is.
+ */
+static short p_control[VDI_CNTRLMAX];
+static short p_intin[128];
+static short p_ptsin[16];
+static short p_intout[128];
+static short p_ptsout[16];
+
+static void speedo(short opcode, short points, short values)
+{
+    VDIPB pb;
+
+    p_control[0] = opcode;
+    p_control[1] = points;
+    p_control[3] = values;
+    p_control[5] = 0;
+    p_control[6] = handle;
+
+    pb.control = p_control;
+    pb.intin = p_intin;
+    pb.ptsin = p_ptsin;
+    pb.intout = p_intout;
+    pb.ptsout = p_ptsout;
+
+    vdi(&pb);
+}
+
+/* A string into intin, one character to a word, which is how every VDI text
+ * call takes one */
+static short put_text(const char *text)
+{
+    short i;
+
+    for (i = 0; text[i]; i++)
+        p_intin[i] = (unsigned char)text[i];
+
+    return i;
+}
+
 int main(int argc, char **argv)
 {
-    short i, id;
+    short i;
     long version;
-    char name[33];
     short extent[8];
     int faces_wanted;
+    short faces_before, sans, mono;
+    int outlines;
 
     if (argc < 2)
     {
@@ -142,14 +226,38 @@ int main(int argc, char **argv)
     version = vq_vgdos();
     check(vq_gdos() ? 1 : 0, version != GDOS_NONE,
           "vq_gdos and vq_vgdos agree about whether there is a GDOS");
-    check(version, faces_wanted ? GDOS_FNT : GDOS_NONE,
-          faces_wanted ? "and say it is the one that loads fonts from files"
-                       : "and say there is none, no font list having been found");
+    /*
+     * Which GDOS it is. '_FNT' is the one that loads fonts from files and
+     * '_FSM' the one with outlines behind it as well, and which of the two a
+     * build has depends on whether it was built with FreeType - so both are
+     * accepted here and the answer decides what is asked below. Saying '_FSM'
+     * is a promise about the calls above 230, so it had better be true.
+     */
+    outlines = (version == GDOS_FSM);
 
-    /* Before the fonts are asked for, the only face is the system one. This is
-     * what says the count below is the loaded fonts arriving rather than
-     * something that was already there. */
-    check(work_out[10], 1, "a workstation opens knowing only the system face");
+    if (faces_wanted)
+        check(version == GDOS_FSM || version == GDOS_FNT ? 1 : 0, 1,
+              "and say which of the two GDOSes it is");
+    else
+        /*
+         * With no ASSIGN.SYS there are no fonts from files, and whether there
+         * is a GDOS at all then depends on whether this build has an outline
+         * engine: one with FreeType still has faces to offer and says so,
+         * one without has nothing and says that. What it must not say is
+         * '_FNT', which is a promise about font files there are none of.
+         */
+        check(version == GDOS_FSM || version == GDOS_NONE ? 1 : 0, 1,
+              "and do not claim font files when no font list was found");
+
+    /*
+     * How many faces there are before the fonts are asked for: the system one,
+     * and however many outline faces this build turned out to have. It is not
+     * a number this file can know, so it is remembered rather than asserted -
+     * what matters is that the loaded fonts arrive on top of it.
+     */
+    faces_before = work_out[10];
+    check(faces_before >= 1, 1,
+          "a workstation opens knowing at least the system face");
 
     check(vst_load_fonts(handle, 0), faces_wanted,
           "vst_load_fonts answers with the faces the screen's section names");
@@ -173,21 +281,19 @@ int main(int argc, char **argv)
     }
 
     /*
-     * The faces, by name. Element 1 is the system font, and the loaded ones
-     * come after it - which is the order the chain is in, and the reason it is
-     * sorted at all.
+     * The faces, by name. They are looked for rather than assumed to be at a
+     * particular place in the list, because what else is in it depends on how
+     * the build was made - the outline faces are in there too.
      */
-    id = name_of(2, name);
-    check(id, faces_wanted == 2 ? SANS_ID : MONO_ID,
-          "the first loaded face is the one the section names first");
-    check(strcmp(name, faces_wanted == 2 ? "Test Sans" : "Test Mono"), 0,
-          "under the name in its font file");
+    sans = face_called("Test Sans", faces_before + faces_wanted);
+    mono = face_called("Test Mono", faces_before + faces_wanted);
+
+    check(sans, faces_wanted == 2 ? SANS_ID : 0,
+          "the face the section names first is in the list under its own name");
+    check(mono, MONO_ID, "and so is the other one");
 
     if (faces_wanted == 2)
     {
-        id = name_of(3, name);
-        check(id, MONO_ID, "and the second loaded face after it");
-        check(strcmp(name, "Test Mono"), 0, "under its own name as well");
 
         /*
          * And what all of this is for. An application lays a document out from
@@ -209,6 +315,86 @@ int main(int argc, char **argv)
         vqt_extent(handle, " !\"", extent);
         check(extent[2] - extent[0], SANS12_EXTENT,
               "and wider at the size above it, that being another font");
+    }
+
+    /*
+     * And the outline half, when there is one. What can be asked about it here
+     * is narrow on purpose: which host face Swiss 721 was set in, and
+     * therefore how wide anything comes out, is a fact about the machine this
+     * is running on. What holds everywhere is that the face is in the list,
+     * that a size can be asked for that no font file has, that the extent
+     * grows with the size, and that drawing puts ink where the extent said it
+     * would.
+     */
+    if (outlines)
+    {
+        short swiss = face_called("Swiss 721", faces_before + faces_wanted);
+        short narrow, wide, length;
+
+        check(swiss > 0, 1, "an outline face is in the list under its own name");
+
+        p_intin[0] = swiss;
+        speedo(21, 0, 1);               /* vst_font */
+
+        /* Seventeen point, which no .FNT on any disk is, so an answer at all
+         * is the outline engine answering */
+        p_intin[0] = 17;
+        speedo(246, 0, 1);              /* vst_arbpt */
+        check(p_intout[0], 17, "and can be asked for a size no font file has");
+
+        length = put_text("Hamburgefonstiv");
+        speedo(240, 0, length);         /* vqt_f_extent */
+        narrow = p_ptsout[2] - p_ptsout[0];
+        check(narrow > 0, 1, "a string in it has a width");
+
+        p_intin[0] = 34;
+        speedo(246, 0, 1);
+        length = put_text("Hamburgefonstiv");
+        speedo(240, 0, length);
+        wide = p_ptsout[2] - p_ptsout[0];
+        check(wide > narrow, 1, "and a larger one at twice the size");
+
+        /*
+         * Drawn, and then read back off the screen. This is the check the rest
+         * of them lean on: everything above would pass just as well if v_ftext
+         * quietly drew nothing.
+         */
+        p_intin[0] = 12;
+        speedo(246, 0, 1);
+        vswr_mode(handle, MD_REPLACE);
+        vst_color(handle, 1);
+        vst_alignment(handle, 0, 5, &extent[0], &extent[1]);
+
+        length = put_text("Hamburgefonstiv");
+        p_ptsin[0] = 20;
+        p_ptsin[1] = 40;
+        speedo(241, 1, length);         /* v_ftext */
+
+        speedo(240, 0, put_text("Hamburgefonstiv"));
+        narrow = p_ptsout[2] - p_ptsout[0];
+
+        check(ink_between(20, 20 + narrow, 40, 40 + 20) > 0, 1,
+              "v_ftext puts ink where the extent said the string would be");
+        check(ink_between(20 + narrow + 8, 20 + narrow + 60, 40, 40 + 20), 0,
+              "and none past the end of it");
+
+        /*
+         * And against the left edge, which is not the corner case it looks.
+         * The bitmap a string is drawn from starts a character's width before
+         * the string does, because a letter may lean left of its own origin -
+         * so a string drawn a few pixels in begins at a negative x, and the
+         * raster call clips only when the workstation has a clipping rectangle
+         * set. Nothing here sets one, which is the ordinary case.
+         */
+        p_intin[0] = 24;
+        speedo(246, 0, 1);
+        length = put_text("edge");
+        p_ptsin[0] = 2;
+        p_ptsin[1] = 100;
+        speedo(241, 1, length);
+
+        check(ink_between(2, 60, 100, 130) > 0, 1,
+              "a string against the left edge is drawn rather than fatal");
     }
 
     v_clswk(handle);

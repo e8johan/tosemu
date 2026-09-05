@@ -103,7 +103,7 @@ WAYLANDLIBS =
 WAYLANDONLYLIBS =
 endif
 
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/textblit.c emuvdi/bridge.c \
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 

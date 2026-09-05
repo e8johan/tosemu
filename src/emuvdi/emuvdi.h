@@ -329,4 +329,12 @@ int emuvdi_implements(int16_t opcode);
  */
 int emuvdi_gdos_installed(void);
 
+/*
+ * And whether the outline half of it is there, which is the difference between
+ * telling an application it has FontGDOS and telling it it has SpeedoGDOS.
+ * The second promises the calls above 230, so it is not said unless there is
+ * something behind them.
+ */
+int emuvdi_gdos_scalable(void);
+
 #endif /* EMUVDI_H */

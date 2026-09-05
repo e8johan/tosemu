@@ -131,4 +131,34 @@ WORD *gdos_loaded_scratch(WORD *half);
  */
 WORD gdos_install(Vwk *vwk);
 
+
+/* The outline half, in gdosfsm.c ******************************************/
+
+/* Readies the outline engine and tells it how many dots to the inch this
+ * screen has. Call once, after the surface is settled. */
+void gdos_fsm_init(void);
+
+/* How many faces it offers, which is what says whether vq_gdos may answer
+ * SpeedoGDOS rather than FontGDOS */
+int gdos_fsm_faces(void);
+
+/*
+ * Serves one of the calls above 230. Answers 0 for an opcode outside that
+ * range, which is how the caller knows to hand it to EmuTOS instead.
+ */
+int gdos_fsm_call(WORD *control, WORD *intin, WORD *ptsin,
+                  WORD *intout, WORD *ptsout);
+
+/*
+ * And the ordinary text calls, which have to be answered here whenever the
+ * face selected is an outline: EmuTOS implements them against a Fonthead, and
+ * an outline face has none, there being no raster to point one at. Answers 0
+ * for everything else, which is nearly always.
+ */
+int gdos_fsm_text_call(WORD *control, WORD *intin, WORD *ptsin,
+                       WORD *intout, WORD *ptsout);
+
+/* Adds the outline faces to the count a workstation reports when it opens */
+int gdos_fsm_opened(WORD *control, WORD *intout);
+
 #endif /* EMUVDI_GDOS_H */
