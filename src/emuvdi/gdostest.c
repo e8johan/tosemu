@@ -37,8 +37,8 @@
  * The same font is written twice, once in each byte order, which is the case
  * that matters: every .FNT Atari shipped is Intel, having been made on a PC,
  * and the VDI that reads it was written for a 68000. The two must come in as
- * the same font in everything but the raster, which is left as the file had it
- * for the VDI to turn over with the routine it already has.
+ * the same font in every last byte, the raster included, because what the VDI
+ * is handed has to be in the VDI's order whatever order it was written in.
  *
  * With --write it puts the same fonts into a directory instead of checking
  * them, which is how the test that runs inside the emulator gets fonts to
@@ -57,6 +57,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 /* EmuTOS's own, which comes first on the include path and declares the handful
  * of string functions EmuTOS uses. strcmp is one of them. */
@@ -91,6 +92,10 @@ static void check(long got, long want, const char *name)
  * rows of one word, whose bytes are all different so that a word turned over
  * is a different number rather than the same one.
  */
+/* Where the fonts go, under the directory ASSIGN.SYS is written into. The name
+ * is the one every Atari installation used. */
+#define SAMPLE_SUBDIR "GDOS.SYS"
+
 #define SAMPLE_FIRST_ADE (32)
 #define SAMPLE_LAST_ADE  (34)
 #define SAMPLE_CHARS     (SAMPLE_LAST_ADE - SAMPLE_FIRST_ADE + 1)
@@ -102,8 +107,14 @@ static void check(long got, long want, const char *name)
 #define SAMPLE_FORM_H    (6)
 #define SAMPLE_SIZE      (SAMPLE_DAT_AT + SAMPLE_FORM_W * SAMPLE_FORM_H)
 
-/* Where each character starts in the raster, so the widths are 3, 5 and 4 */
+/*
+ * Where each character starts in the raster, which is what says how wide it
+ * is. The two sizes of the one face are given different widths on purpose: a
+ * test in which every size measured the same could not tell vst_point picking
+ * the right font from vst_point picking any font at all.
+ */
 static const UWORD sample_offsets[SAMPLE_CHARS + 1] = { 0, 3, 8, 12 };
+static const UWORD sample_offsets_large[SAMPLE_CHARS + 1] = { 0, 4, 10, 15 };
 
 /* One word per row, no two bytes alike */
 static const UWORD sample_raster[SAMPLE_FORM_H] = {
@@ -118,6 +129,7 @@ struct sample {
     WORD top;
     WORD max_cell_width;
     WORD extra_flags;       /* F_MONOSPACE and the like */
+    const UWORD *offsets;   /* where each character starts in the raster */
 };
 
 /*
@@ -126,9 +138,9 @@ struct sample {
  * of gdos_font_chain has to be the other order.
  */
 static const struct sample samples[] = {
-    { "TEST12.FNT", 100, 12, "Test Sans", 9, 5, 0 },
-    { "MONO10.FNT", 101, 10, "Test Mono", 8, 4, F_MONOSPACE },
-    { "TEST08.FNT", 100,  8, "Test Sans", 6, 5, 0 }
+    { "TEST12.FNT", 100, 12, "Test Sans", 9, 7, 0, sample_offsets_large },
+    { "MONO10.FNT", 101, 10, "Test Mono", 8, 4, F_MONOSPACE, sample_offsets },
+    { "TEST08.FNT", 100,  8, "Test Sans", 6, 5, 0, sample_offsets }
 };
 
 #define SAMPLE_COUNT ((int)(sizeof samples / sizeof samples[0]))
@@ -207,10 +219,51 @@ static void build(UBYTE *file, const struct sample *s, int motorola)
     put_long(file, 84, 0, motorola);                        /* next_font */
 
     for (i = 0; i <= SAMPLE_CHARS; i++)
-        put_word(file, SAMPLE_OFF_AT + i * 2, sample_offsets[i], motorola);
+        put_word(file, SAMPLE_OFF_AT + i * 2, s->offsets[i], motorola);
 
     for (i = 0; i < SAMPLE_FORM_H; i++)
         put_word(file, SAMPLE_DAT_AT + i * 2, sample_raster[i], motorola);
+}
+
+/*
+ * An ASSIGN.SYS naming them, for the test that runs inside the emulator.
+ *
+ * Two device sections rather than one, because which section applies is a
+ * decision tosemu makes rather than one an application makes: the number is
+ * the screen's resolution plus two, so ST low is 2 and ST high is 4, and a
+ * test that ran on one screen would not notice the choice being made at all.
+ * ST low gets one face here and ST high gets two.
+ *
+ * The PATH line names a drive that is not there, which is not an oversight -
+ * it is what every ASSIGN.SYS that came with an application says, the fonts
+ * having been on a floppy. What has to survive that is the tail of it: the
+ * fonts go in a directory called GDOS.SYS beside this file, exactly as they do
+ * in an installation copied off its disk, and finding them there is the only
+ * reading under which such a copy works at all.
+ */
+static int write_assign(const char *dir)
+{
+    char path[1024];
+    FILE *f;
+
+    snprintf(path, sizeof path, "%s/ASSIGN.SYS", dir);
+
+    f = fopen(path, "w");
+    if (!f)
+        return 0;
+
+    fprintf(f, "; written by gdostest, for the fonts beside it\r\n");
+    fprintf(f, "PATH = A:\\%s\r\n", SAMPLE_SUBDIR);
+    fprintf(f, "2p SCREEN.SYS\r\n");
+    fprintf(f, "  %s\r\n", samples[1].file);
+    fprintf(f, "4p SCREEN.SYS\r\n");
+    fprintf(f, "  %s\r\n", samples[2].file);
+    fprintf(f, "  %s\r\n", samples[0].file);
+    fprintf(f, "  %s\r\n", samples[1].file);
+
+    fclose(f);
+
+    return 1;
 }
 
 static int write_file(const char *path, const UBYTE *data, long size)
@@ -272,14 +325,14 @@ static void check_one_font(const char *dir)
     check(intel->off_table[2] - intel->off_table[1], 5, "and the second");
     check(intel->off_table[3] - intel->off_table[2], 4, "and the third");
 
-    /* Left clear, because vdi_vst_load_fonts is the one that turns the raster
-     * over and it decides by this flag */
-    check(intel->flags & F_STDFORM, 0,
-          "an Intel font arrives with its raster still to be turned over");
+    /* Set, whatever the file said, because what comes out of here is in the
+     * VDI's order and the flag is how the VDI is told so */
+    check((intel->flags & F_STDFORM) != 0, 1,
+          "and arrives the way round the VDI reads a raster");
 
-    /* The same font the other way round. Everything the header says has to
-     * come out the same; the raster has to come out byte swapped, because that
-     * is the difference the flag stands for. */
+    /* The same font the other way round. It has to come out identical - the
+     * header, the widths and the raster - because the byte order is the only
+     * thing that differed and it is the thing being undone. */
     write_sample(dir, &samples[2], 1);
     motorola = gdos_font_read(path);
 
@@ -303,18 +356,21 @@ static void check_one_font(const char *dir)
 
     check(same, 1, "and has the same widths in it");
 
-    check((motorola->flags & F_STDFORM) != 0, 1,
-          "a Motorola font arrives with its raster already the right way round");
-
     ir = (const UBYTE *)intel->dat_table;
     mr = (const UBYTE *)motorola->dat_table;
 
-    for (i = 0; i < SAMPLE_FORM_W * SAMPLE_FORM_H; i += 2)
-        if (ir[i] != mr[i + 1] || ir[i + 1] != mr[i])
+    for (i = 0; i < SAMPLE_FORM_W * SAMPLE_FORM_H; i++)
+        if (ir[i] != mr[i])
             swapped = 0;
 
-    check(swapped, 1,
-          "and a raster that is the Intel one word for word the other way round");
+    check(swapped, 1, "and a raster identical to the Intel one");
+
+    /* And it is the raster that was written rather than either half of it
+     * left as it lay: the first row went in as 0x1234 and has to read back
+     * that way round, high byte first, which is where a 68000 keeps the
+     * leftmost eight pixels */
+    check((mr[0] << 8) | mr[1], 0x1234,
+          "with the leftmost pixels of its first row in the high byte");
 
     gdos_font_free(intel);
     gdos_font_free(motorola);
@@ -448,13 +504,28 @@ int main(int argc, char **argv)
 
     if (argc > 2 && strcmp(argv[1], "--write") == 0)
     {
+        snprintf(path, sizeof path, "%s/%s", argv[2], SAMPLE_SUBDIR);
+
+        if (mkdir(path, 0777) != 0 && errno != EEXIST)
+        {
+            fprintf(stderr, "gdostest: %s could not be made\n", path);
+            return 1;
+        }
+
         for (i = 0; i < SAMPLE_COUNT; i++)
-            if (!write_sample(argv[2], &samples[i], 0))
+            if (!write_sample(path, &samples[i], 0))
             {
                 fprintf(stderr, "gdostest: %s/%s could not be written\n",
-                        argv[2], samples[i].file);
+                        path, samples[i].file);
                 return 1;
             }
+
+        if (!write_assign(argv[2]))
+        {
+            fprintf(stderr, "gdostest: %s/ASSIGN.SYS could not be written\n",
+                    argv[2]);
+            return 1;
+        }
 
         return 0;
     }

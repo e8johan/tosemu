@@ -48,6 +48,19 @@
  */
 #define GEM_GDOS (-2)
 
+/* And what is left there, which says not merely that somebody answered but
+ * which of the several GDOSes it was. They are four characters each because
+ * that is how the answer was written down.
+ *
+ * '_FNT' is FontGDOS: fonts loaded from .FNT files, which is what tosemu has.
+ * '_FSM' is the one with outlines behind it - FSMGDOS, and SpeedoGDOS after
+ * it - and promises the calls above 230, so it is not said until they are
+ * there. An application that is told the wrong one of these does not fail
+ * gracefully; it calls something that is not there.
+ */
+#define GDOS_FNT (0x5f464e54L)  /* '_FNT' */
+#define GDOS_FSM (0x5f46534dL)  /* '_FSM' */
+
 /* How a function the tables name but nobody has implemented behaves, the same
  * contract BIOS and XBIOS use. FN_HALT stops and says which call it was, so
  * that an unimplemented function is found where it is used rather than

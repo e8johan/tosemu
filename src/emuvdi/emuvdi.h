@@ -318,4 +318,15 @@ void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
  */
 int emuvdi_implements(int16_t opcode);
 
+/*
+ * Whether there are fonts on the disk for this machine, which is the whole of
+ * what vq_gdos has to answer.
+ *
+ * An application asks before it asks for anything else, and takes one road or
+ * the other from the answer. Saying yes on a machine where no ASSIGN.SYS could
+ * be found would send it down the road with nothing at the end of it, so this
+ * is what the answer is made of rather than a build time decision.
+ */
+int emuvdi_gdos_installed(void);
+
 #endif /* EMUVDI_H */
