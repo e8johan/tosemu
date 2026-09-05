@@ -72,6 +72,14 @@ static const struct {
 
     { "TOS_BASE_PATH",      "files",   "base",        0 },
 
+    /*
+     * Which ASSIGN.SYS says what fonts this machine has, which is the whole of
+     * what installing GDOS amounted to. Without it the two places a program of
+     * the period would have kept one are looked in - beside the program and
+     * where the process is standing - and then the root of the drive.
+     */
+    { "TOSEMU_FONTS_ASSIGN", "fonts",  "assign",      0 },
+
     { "TOSEMU_SCRAP",       "scrap",   "dir",         0 },
     { "TOSEMU_NO_SCRAP",    "scrap",   "clipboard",   1 },
 

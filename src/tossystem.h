@@ -153,6 +153,18 @@ void exec_tos_basepage(uint32_t basepage);
 const char *tos_program_name(void);
 
 /*
+ * And where it was loaded from, as a host path with no trailing separator.
+ *
+ * tosemu does not move to the program's directory - what a program does with a
+ * relative path is answered from the working directory of the process, which
+ * is where whoever started it was standing - so the two are usually but not
+ * always the same place. Anything looking for a file that belongs to the
+ * program rather than to the person running it wants this one. Answers "."
+ * for a program named without a directory at all.
+ */
+const char *tos_program_dir(void);
+
+/*
  * Says that the application about to be built is an accessory, which decides
  * how much of the machine it is given rather than anything about what it does.
  *

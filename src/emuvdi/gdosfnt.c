@@ -36,13 +36,11 @@
  * every value the flag can take is small enough that the byte carrying it is
  * the same byte in both readings.
  *
- * The raster is the one thing left as it was found. vdi_vst_load_fonts walks
- * the chain it is given and byte swaps anything without F_STDFORM, setting the
- * flag as it goes, using trnsfont - which is private to vdi_text.c and cannot
- * be reached from here. Doing it here as well would mean writing that routine
- * a second time and marking the font so that the first one skips it, which is
- * two ways of doing one thing. So the raster is handed over as the file had
- * it, which is what the VDI is expecting.
+ * The raster is turned over here too, and F_STDFORM set, so that what comes
+ * out is a font in the VDI's own order whatever order it went in in. EmuTOS
+ * has that swap already, in trnsfont, and it is not reachable: it is static
+ * inside vdi_text.c and the only thing that calls it is vdi_vst_load_fonts,
+ * which tosemu cannot call - see gdos_install below for why.
  */
 
 #include "emutos.h"
@@ -54,6 +52,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <sys/stat.h>
+
+/* EmuTOS's own, which comes first on the include path */
+#include "string.h"
+
+/* tosemu's, reached the way hostfs.c reaches them: this side is built against
+ * EmuTOS's headers, so a tosemu header included here has to be one written in
+ * plain types, which these are */
+#include "../files.h"
+#include "../settings.h"
+#include "../tossystem.h"
 
 #include "gdos.h"
 #include "emuvdi.h"
@@ -295,10 +305,20 @@ Fonthead *gdos_font_read(const char *host_path)
         for (i = 0; i < (int)chars * 2; i++)
             hor_table[i] = file[hor_at + i];
 
-    /* Verbatim, and F_STDFORM left as the file set it, so that the VDI does
-     * the swapping with the routine it already has */
-    for (i = 0; i < (int)raster_bytes; i++)
-        dat_table[i] = file[dat_at + i];
+    /*
+     * The raster, a word at a time so that an Intel one comes out the way a
+     * 68000 would have written it. Every routine that draws a character reads
+     * this in words and takes the high bit of one for the leftmost pixel, so a
+     * font left in the other order draws each pair of columns swapped - which
+     * is legible enough to be mistaken for a bad font rather than a bug.
+     */
+    for (i = 0; i < (int)raster_bytes; i += 2)
+    {
+        dat_table[i] = motorola ? file[dat_at + i] : file[dat_at + i + 1];
+        dat_table[i + 1] = motorola ? file[dat_at + i + 1] : file[dat_at + i];
+    }
+
+    font->flags |= F_STDFORM;
 
     font->off_table = off_table;
     font->hor_table = hor_table;
@@ -388,4 +408,470 @@ WORD gdos_font_scratch(const Fonthead *font)
     out_add = (cel2_ww >= cel2_hw ? cel2_ww : cel2_hw) + 2;
 
     return (WORD)(cel2_siz + out_add);
+}
+
+
+/* ASSIGN.SYS *************************************************************/
+
+/*
+ * The list of fonts a machine is to have, and where it is.
+ *
+ * ASSIGN.SYS is a plain text file, one device to a paragraph. A line beginning
+ * with a digit opens one - the device number, an optional letter or two of
+ * flags, and the name of a driver - and the lines under it name that device's
+ * fonts. Everything else is a remark. The device numbers are the same ones the
+ * AES opens the physical workstation with, the screen's being its resolution
+ * plus two, which is how a section is picked without asking anybody: there is
+ * one output device here and it is the screen.
+ *
+ * The PATH line at the top says where the fonts are. In the files that came
+ * with the applications it usually names a floppy - A:\GDOS.SYS - and tosemu
+ * has no floppy, so a path that leads nowhere falls back to the directory
+ * ASSIGN.SYS itself is in. That is not fidelity, it is the only reading under
+ * which a program's own font directory can be copied off a disk and used where
+ * it lands, which is what everybody has.
+ */
+
+/* Long enough for the longest ASSIGN.SYS anybody wrote, and bounded so that a
+ * file that is not one cannot ask for memory until there is none */
+#define GDOS_MAX_FONTS (256)
+
+static struct {
+    int looked;                     /* whether the search has been done */
+    int loaded;                     /* whether the fonts have been read in */
+
+    char where[PATH_MAX + 1];       /* the directory the fonts are in */
+    char *name[GDOS_MAX_FONTS];     /* and what they are called */
+    int names;
+
+    Fonthead *font[GDOS_MAX_FONTS];
+    int fonts;
+    Fonthead *chain;
+
+    WORD *scratch;
+    WORD half;
+} assign;
+
+/* Whether a host path names something that can be opened for reading */
+static int readable(const char *host_path)
+{
+    FILE *f = fopen(host_path, "rb");
+
+    if (!f)
+        return 0;
+
+    fclose(f);
+
+    return 1;
+}
+
+/* And whether one names a directory, which is what a PATH line names */
+static int is_directory(const char *host_path)
+{
+    struct stat about;
+
+    return stat(host_path, &about) == 0 && S_ISDIR(about.st_mode);
+}
+
+/*
+ * The directory part of a path, without the separator. Written out because
+ * dirname wants a string it may edit and answers with storage of its own.
+ */
+static void directory_of(const char *host_path, char *into)
+{
+    const char *slash = 0, *at;
+
+    for (at = host_path; *at; at++)
+        if (*at == '/')
+            slash = at;
+
+    if (!slash)
+    {
+        into[0] = '.';
+        into[1] = 0;
+        return;
+    }
+
+    snprintf(into, PATH_MAX + 1, "%.*s",
+             (int)(slash == host_path ? 1 : slash - host_path), host_path);
+}
+
+/*
+ * Where ASSIGN.SYS is, in the order the places are tried.
+ *
+ * What the settings say comes first, because saying it is saying it about this
+ * run. Then the two places a program of the period would have looked for a
+ * file of its own: beside the program, and where the process is standing -
+ * which are usually the same directory and are not always, tosemu not moving
+ * to the program's own. Last the root of the drive, which is where a GDOS.PRG
+ * in the AUTO folder read it from.
+ */
+static int find_assign(char *into)
+{
+    const char *said = setting("TOSEMU_FONTS_ASSIGN");
+    char tos[PATH_MAX + 1];
+    int i;
+
+    if (said)
+    {
+        /* Whatever was said, through the same path translation every other
+         * file goes through, so that C:\GDOS\ASSIGN.SYS and an ordinary host
+         * path both mean what they look like */
+        if (tos_path_to_host(said, into) < 0 || !readable(into))
+        {
+            fprintf(stderr, "tosemu: there is no ASSIGN.SYS at %s\n", said);
+            return 0;
+        }
+
+        return 1;
+    }
+
+    for (i = 0; i < 2; i++)
+    {
+        snprintf(into, PATH_MAX + 1, "%s/ASSIGN.SYS",
+                 i == 0 ? tos_program_dir() : ".");
+
+        if (readable(into))
+            return 1;
+    }
+
+    snprintf(tos, sizeof tos, "C:\\ASSIGN.SYS");
+    if (tos_path_to_host(tos, into) == 0 && readable(into))
+        return 1;
+
+    return 0;
+}
+
+/* Everything up to the newline, with the carriage return an Atari text file
+ * ends its lines with taken off as well */
+static void trim(char *line)
+{
+    char *at;
+
+    for (at = line; *at; at++)
+        if (*at == '\n' || *at == '\r')
+        {
+            *at = 0;
+            return;
+        }
+}
+
+static char *skip_blanks(char *at)
+{
+    while (*at == ' ' || *at == '\t')
+        at++;
+
+    return at;
+}
+
+static void trim_trailing(char *line)
+{
+    size_t len = strlen(line);
+
+    while (len > 0 && (line[len - 1] == ' ' || line[len - 1] == '\t'))
+        line[--len] = 0;
+}
+
+/*
+ * A PATH line, which is where the fonts are.
+ *
+ * It is written as a TOS path and it usually names a drive that is not here -
+ * A:\GDOS.SYS is what every ASSIGN.SYS that came with an application says,
+ * the fonts having been on the floppy the application came on. So a path that
+ * does not lead to a directory is the ordinary case rather than a mistake, and
+ * what is done about it decides whether a program's font directory can be
+ * copied off its disk and used where it lands.
+ *
+ * What is kept from such a path is its tail. A:\GDOS.SYS names a directory
+ * called GDOS.SYS, and the copy of it is beside ASSIGN.SYS under that name,
+ * because whoever copied the disk copied the whole of it. So the drive is
+ * dropped, the separators turned round, and what is left looked for where the
+ * file that named it is. Failing that, the directory ASSIGN.SYS is in, which
+ * is where a flattened copy would have put them.
+ */
+static void take_path(const char *said, const char *assign_at)
+{
+    char host[PATH_MAX + 1];
+    char here[PATH_MAX + 1];
+    char tail[PATH_MAX + 1];
+    const char *from = said;
+    int i;
+
+    if (tos_path_to_host(said, host) == 0 && is_directory(host))
+    {
+        snprintf(assign.where, sizeof assign.where, "%s", host);
+        return;
+    }
+
+    directory_of(assign_at, here);
+
+    /* The drive letter, and then any separators after it */
+    if (from[0] && from[1] == ':')
+        from += 2;
+    while (*from == '\\' || *from == '/')
+        from++;
+
+    for (i = 0; from[i] && i < PATH_MAX; i++)
+        tail[i] = (from[i] == '\\') ? '/' : from[i];
+    tail[i] = 0;
+
+    if (tail[0])
+    {
+        snprintf(host, sizeof host, "%s/%s", here, tail);
+
+        if (is_directory(host))
+        {
+            snprintf(assign.where, sizeof assign.where, "%s", host);
+            return;
+        }
+    }
+
+    snprintf(assign.where, sizeof assign.where, "%s", here);
+}
+
+/*
+ * Whether a line opens a device section, and which device.
+ *
+ * "01p SCREEN.SYS" and "21 FX80.SYS" are both of them: a number, optionally a
+ * letter saying the fonts are to stay in memory, then the driver. The driver
+ * name is not used - the screen driver is the VDI itself, and there is no
+ * other device here - so only the number is read.
+ */
+static int device_line(const char *line, WORD *device)
+{
+    int value = 0, digits = 0;
+
+    if (*line < '0' || *line > '9')
+        return 0;
+
+    while (*line >= '0' && *line <= '9')
+    {
+        value = value * 10 + (*line++ - '0');
+        digits++;
+    }
+
+    if (digits > 3)
+        return 0;
+
+    *device = (WORD)value;
+
+    return 1;
+}
+
+/*
+ * A copy of a string on the heap. EmuTOS has a string.h of its own and it
+ * comes first on the include path, which is what lets the rest of the port
+ * compile - and it declares the handful of string functions EmuTOS uses, of
+ * which this is not one.
+ */
+static char *copy_of(const char *s)
+{
+    size_t len = strlen(s) + 1;
+    char *copy = malloc(len);
+
+    if (copy)
+        memcpy(copy, s, len);
+
+    return copy;
+}
+
+static void forget_names(void)
+{
+    int i;
+
+    for (i = 0; i < assign.names; i++)
+        free(assign.name[i]);
+
+    assign.names = 0;
+}
+
+void gdos_assign_init(WORD device)
+{
+    char path[PATH_MAX + 1];
+    char line[512];
+    FILE *f;
+    WORD in_device = 0;
+    int ours = 0;
+
+    if (assign.looked)
+        return;
+
+    assign.looked = 1;
+
+    if (!find_assign(path))
+        return;
+
+    f = fopen(path, "r");
+    if (!f)
+        return;
+
+    /* Where the fonts are, until a PATH line says otherwise */
+    directory_of(path, assign.where);
+
+    while (fgets(line, sizeof line, f))
+    {
+        char *at;
+        WORD named;
+
+        trim(line);
+        at = skip_blanks(line);
+        trim_trailing(at);
+
+        if (!*at || *at == ';' || *at == '#')
+            continue;
+
+        if (strncasecmp(at, "PATH", 4) == 0 && strchr(at, '='))
+        {
+            take_path(skip_blanks(strchr(at, '=') + 1), path);
+            continue;
+        }
+
+        if (device_line(at, &named))
+        {
+            in_device = named;
+            ours = (named == device);
+            continue;
+        }
+
+        if (!ours || in_device == 0)
+            continue;
+
+        if (assign.names >= GDOS_MAX_FONTS)
+        {
+            fprintf(stderr, "tosemu: %s names more than %d fonts for device "
+                    "%d, and the rest are ignored\n",
+                    path, GDOS_MAX_FONTS, device);
+            break;
+        }
+
+        assign.name[assign.names] = copy_of(at);
+        if (!assign.name[assign.names])
+            break;
+
+        assign.names++;
+    }
+
+    fclose(f);
+
+    /* TOSEMU_TRACE_PATHS says which files were looked for and what they came
+     * to, and which ASSIGN.SYS was found is the first thing to want when an
+     * application reports no fonts */
+    if (setting_flag("TOSEMU_TRACE_PATHS"))
+        fprintf(stderr, "tosemu: %s names %d fonts for device %d, in %s\n",
+                path, assign.names, device, assign.where);
+}
+
+int gdos_installed(void)
+{
+    return assign.names > 0;
+}
+
+Fonthead *gdos_loaded_chain(void)
+{
+    int i;
+    WORD half;
+
+    if (assign.loaded)
+        return assign.chain;
+
+    assign.loaded = 1;
+
+    /*
+     * The buffer has to hold the largest character of any font that will be
+     * drawn through it, and once it is handed over it is used for the system
+     * fonts as well - so it starts at the size the VDI worked out for those
+     * and grows to fit whatever is loaded.
+     */
+    half = SCRATCHBUF_SIZE / 2;
+
+    for (i = 0; i < assign.names; i++)
+    {
+        char path[PATH_MAX + 1];
+        Fonthead *font;
+
+        snprintf(path, sizeof path, "%s/%s", assign.where, assign.name[i]);
+
+        font = gdos_font_read(path);
+        if (!font)
+            continue;
+
+        if (gdos_font_scratch(font) > half)
+            half = gdos_font_scratch(font);
+
+        assign.font[assign.fonts++] = font;
+    }
+
+    forget_names();
+
+    assign.chain = gdos_font_chain(assign.font, assign.fonts);
+
+    /* Two halves, which is what scrpt2 is the offset to. vdi_text.c wants both
+     * of them large enough for a doubled, rotated, outlined character. */
+    assign.scratch = host_vdi_alloc((long)half * 2);
+    assign.half = assign.scratch ? half : 0;
+
+    if (!assign.scratch)
+    {
+        fprintf(stderr, "tosemu: there was no room for the buffer the loaded "
+                "fonts are drawn through, so there are none\n");
+        assign.chain = 0;
+    }
+
+    return assign.chain;
+}
+
+WORD *gdos_loaded_scratch(WORD *half)
+{
+    *half = assign.half;
+
+    return assign.scratch;
+}
+
+/*
+ * What vst_load_fonts comes to, and the reason it is here rather than left to
+ * EmuTOS is in gdos.h: the call it has cannot be reached from a host where a
+ * ULONG is eight bytes.
+ *
+ * What it does is the bookkeeping the VDI needs to see loaded fonts at all.
+ * font_ring is where every call that walks the fonts starts - vqt_name,
+ * vst_font, vst_point, vst_height - and its third entry is the one kept for
+ * these. num_fonts is how many faces the workstation reports. The buffer is
+ * the one characters are built in before they reach the screen, and it has to
+ * be the larger one now that there are larger characters to build.
+ */
+WORD gdos_install(Vwk *vwk)
+{
+    Fonthead *chain, *font;
+    WORD *scratch, half = 0;
+    WORD id = -1, count = 0;
+
+    /* One chance, which is EmuTOS's rule and TOS's before it. Asking twice
+     * answers with no faces that were not already there rather than counting
+     * the same ones again. */
+    if (vwk->loaded_fonts)
+        return 0;
+
+    chain = gdos_loaded_chain();
+    scratch = gdos_loaded_scratch(&half);
+
+    if (!chain || !scratch)
+        return 0;
+
+    vwk->scrtchp = scratch;
+    vwk->scrpt2 = half;
+    vwk->loaded_fonts = chain;
+
+    /* A face is a run of sizes under one id, and the chain is sorted so that
+     * they are together - so the faces are the places where the id changes */
+    for (font = chain; font; font = font->next_font)
+        if (font->font_id != id)
+        {
+            id = font->font_id;
+            count++;
+        }
+
+    font_ring[2] = chain;
+    vwk->num_fonts += count;
+
+    return count;
 }

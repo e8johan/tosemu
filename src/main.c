@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <signal.h>
+#include <limits.h>
 
 #include "m68k.h"
 
@@ -79,10 +80,28 @@ void cpu_instr_callback()
  */
 static char program_name[9] = "        ";
 
+/*
+ * And the directory it came out of, which is a different question from where
+ * the process is standing: tosemu does not move to the program's directory,
+ * so a program named with a path runs with the working directory of whoever
+ * started it. The files that belong to a program rather than to a person -
+ * its resource, and the fonts GDOS would load for it - are beside the program.
+ */
+static char program_dir[PATH_MAX + 1] = ".";
+
 static void remember_program_name(const char *path)
 {
     const char *base = strrchr(path, '/');
     int i;
+
+    if (base && (size_t)(base - path) < sizeof program_dir)
+    {
+        /* A program in the root is in "/" rather than in the empty string */
+        size_t len = (size_t)(base - path);
+
+        memcpy(program_dir, path, len ? len : 1);
+        program_dir[len ? len : 1] = 0;
+    }
 
     base = base ? base + 1 : path;
 
@@ -100,6 +119,11 @@ static void remember_program_name(const char *path)
 const char *tos_program_name(void)
 {
     return program_name;
+}
+
+const char *tos_program_dir(void)
+{
+    return program_dir;
 }
 
 /*

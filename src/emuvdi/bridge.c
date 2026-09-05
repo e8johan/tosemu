@@ -54,9 +54,13 @@
 #include "../drives.h"
 #include "gsxdefs.h"
 
+/* For Getrez, which is what says which ASSIGN.SYS section this screen is */
+#include "xbiosbind.h"
+
 #include <string.h>
 
 #include "emuvdi.h"
+#include "gdos.h"
 
 /* EmuTOS's dispatcher, vdi_main.c */
 void screen(void);
@@ -71,6 +75,26 @@ void host_surface_select(void *base, UWORD width, UWORD height, UWORD planes);
 void emuvdi_init()
 {
     host_font_init();
+
+    /*
+     * And the fonts on the disk, which are GDOS's half of it.
+     *
+     * The device number is the one the AES is about to open the physical
+     * workstation with - gsx_wsopen passes the screen resolution plus two -
+     * and it is the same number an ASSIGN.SYS writes its sections under. There
+     * is one output device here and it is the screen, so which section applies
+     * is settled by which screen this turned out to be rather than by anything
+     * an application says.
+     *
+     * Only the list is read. A program that never asks for fonts should not
+     * pay for loading them, and one that does asks through vst_load_fonts.
+     */
+    gdos_assign_init((WORD)(Getrez() + 2));
+}
+
+int emuvdi_gdos_installed(void)
+{
+    return gdos_installed();
 }
 
 void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
@@ -501,23 +525,26 @@ void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
  * still fatal, its loop being a do-while that reads the first font before
  * asking whether there is one.
  *
- * So the call is answered here while there is nothing to answer it with. There
- * are no loadable fonts yet - see the TODO - and "no faces you did not already
- * have" is what a machine without them should be saying.
+ * Nothing can be written into those words to make it work either, a ULONG on
+ * this host being eight bytes rather than four - see gdos_install, which is
+ * where the call goes instead. tosemu is standing where GDOS stood.
  */
 #define VST_LOAD_FONTS_OP (119)
 
 static int loaded_fonts_answered(int16_t *control, int16_t *intout)
 {
+    Vwk *vwk;
+
     if (control[0] != VST_LOAD_FONTS_OP)
         return 0;
 
     /* A handle naming no workstation is screen()'s to refuse, and it refuses
      * by answering nothing at all rather than by answering zero */
-    if (!get_vwk_by_handle(control[6]))
+    vwk = get_vwk_by_handle(control[6]);
+    if (!vwk)
         return 1;
 
-    intout[0] = 0;
+    intout[0] = gdos_install(vwk);
     control[2] = 0;
     control[4] = 1;
 

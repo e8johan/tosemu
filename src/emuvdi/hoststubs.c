@@ -92,6 +92,17 @@ uint32_t drive_map(void)
 }
 
 /*
+ * Where the program was loaded from, there being no program. The current
+ * directory is what a search that starts here should try next, and naming it
+ * is how this says "nowhere of my own" without a path that could accidentally
+ * hold a file.
+ */
+const char *tos_program_dir(void)
+{
+    return ".";
+}
+
+/*
  * Drawing an object the application draws itself, which means running the
  * emulated CPU. There is none here, so it says so and leaves the object as it
  * was.

@@ -390,10 +390,19 @@ void gem_trap()
             vdi_trap();
             break;
         case GEM_GDOS:
-            /* Answered by saying nothing, which is the answer: d0 is left as
-             * the caller set it and that is what tells it there is no GDOS.
-             * There is none - see the TODO - and a program that asks is one
-             * that is prepared to be told so. */
+            /*
+             * Answered by leaving d0 alone when there is nothing to answer
+             * with, which is itself the answer: the -2 the caller put there
+             * is what "no GDOS" looks like.
+             *
+             * There is something to answer with when an ASSIGN.SYS was found
+             * and named fonts for this screen, and then d0 carries which GDOS
+             * this is. It has to be started for that to be known, the screen
+             * deciding which section of the file applies - and a program is
+             * entitled to knock before it has drawn anything.
+             */
+            if (gem_start() && emuvdi_gdos_installed())
+                m68k_set_reg(M68K_REG_D0, GDOS_FNT);
             break;
         default:
             halt_execution();

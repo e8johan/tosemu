@@ -223,8 +223,44 @@ check: all
 	# here than anywhere: the call this checks used to read a font chain out
 	# of the caller's leftover control words, and an emulator that followed
 	# one never printed anything again.
-	$(TOSEMU) test-c-gdos > out; ! grep -q '^not ok' out
+	#
+	# The fonts are bin/gdostest's, written here along with an ASSIGN.SYS
+	# naming them, so that the widths checked are numbers somebody chose
+	# rather than numbers read back out of the font that answered. Nothing
+	# of Atari's is carried for this.
+	#
+	# Twice, and on two screens, because which fonts a machine gets is a
+	# decision tosemu makes rather than one an application makes: a device
+	# section is numbered by the screen resolution plus two, so ST high
+	# reads section 4 and ST low reads section 2, and the sample file gives
+	# them different fonts. One screen could not tell the choice being made
+	# from the file having one section.
+	../../bin/gdostest --write .
+	TOSEMU_FONTS_ASSIGN=ASSIGN.SYS $(TOSEMU) test-c-gdos high > out; \
+	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=low TOSEMU_FONTS_ASSIGN=ASSIGN.SYS $(TOSEMU) test-c-gdos low \
+	  > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And with no ASSIGN.SYS anywhere, which is a machine with no GDOS on
+	# it: the knock has to go unanswered rather than promising fonts that
+	# are not there.
+	#
+	# In a directory of its own, with the program copied into it, because
+	# every place the search looks has to be empty - and two of them are
+	# where the program is and where the process is standing, which would
+	# otherwise both be the directory the samples were just written to.
+	# TOS_BASE_PATH moves the root of C: here as well, so that the last
+	# place looked is this directory rather than the host's own root, where
+	# somebody could conceivably have put a file of that name.
+	mkdir -p nogdos
+	cp test-c-gdos nogdos/
+	cd nogdos && TOSEMU_NO_WINDOW=1 $(NO_DAEMON) \
+	  TOS_BASE_PATH=$(CURDIR)/nogdos ../../../bin/tosemu --no-config \
+	  test-c-gdos none > ../out
+	! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -r out nogdos ASSIGN.SYS GDOS.SYS
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a
