@@ -285,6 +285,8 @@ Which is which:
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |
 | `[files] base`         | `TOS_BASE_PATH`      |
+| `[fonts] assign`       | `TOSEMU_FONTS_ASSIGN` |
+| `[fonts] substitutes`  | `TOSEMU_FONTS_SUBSTITUTES` |
 | `[session] socket`     | `TOSEMU_AESD`        |
 | `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  |
 | `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` |
@@ -378,6 +380,73 @@ compiler drivers use the ARGV convention: a length byte of 127 says the
 arguments were passed through an `ARGV` variable in the environment instead,
 which tosemu carries from one program to the next as it stands.
 
+
+
+Fonts
+=====
+
+Three fonts are compiled in from EmuTOS, and they are the ones a program gets
+when it asks for the system font. Everything above them is GDOS, which on a
+real machine was a program in the `AUTO` folder that took the VDI trap over and
+added the fonts on the disk to it. Here it is part of the emulator, and
+`vq_gdos` answers accordingly: `'_FNT'` when there are fonts from files,
+`'_FSM'` when there is an outline engine as well, and nothing at all - which
+leaves the -2 the caller put in `d0` - when there is neither.
+
+An application asks that question first and takes one road or the other from
+the answer, so it is only said when it is true.
+
+**Fonts from files.** `ASSIGN.SYS` is the list of them. It is looked for where
+`[fonts] assign` says, then beside the program, then in the directory the
+process is standing in, then at the root of `C:`. The section that applies is
+chosen by the screen rather than by the application: a device in that file is
+numbered by the screen resolution plus two, which is the same number the AES
+opens the physical workstation with, so an ST high screen reads section 4 and
+an ST medium screen reads section 3. That matters, because the file that came
+with an application usually has a different set of fonts under each - the
+medium resolution screen puts two hundred lines where the high resolution one
+puts four hundred, and the fonts for it are half as tall at the same width.
+
+The `PATH` line inside it names where the fonts are, and it almost always names
+a floppy, `A:\GDOS.SYS` being what shipped. There is no `A:` here, so what
+survives is the tail: the drive is dropped and `GDOS.SYS` looked for beside the
+file that named it. A font directory copied off its disk therefore works where
+it lands, which is the only arrangement anybody has.
+
+Nothing is loaded until an application calls `vst_load_fonts`. A program that
+never asks for fonts does not pay for reading them.
+
+**Typefaces by name.** The other half is a face at whatever size is asked for,
+which is what SpeedoGDOS added. It needs FreeType and fontconfig; without them
+the fonts from files still work and `vq_gdos` answers `'_FNT'`.
+
+The names are Bitstream's, because SpeedoGDOS was Bitstream's, and nobody has
+those files any more. Each is mapped onto whatever the host has that came from
+the same drawings:
+
+| what a document asks for | what it is set in |
+| ------------------------ | ----------------- |
+| `Swiss 721`              | Nimbus Sans       |
+| `Dutch 801`              | Nimbus Roman      |
+| `Courier 10 Pitch`       | Nimbus Mono PS    |
+
+`[fonts] substitutes` names a file that overrides the table, one face to a line
+- `Swiss 721 = Helvetica` - so a mapping you disagree with is a line to edit
+rather than a rebuild. A name the table does not have goes to fontconfig as it
+stands.
+
+**The substitution shows, and it is meant to.** An application lays a page out
+from what `vqt_extent` tells it, so a face whose letters are a fraction wider
+moves every line break in the document. Real SpeedoGDOS did the same when a
+font was missing. It is not a fault to be hidden - it is the reason the fonts
+from files are the ones worth getting exactly right, those being what a
+document of the period was actually set in.
+
+Two things an application may notice are missing. There is no cookie jar, so a
+program that looks for the `FSMC` cookie rather than calling `vq_gdos` will go
+on believing there is no GDOS. And `vqt_fontheader`, `v_getbitmap_info` and
+`v_getoutline` are refused rather than answered, because each hands something
+back through a buffer in the application's own memory.
 
 
 Road Map
