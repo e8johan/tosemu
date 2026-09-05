@@ -66,6 +66,11 @@
 #include "gdos.h"
 #include "emuvdi.h"
 
+/* tosemu's own, written in plain types so that it can be reached from this
+ * side - the outline engine cannot be, FreeType's headers and EmuTOS's not
+ * being able to share a translation unit */
+#include "../fontface.h"
+
 /* The 8x16 system font, which is the one both sides know about */
 extern const Fonthead fnt_st_8x16;
 
@@ -471,6 +476,87 @@ static void check_the_scratch_buffer(void)
           "a font needs the buffer the VDI worked out for the system font");
 }
 
+/* The faces that are not files ********************************************/
+
+/*
+ * The outline engine, which is the other half of the fonts: a face asked for
+ * by the name a document was written in, at whatever size, rather than at the
+ * sizes somebody put .FNT files on the disk for.
+ *
+ * What can be checked here is narrow on purpose. Which face a name resolves to
+ * depends on what fonts the machine has, and how wide a word comes out depends
+ * on the face - so an expected number would be a number about this computer.
+ * What does hold everywhere is that every name resolved to something, that the
+ * faces are distinct, that a larger size measures larger, and that drawing
+ * puts ink somewhere. A build without FreeType has no faces and says so.
+ */
+static void check_the_outline_faces(void)
+{
+    struct fontface_bitmap bitmap;
+    const char *text = "Hamburgefonstiv";
+    int faces = fontface_init();
+    int i, small = 0, large = 0, ink = 0;
+
+    if (faces == 0)
+    {
+        printf("# no outline faces, so this is a build without FreeType or a "
+               "machine with no fonts it could use\n");
+        return;
+    }
+
+    check(faces > 0, 1, "the outline engine offers faces");
+
+    for (i = 0; i < faces; i++)
+    {
+        printf("# %-20s set in %s\n", fontface_name(i), fontface_resolved(i));
+
+        if (fontface_resolved(i)[0] == 0)
+            break;
+    }
+
+    check(i, faces, "every name in the table resolved to a face on this host");
+
+    for (i = 0; i < faces; i++)
+        if (!fontface_known(fontface_id(i)) || fontface_id(i) == 0)
+            break;
+
+    check(i, faces, "and each has a number the VDI can be asked for");
+
+    /*
+     * Twelve point and twenty four point of the first face. The larger has to
+     * measure larger - which is the whole of what a scalable font is - and it
+     * is checked as a comparison rather than against a number because the
+     * number is a fact about whichever font this machine substituted.
+     */
+    fontface_extent(fontface_id(0), 12 * 64, text, (int)strlen(text),
+                    &small, 0);
+    fontface_extent(fontface_id(0), 24 * 64, text, (int)strlen(text),
+                    &large, 0);
+
+    check(small > 0, 1, "a string has a width at twelve point");
+    check(large > small, 1, "and a larger one at twenty four");
+
+    /* And that drawing it puts something down. A renderer that quietly drew
+     * nothing would pass every measurement above. */
+    if (fontface_render(fontface_id(0), 24 * 64, text, (int)strlen(text),
+                        &bitmap))
+    {
+        int word;
+
+        for (word = 0; word < bitmap.words * bitmap.height; word++)
+            if (bitmap.bits[word])
+                ink++;
+
+        check(bitmap.width >= large, 1,
+              "the bitmap it is drawn into is at least as wide as the string");
+        check(ink > 0, 1, "and there is ink in it");
+
+        fontface_render_free(&bitmap);
+    }
+    else
+        check(0, 1, "a string can be drawn");
+}
+
 /* Looking at somebody else's fonts *****************************************/
 
 static void list(int count, char **path)
@@ -549,6 +635,7 @@ int main(int argc, char **argv)
     check_the_chain(dir);
     check_refusals(dir);
     check_the_scratch_buffer();
+    check_the_outline_faces();
 
     for (i = 0; i < SAMPLE_COUNT; i++)
     {

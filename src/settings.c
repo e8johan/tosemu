@@ -80,6 +80,14 @@ static const struct {
      */
     { "TOSEMU_FONTS_ASSIGN", "fonts",  "assign",      0 },
 
+    /*
+     * And a file of typeface substitutions, which is what makes a wrong
+     * mapping a line somebody edits rather than a rebuild. A document asks for
+     * Swiss 721 and there is no such file on any machine here, so it is set in
+     * whatever the host has that came from the same drawings.
+     */
+    { "TOSEMU_FONTS_SUBSTITUTES", "fonts", "substitutes", 0 },
+
     { "TOSEMU_SCRAP",       "scrap",   "dir",         0 },
     { "TOSEMU_NO_SCRAP",    "scrap",   "clipboard",   1 },
 

@@ -20,6 +20,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
+              fontface.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -126,16 +127,24 @@ DBUSLIBS  = $(shell pkg-config --libs dbus-1 2>/dev/null)
 PNGFLAGS = $(shell pkg-config --cflags libpng 2>/dev/null && echo -DHAVE_PNG)
 PNGLIBS  = $(shell pkg-config --libs libpng 2>/dev/null)
 
+# And FreeType with fontconfig, for the typefaces an application asks for by
+# name. Looked for the same way and for the same reason: without them the fonts
+# on the disk still work and vq_gdos answers FontGDOS rather than SpeedoGDOS,
+# which is a smaller machine rather than a broken build.
+FREETYPEFLAGS = $(shell pkg-config --cflags freetype2 fontconfig 2>/dev/null \
+                  && echo -DHAVE_FREETYPE)
+FREETYPELIBS  = $(shell pkg-config --libs freetype2 fontconfig 2>/dev/null)
+
 # $(GEN) is on the include path for the same reason $(SRC) is: the generated
 # headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
 # - are included by name, and where they were written is the build's business
 # rather than something every source has to know.
-CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS)
+CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
 # looks for them
-LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS)
+LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS)
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -443,9 +452,9 @@ scrap-check: $(BIN)/scraptest
 # settings.o comes along because hostfs.c asks whether it is to say which
 # directories were read, and that is a setting rather than a variable now.
 $(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(SRC)/emuvdi/hoststubs.c \
-                $(EMUTOSOBJECTS) $(OBJ)/settings.o
+                $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o
 	@mkdir -p $(BIN)
-	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
+	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
 emuvdi-check: $(BIN)/vditest
 	./$(BIN)/vditest | diff -u $(SRC)/emuvdi/vditest.expected -
@@ -460,9 +469,9 @@ emuvdi-check: $(BIN)/vditest
 # Atari's to redistribute. The same samples are what the test inside the
 # emulator loads, which is why this is built before tests/ is run.
 $(BIN)/gdostest: $(SRC)/emuvdi/gdostest.c $(SRC)/emuvdi/hoststubs.c \
-                 $(EMUTOSOBJECTS) $(OBJ)/settings.o
+                 $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o
 	@mkdir -p $(BIN)
-	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ -o $@
+	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
 gdos-check: $(BIN)/gdostest
 	./$(BIN)/gdostest
