@@ -146,9 +146,12 @@ directory of the process. So a recipe names what it wants without a path, and
 anything a run writes lands somewhere that can be deleted.
 
 **On the host**: `bin/vditest` (`make emuvdi-check`) draws with the ported VDI
-and diffs against `src/emuvdi/vditest.expected`; `bin/screentest`
-(`make screen-check`) checks the display arithmetic; `bin/settingstest`
-(`make settings-check`) checks the reading of a settings file. These are for
+and diffs against `src/emuvdi/vditest.expected`; `bin/gdostest`
+(`make gdos-check`) reads font files it writes itself, in both byte orders;
+`bin/screentest` (`make screen-check`) checks the display arithmetic;
+`bin/settingstest` (`make settings-check`) checks the reading of a settings
+file. The stubs that stand in for the emulator in the first two are shared, in
+`src/emuvdi/hoststubs.c`. These are for
 the things an application cannot reach — what a compositor answers is not
 something a test can arrange, and neither is whether a remark in a file was
 understood as a remark.

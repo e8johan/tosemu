@@ -203,28 +203,58 @@
   first Physbase instead, and that wants somewhere to take the memory from
   that is not where the program is standing: the top of RAM is its own stack
   until it Mshrinks.
-- GDOS and scalable fonts, which is the whole of the last milestone in the
-  plan and is not started. The Atari system fonts are there, compiled in from
-  EmuTOS, and they are what vst_font and v_gtext use. What is missing is
-  everything above them: loading .FNT files, FreeType and fontconfig behind
-  the SpeedoGDOS calls an application uses to ask for a typeface by name
-  (vst_load_fonts, vqt_name, vst_name, vst_arbpt, v_ftext, vqt_f_extent), a
-  table mapping the names documents were written with onto host faces - Swiss
-  721 to Nimbus Sans and so on - and ASSIGN.SYS read from the emulated
-  filesystem.
+- GDOS is there now - ASSIGN.SYS, the fonts on the disk, and typefaces by
+  name on FreeType behind the SpeedoGDOS calls - and these are what is left
+  of it.
 
-  What is answered is the knock on the door. vq_gdos puts -2 in d0 and traps,
-  and TOS leaves d0 alone for anything that is not the AES or the VDI, so an
-  application asking is told there is none and takes the path it would have
-  taken on a machine without it. Installing GDOS is what would change the
-  answer, and that is the rest of this entry.
+  vqt_fontheader, v_getbitmap_info and v_getoutline are refused rather than
+  answered. Each hands something back through a buffer the application
+  supplied, whose address arrives in two words of the control array, and
+  filling one in means crossing the seam in the direction nothing else in the
+  VDI goes: the buffer is in the machine's memory and the answer is on this
+  side. vst_error says so to an application that asks. v_getoutline is the
+  one somebody might actually want, a character as a polygon being how a
+  drawing program turns a letter into something it can edit, and it is
+  FT_Outline_Decompose into ptsout once there is somewhere to put the answer.
 
-  Metrics are the part to be careful about. An application lays itself out
-  from what vqt_extent tells it, so a substituted face changes where every
-  word on the page goes. That happened on real SpeedoGDOS too and is not a
-  fault, but it is the reason to get the bitmap fonts exactly right rather
-  than nearly right: those are the ones a document of the period was actually
-  set in.
+  Kerning answers that there are no pairs. The faces have them - every
+  outline font does - and reading them is vqt_pairkern and vqt_trackkern
+  filling in what FreeType already knows. What stops it being free is that
+  kerning changes where every character after the first one goes, so v_ftext
+  and vqt_f_extent have to agree about it or a line comes out laid out one
+  way and drawn another.
+
+  v_ftext_offset draws the string as one run rather than reading the
+  positions it was given. A program that has justified a line itself hands
+  over a position for each character, and what it gets is the same line set
+  without the justification. Reading them is a loop rather than a design
+  question; nothing that has been run here asks for it yet.
+
+  Nothing maps the Atari character set above 127. A document with an umlaut
+  in it draws whatever Unicode has at that code point, which is not what an
+  Atari would have drawn - the top half of the set is Atari's own, and
+  vst_charmap is where an application says which set it means.
+
+  There is no cookie jar, so a program that detects SpeedoGDOS by looking for
+  the FSMC cookie rather than by calling vq_gdos finds nothing and goes on
+  believing there is none. That is the same hole as the system variables
+  above: the pointer at 0x5a0 is nought like the rest of them.
+
+  And the metrics warning stands. An application lays itself out from what
+  vqt_extent tells it, so a substituted face moves every line break on the
+  page. That happened on real SpeedoGDOS too and is not a fault; it is the
+  reason the fonts from files are the ones worth getting exactly right, those
+  being what a document of the period was actually set in.
+
+- Microsoft Write does not run, and it is not the fonts. WRITE.PRG in
+  tos_root spins inside the emulated CPU and never reaches a trap, so the
+  emulator never starts GEM at all - which is the same with GDOS switched off
+  and the same on the commit before any of this. It is the application the
+  font work was aimed at and the one that would show it: it ships a complete
+  ASSIGN.SYS, thirty six .FNT files and a document to open, and all of that
+  loads correctly when a program that does run asks for it. What is in the
+  way is somewhere in loading or starting the program, and is worth a
+  disassembly rather than a guess.
 
 - Drawing outside a window is not promoted to a window of its own. form_dial
   says a rectangle is being reserved and that gets one, which covers dialogs;
