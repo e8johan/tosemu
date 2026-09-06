@@ -280,6 +280,10 @@ struct window {
 
     /* The compositor dismissed it, which only happens to menus */
     int gone;
+
+    /* Whether it asked to take the pointer, which only a menu does. What it
+     * settles is what being dismissed means - see popup_done. */
+    int grabbed;
 };
 
 /*
@@ -440,6 +444,20 @@ static struct {
 
     int closed;
     int showing;
+
+    /*
+     * A menu taken away by a compositor that would not let it have the
+     * pointer, which is a menu to put back rather than one to put away, and
+     * whether that has happened at all.
+     *
+     * The second is asked once and answered for the rest of the run. A
+     * desktop that refuses one menu the pointer refuses every menu the
+     * pointer, and asking each time costs a menu that appears and vanishes
+     * before it can be used. See popup_done, and gfx_present, where the menu
+     * is put back.
+     */
+    int menu_refused;
+    int menu_grab_refused;
 } w;
 
 /* Input *******************************************************************/
@@ -2699,6 +2717,28 @@ static void popup_done(void *data, struct xdg_popup *popup)
     win->gone = 1;
 
     /*
+     * Unless nobody clicked outside it, which is a different thing altogether.
+     *
+     * A menu is taken away when something outside it is pressed, and nothing
+     * outside it can be pressed without the pointer having left our windows
+     * first. So a menu taken away while the pointer is still in one of them
+     * was not taken away by the person: it is a compositor refusing the grab
+     * the menu asked for, which some do when the thing being answered is not a
+     * press of their choosing.
+     *
+     * A menu that may not have the pointer is worth having anyway - what is
+     * lost is being told about a click that lands somewhere else - so it goes
+     * back up without asking for one. Only the menu that asked can be refused,
+     * so the one that goes back up cannot start this again.
+     */
+    if (win->grabbed && w.pointer_in)
+    {
+        w.menu_refused = 1;
+        w.menu_grab_refused = 1;
+        return;
+    }
+
+    /*
      * The compositor took the menu away, which is what it does when something
      * outside it is clicked. The AES has no idea: the click was never ours to
      * see, which is the whole reason for the grab.
@@ -3461,10 +3501,16 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
      * titles rather than when anything is pressed, so the press being answered
      * is whatever the person did last, which is the best there is: what the
      * menu is answering happened, and it was not a click.
+     *
+     * Refused anyway, the menu goes back up without a grab rather than being
+     * taken for one the person dismissed. See popup_done.
      */
-    if (w.seat && (w.press_serial || w.serial))
+    if (w.seat && (w.press_serial || w.serial) && !w.menu_grab_refused)
+    {
         xdg_popup_grab(win->popup, w.seat,
                        w.press_serial ? w.press_serial : w.serial);
+        win->grabbed = 1;
+    }
 
     wl_surface_commit(win->surface);
     wl_display_roundtrip(w.display);
@@ -4009,7 +4055,27 @@ void gfx_present()
      * is watching the pointer itself and will come to the same conclusion in
      * its own time; this is only the window going. */
     if (w.windows[MENU].gone)
+    {
+        /*
+         * Unless it was taken away for asking to have the pointer, in which
+         * case the AES has not concluded anything and the menu is still down
+         * as far as it is concerned. Putting it back is what agrees with that,
+         * and it goes back without asking a second time - see popup_done.
+         *
+         * Here rather than where the compositor said so, because opening a
+         * window waits for the compositor to answer and that cannot be done in
+         * the middle of reading what it has already said.
+         */
+        struct window again = w.windows[MENU];
+
         gfx_menu_close();
+
+        if (w.menu_refused)
+        {
+            w.menu_refused = 0;
+            gfx_menu_open(again.shows, again.sx, again.sy, again.sw, again.sh);
+        }
+    }
 
     for (i = 0; i < WINDOWS; i++)
         window_present(&w.windows[i]);
