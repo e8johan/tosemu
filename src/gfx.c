@@ -355,6 +355,10 @@ static struct {
      * screen's coordinates rather than in that window's */
     struct window *pointer_in;
 
+    /* And whether it left one with something held down, which is not the same
+     * as the person letting go of it. See pointer_settle. */
+    int left_holding;
+
     /*
      * And whether it is on the strip that window drew for itself, with how far
      * along it in that window's own pixels.
@@ -550,6 +554,52 @@ int gfx_key_take(uint16_t *key)
 }
 
 /*
+ * The button coming up because the pointer went away, once it is certain that
+ * it did go away.
+ *
+ * A window losing the pointer is not always the pointer leaving. Crossing from
+ * the menu bar into the menu hanging off it is a leave and then an enter, and
+ * on a desktop that hands the pointer to whichever of our surfaces it is over
+ * while a menu is up - GNOME's does, KDE's keeps it in the window the button
+ * was pressed in - the pair arrives in the middle of pulling a menu down, with
+ * the button still held. Answering the leave where it happens puts a release
+ * in the queue that nobody performed, and a release is what ends a menu: the
+ * menu closes as the pointer crosses the line between the bar and itself.
+ *
+ * So the release waits until something asks what the mouse is doing. By then
+ * everything the compositor had to say has been read and the enter that
+ * followed, if there was one, has been seen - and a pointer that arrived
+ * somewhere else of ours never left. Only one that landed nowhere has really
+ * gone, and only that one lets go.
+ */
+static void pointer_settle(void)
+{
+#ifndef NO_WAYLAND
+    if (!w.left_holding)
+        return;
+
+    w.left_holding = 0;
+
+    if (w.pointer_in)
+        return;
+
+    if (!w.pressed && !w.buttons)
+        return;
+
+    w.pressed = 0;
+
+    if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
+    {
+        w.clicks[w.click_count].buttons = 0;
+        w.clicks[w.click_count].x = w.mouse_x;
+        w.clicks[w.click_count].y = w.mouse_y;
+        w.clicks[w.click_count].move = 0;
+        w.click_count++;
+    }
+#endif
+}
+
+/*
  * Where the pointer is and what is held down, as of the last change anybody
  * took off the queue.
  *
@@ -561,6 +611,7 @@ int gfx_key_take(uint16_t *key)
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons)
 {
     clicks_from_environment();
+    pointer_settle();
 
     *x = w.mouse_x;
     *y = w.mouse_y;
@@ -596,6 +647,7 @@ void gfx_mouse_now(int16_t *x, int16_t *y, int16_t *buttons)
     /* An application that polls never reaches the event loop, so this is the
      * only place its idea of where the pointer is can catch up */
     gfx_dispatch_ready();
+    pointer_settle();
 
     *x = w.mouse_x;
     *y = w.mouse_y;
@@ -761,6 +813,7 @@ int gfx_motion_take(void)
     int i;
 
     clicks_from_environment();
+    pointer_settle();
 
     if (w.click_count == 0 || !w.clicks[0].move)
         return 0;
@@ -787,6 +840,7 @@ int gfx_motion_take(void)
 int gfx_button_peek(int16_t *buttons, int16_t *x, int16_t *y)
 {
     clicks_from_environment();
+    pointer_settle();
 
     if (w.click_count == 0 || w.clicks[0].move)
         return 0;
@@ -803,6 +857,7 @@ int gfx_button_take(int16_t *buttons, int16_t *x, int16_t *y)
     int i;
 
     clicks_from_environment();
+    pointer_settle();
 
     if (w.click_count == 0 || w.clicks[0].move)
         return 0;
@@ -991,6 +1046,10 @@ static struct window *window_of(struct wl_surface *surface)
  * So the button comes up. That is not a guess about what the person did - it
  * is the honest answer, which is that we no longer know and will not pretend
  * otherwise. If it really is still held, the enter that follows says so.
+ *
+ * Which is why it is written down here and answered elsewhere. A window losing
+ * the pointer to another of our own windows is not the pointer going anywhere,
+ * and the enter saying so arrives after this. See pointer_settle.
  */
 static void pointer_gone(void)
 {
@@ -1000,16 +1059,7 @@ static void pointer_gone(void)
     if (!w.pressed && !w.buttons)
         return;
 
-    w.pressed = 0;
-
-    if (w.click_count < (int)(sizeof w.clicks / sizeof w.clicks[0]))
-    {
-        w.clicks[w.click_count].buttons = 0;
-        w.clicks[w.click_count].x = w.mouse_x;
-        w.clicks[w.click_count].y = w.mouse_y;
-        w.clicks[w.click_count].move = 0;
-        w.click_count++;
-    }
+    w.left_holding = 1;
 }
 
 static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
