@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-super c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -161,6 +161,12 @@ check: all
 	# about: an application says something to whoever is debugging it, and
 	# tosemu is what there is.
 	grep -q 'Dbmsg: a message for the debugger' out
+	# Supervisor mode, which is mostly a question about the stack: a 68000
+	# swaps stack pointers when the S bit moves, and a caller that came back
+	# from Super standing somewhere else has lost everything it had put on
+	# its own stack, including where it was to return to.
+	$(TOSEMU) test-c-super > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	# Asking for memory and saying which kind it has to be, which is the
 	# call every compiler of the period makes before anything else
 	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out
