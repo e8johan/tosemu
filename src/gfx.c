@@ -1068,6 +1068,21 @@ static struct window *window_of(struct wl_surface *surface)
     return 0;
 }
 
+/* What to call a window when saying what the pointer did to it */
+static const char *window_called(struct window *win)
+{
+    if (!win)
+        return "nothing of ours";
+    if (win == &w.windows[MENUBAR])
+        return "the menu bar";
+    if (win == &w.windows[MENU])
+        return "the menu";
+    if (win == &w.windows[DIALOG])
+        return "the dialog";
+
+    return "a window";
+}
+
 /*
  * Where the pointer is, in the screen's own pixels.
  *
@@ -1153,12 +1168,20 @@ static void pt_enter(void *data, struct wl_pointer *p, uint32_t serial,
     w.serial = serial;
     w.pointer_in = window_of(s);
     pointer_at(w.pointer_in, x, y);
+
+    if (setting_flag("TOSEMU_TRACE_INPUT"))
+        printf("tosemu: the pointer arrived in %s\n",
+               window_called(w.pointer_in));
 }
 
 static void pt_leave(void *data, struct wl_pointer *p, uint32_t serial,
                      struct wl_surface *s)
 {
     (void)data; (void)p; (void)serial;
+
+    if (setting_flag("TOSEMU_TRACE_INPUT"))
+        printf("tosemu: the pointer left %s%s\n", window_called(window_of(s)),
+               w.pressed ? ", with a button held down" : "");
 
     /*
      * Only if it is the window the pointer is actually in.
@@ -2726,6 +2749,10 @@ static void popup_done(void *data, struct xdg_popup *popup)
     (void)popup;
 
     win->gone = 1;
+
+    if (setting_flag("TOSEMU_TRACE_INPUT"))
+        printf("tosemu: the desktop took the menu away, with the pointer in "
+               "%s\n", window_called(w.pointer_in));
 
     /*
      * Unless nobody clicked outside it, which is a different thing altogether.

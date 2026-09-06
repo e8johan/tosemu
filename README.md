@@ -224,6 +224,14 @@ wait that answers wrongly is invisible from anywhere else: two different waits
 asking the same question and one wait asking it twice look identical until
 something says which happened.
 
+It also says which window the pointer arrived in and left, and whether a menu
+that went away went away because the desktop took it. Those are the same
+question asked of the desktop rather than of the application: a menu closing
+by itself is either the AES deciding to close it or the compositor deciding
+for us, and from a screen the two look identical. Which desktop is running
+decides which it was, so this is the first thing to ask when a menu behaves
+differently on two of them.
+
 Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.
