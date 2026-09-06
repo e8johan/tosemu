@@ -544,12 +544,13 @@ void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
  * where the call goes instead. tosemu is standing where GDOS stood.
  */
 #define VST_LOAD_FONTS_OP (119)
+#define VST_UNLOAD_FONTS_OP (120)
 
 static int loaded_fonts_answered(int16_t *control, int16_t *intout)
 {
     Vwk *vwk;
 
-    if (control[0] != VST_LOAD_FONTS_OP)
+    if (control[0] != VST_LOAD_FONTS_OP && control[0] != VST_UNLOAD_FONTS_OP)
         return 0;
 
     /* A handle naming no workstation is screen()'s to refuse, and it refuses
@@ -558,7 +559,27 @@ static int loaded_fonts_answered(int16_t *control, int16_t *intout)
     if (!vwk)
         return 1;
 
-    intout[0] = gdos_install(vwk);
+    if (control[0] == VST_UNLOAD_FONTS_OP)
+    {
+        /* EmuTOS's own does the fonts from files. The outline faces are not in
+         * any font ring for it to let go of, so they are put away here. */
+        gdos_fsm_unload(control[6]);
+        return 0;
+    }
+
+    /*
+     * How many faces an application now has that it did not have before, and
+     * the outline ones are counted in it.
+     *
+     * That is not an embellishment. This one number is how an application
+     * decides whether there are fonts at all - Atari Works asks it and puts up
+     * "Can not find graphics FONTS on your system" when it comes back nought -
+     * and on a machine with SpeedoGDOS the outline faces were what it counted.
+     * They were loaded through this call like everything else; the split
+     * between a face from a file and a face from an outline is tosemu's, and
+     * nothing above the VDI should be able to see it.
+     */
+    intout[0] = (int16_t)(gdos_install(vwk) + gdos_fsm_load(control[6]));
     control[2] = 0;
     control[4] = 1;
 
@@ -590,10 +611,6 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
         return;
 
     screen();
-
-    /* And the count of faces a workstation reports when it opens, which the
-     * outline ones are not in any font ring to be counted in */
-    gdos_fsm_opened(control, intout);
 }
 
 /*

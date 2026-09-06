@@ -116,6 +116,7 @@ void vdi_vrt_cpyfm(Vwk *vwk);
  * whole of the bookkeeping.
  */
 struct fsm {
+    WORD loaded;        /* whether vst_load_fonts has been called here */
     WORD id;            /* the outline face selected, 0 for none */
     LONG size64;        /* the size, in 64ths of a point */
     WORD error;         /* what vst_error would report */
@@ -241,6 +242,17 @@ int gdos_fsm_faces(void)
  * are saved and put back. Forgetting that loses the arguments of the very call
  * being served, which reads as the string being drawn from nowhere.
  */
+/* A pen, bounded so that it is one of the ones the maps have room for. The
+ * size of those tables is private to vdi_col.c; how many colours the screen
+ * has is not, and is never larger. */
+static WORD pen_index(WORD pen)
+{
+    if (pen < 0 || pen >= (WORD)numcolors)
+        return 1;
+
+    return pen;
+}
+
 static void blit(Vwk *vwk, const struct fontface_bitmap *bitmap,
                  WORD x, WORD y)
 {
@@ -292,10 +304,20 @@ static void blit(Vwk *vwk, const struct fontface_bitmap *bitmap,
     *(uint32_t *)&contrl[7] = (uint32_t)(uintptr_t)&source;
     *(uint32_t *)&contrl[9] = (uint32_t)(uintptr_t)&destination;
 
-    /* The workstation's own writing mode, which is kept one lower in the Vwk
-     * than the number this call takes */
+    /*
+     * The workstation's own writing mode, which is kept one lower in the Vwk
+     * than the number this call takes.
+     *
+     * The colours are the awkward part. A Vwk keeps text_color as a pen - the
+     * hardware register the drawing writes - because that is what everything
+     * that puts pixels down wants. This call does not: it takes a VDI colour
+     * index in intin[1] and maps it to a pen itself, so handing it the pen
+     * maps it a second time and the text comes out in whatever colour that
+     * lands on. On a sixteen colour screen black went in and pink came out.
+     * REV_MAP_COL is the way back to the index, and is there for this.
+     */
     intin[0] = vwk->wrt_mode + 1;
-    intin[1] = vwk->text_color;
+    intin[1] = REV_MAP_COL[pen_index(vwk->text_color)];
     intin[2] = 0;
 
     /*
@@ -718,7 +740,7 @@ int gdos_fsm_text_call(WORD *control, WORD *intin, WORD *ptsin,
     {
         index = outline_element(vwk, intin[0]);
 
-        if (index < 0 || index >= fontface_count())
+        if (!f->loaded || index < 0 || index >= fontface_count())
             return 0;       /* one of EmuTOS's, or past the end of the list */
 
         {
@@ -835,20 +857,34 @@ int gdos_fsm_text_call(WORD *control, WORD *intin, WORD *ptsin,
 }
 
 /*
- * How many faces a workstation has, said when it opens.
+ * The outline faces arriving, and going away again.
  *
- * v_opnwk and v_opnvwk answer with the count in intout[10], and EmuTOS puts
- * the bitmap faces there. The outline ones are not in any font ring - there is
- * no Fonthead to put in one - so they are added here, after the call, or an
- * application enumerating the list would stop before reaching them.
+ * They are not in any font ring - there is no Fonthead to put in one - so
+ * nothing EmuTOS does makes them appear or disappear, and vst_load_fonts is
+ * where an application expects both to happen. Until it has been called this
+ * workstation has the faces it was opened with and no others, which is the
+ * order SpeedoGDOS documented: load the fonts before asking anything about
+ * them.
  */
-int gdos_fsm_opened(WORD *control, WORD *intout)
+int gdos_fsm_load(WORD handle)
 {
-    if (control[0] != V_OPNWK_OP && control[0] != V_OPNVWK_OP)
-        return 0;
+    struct fsm *f = fsm_of(handle);
 
-    if (control[4] > 10)
-        intout[10] = (WORD)(intout[10] + fontface_count());
+    if (!f || f->loaded)
+        return 0;       /* one chance, the same as the fonts from files get */
 
-    return 1;
+    f->loaded = 1;
+
+    return fontface_count();
+}
+
+void gdos_fsm_unload(WORD handle)
+{
+    struct fsm *f = fsm_of(handle);
+
+    if (!f)
+        return;
+
+    f->loaded = 0;
+    f->id = 0;          /* nothing selected that is no longer there */
 }

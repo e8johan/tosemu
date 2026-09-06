@@ -118,6 +118,22 @@ static short face_called(const char *wanted, short faces)
  * index, and everything here is drawn in colour 1 on a screen that starts as
  * colour 0.
  */
+/* And which colour that ink is, taking the first one found */
+static short ink_colour(short x1, short x2, short y1, short y2)
+{
+    short x, y, pel, index;
+
+    for (y = y1; y < y2; y++)
+        for (x = x1; x < x2; x++)
+        {
+            v_get_pixel(handle, x, y, &pel, &index);
+            if (index != 0)
+                return index;
+        }
+
+    return 0;
+}
+
 static int ink_between(short x1, short x2, short y1, short y2)
 {
     short x, y, pel, index;
@@ -132,6 +148,24 @@ static int ink_between(short x1, short x2, short y1, short y2)
         }
 
     return ink;
+}
+
+/* How many of the sample fonts are in the list, which is what says the right
+ * section of ASSIGN.SYS was read without having to know what else is there */
+static short samples_among(short faces)
+{
+    char name[33];
+    short i, found = 0;
+
+    for (i = 1; i <= faces; i++)
+    {
+        name_of(i, name);
+
+        if (strcmp(name, "Test Sans") == 0 || strcmp(name, "Test Mono") == 0)
+            found++;
+    }
+
+    return found;
 }
 
 /*
@@ -182,7 +216,7 @@ int main(int argc, char **argv)
     long version;
     short extent[8];
     int faces_wanted;
-    short faces_before, sans, mono;
+    short faces_before, faces, loaded, sans, mono;
     int outlines;
 
     if (argc < 2)
@@ -259,22 +293,46 @@ int main(int argc, char **argv)
     check(faces_before >= 1, 1,
           "a workstation opens knowing at least the system face");
 
-    check(vst_load_fonts(handle, 0), faces_wanted,
-          "vst_load_fonts answers with the faces the screen's section names");
+    /*
+     * How many faces the application now has that it did not have before, and
+     * the outline ones are counted in it - this one number is what an
+     * application decides by. Atari Works puts up "Can not find graphics FONTS
+     * on your system" when it comes back nought, and on a machine with
+     * SpeedoGDOS the outline faces were part of what it counted.
+     *
+     * So the exact number is not something this file can know. What it can
+     * know is that the faces from the sample ASSIGN.SYS are among them, which
+     * is counted by name below.
+     */
+    loaded = vst_load_fonts(handle, 0);
+    check(loaded >= faces_wanted, 1,
+          "vst_load_fonts answers with at least the faces the section names");
 
-    /* A second time. The VDI loads fonts once and says so by answering with no
-     * new faces, which is a different path through the same call. */
+    /* A second time. Fonts are loaded once and that is said by answering with
+     * no new faces, which is a different path through the same call. */
     check(vst_load_fonts(handle, 0), 0,
           "asking a second time finds no faces that were not already there");
 
     vst_unload_fonts(handle, 0);
-    check(vst_load_fonts(handle, 0), faces_wanted,
+    check(vst_load_fonts(handle, 0), loaded,
           "and they can be asked for again once they have been unloaded");
+
+    /*
+     * And exactly the ones the section names, counted by name rather than by
+     * arithmetic. This is the check that says the right section was read: the
+     * ST high screen's has two of these and the ST low screen's has one.
+     */
+    faces = (short)(faces_before + loaded);
+    check(samples_among(faces), faces_wanted,
+          "and the list holds exactly the fonts that section names");
 
     if (!faces_wanted)
     {
-        /* Nothing else to ask: with no fonts the rest of this is a question
-         * about faces that do not exist */
+        /* No font list was found, so none of the sample fonts can be in the
+         * list however many outline faces there turn out to be */
+        check(samples_among(faces), 0,
+              "and no font from a file is in the list");
+
         v_clswk(handle);
         printf("1..%d\n", n);
         return 0;
@@ -285,8 +343,8 @@ int main(int argc, char **argv)
      * particular place in the list, because what else is in it depends on how
      * the build was made - the outline faces are in there too.
      */
-    sans = face_called("Test Sans", faces_before + faces_wanted);
-    mono = face_called("Test Mono", faces_before + faces_wanted);
+    sans = face_called("Test Sans", faces);
+    mono = face_called("Test Mono", faces);
 
     check(sans, faces_wanted == 2 ? SANS_ID : 0,
           "the face the section names first is in the list under its own name");
@@ -328,7 +386,7 @@ int main(int argc, char **argv)
      */
     if (outlines)
     {
-        short swiss = face_called("Swiss 721", faces_before + faces_wanted);
+        short swiss = face_called("Swiss 721", faces);
         short narrow, wide, length;
 
         check(swiss > 0, 1, "an outline face is in the list under its own name");
@@ -395,6 +453,63 @@ int main(int argc, char **argv)
 
         check(ink_between(2, 60, 100, 130) > 0, 1,
               "a string against the left edge is drawn rather than fatal");
+
+        /*
+         * The colour it comes out in. A workstation keeps the text colour as a
+         * pen - the register the drawing writes - and the raster call the
+         * string is put down with takes a VDI index and maps it to a pen
+         * itself, so handing it the pen maps it twice. Black went in and pink
+         * came out. Only worth asking on a screen with colours in it.
+         */
+        if (work_out[13] > 2)
+        {
+            vst_color(handle, 2);
+            length = put_text("colour");
+            p_ptsin[0] = 20;
+            p_ptsin[1] = 150;
+            speedo(241, 1, length);
+
+            check(ink_colour(20, 140, 150, 180), 2,
+                  "text asked for in a colour is drawn in that colour");
+
+            vst_color(handle, 1);
+        }
+
+        /*
+         * And two runs side by side, the second drawn after the first. The
+         * bitmap a string goes into used to carry a character's slack at each
+         * end so that a letter leaning past its own advance survived, and the
+         * blit put the whole rectangle down - so in replace mode the second
+         * run wrote background over the tail of the first. It shows while
+         * somebody is typing, one run redrawn at a time, and not on a full
+         * redraw where everything is painted in order.
+         */
+        /* Twelve point and well inside the top left corner, because the
+         * smallest screen this runs on is 320 by 200 and a check drawn off the
+         * edge of it counts no ink either side of the thing it is testing -
+         * which is a check that cannot fail rather than one that passes */
+        p_intin[0] = 12;
+        speedo(246, 0, 1);
+
+        length = put_text("AAAA");
+        speedo(240, 0, length);
+        narrow = p_ptsout[2] - p_ptsout[0];
+
+        length = put_text("AAAA");
+        p_ptsin[0] = 20;
+        p_ptsin[1] = 165;
+        speedo(241, 1, length);
+
+        wide = (short)ink_between(20, 20 + narrow, 160, 195);
+        check(wide > 0, 1, "a run of four letters puts ink down");
+
+        length = put_text("BBBB");
+        p_ptsin[0] = (short)(20 + narrow);
+        p_ptsin[1] = 165;
+        speedo(241, 1, length);
+
+        check(ink_between(20, 20 + narrow, 160, 195), wide,
+              "and a run drawn beside it leaves every pixel of it alone");
     }
 
     v_clswk(handle);
