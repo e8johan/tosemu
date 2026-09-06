@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <dirent.h>
 #include <linux/limits.h>
@@ -280,6 +281,75 @@ uint32_t GEMDOS_Dsetdrv()
     drive_set_current(drive);
 
     return drive_map();
+}
+
+/* How much room is left on a drive, as a FAT disk would have described it: how
+ * many clusters there are, how many are free, and how large one is.
+ *
+ * The host has no clusters, so a size is chosen and the space divided by it -
+ * the sector and cluster an ST formatted a floppy into, which is what a
+ * program of the period will have seen everywhere. What it does with them is
+ * multiply all four together, in a signed long, so a disk larger than a 68000
+ * can count in bytes has to be described as a smaller one: the alternative is
+ * a program being told it has a negative amount of room and refusing to save.
+ * Two gigabytes is where that multiplication turns over, and no Atari ever had
+ * a partition anywhere near it.
+ */
+
+#define DFREE_SECTOR   (512)        /* bytes in a sector */
+#define DFREE_CLUSTER  (2)          /* sectors in a cluster, so 1k of disk */
+#define DFREE_MAX_CLUSTERS (0x1fffffu)
+
+uint32_t GEMDOS_Dfree()
+{
+    uint32_t addr = peek_u32(2);
+    uint16_t drive = peek_u16(6);
+    char tp[4];
+    char up[PATH_MAX+1];
+    struct statvfs st;
+    uint64_t bytes, free_bytes;
+    uint32_t clusters, free_clusters;
+    int d;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    buf: 0x%x, drive: %d\n", addr, drive);
+    }
+
+    /* Dfree counts its drives from one and takes nought to mean whichever the
+     * program is on. Every other GEMDOS call counts them from nought, A: being
+     * the first, so the two numberings are one apart everywhere but here. */
+    d = drive ? drive - 1 : drive_current();
+
+    if (!drive_volume(d))
+        return GEMDOS_EDRIVE;
+
+    tp[0] = 'A' + d;
+    tp[1] = ':';
+    tp[2] = '\\';
+    tp[3] = 0;
+
+    if (tos_path_to_host(tp, up) != GEMDOS_E_OK || statvfs(up, &st) != 0)
+        return GEMDOS_EDRIVE;
+
+    /* f_bavail rather than f_bfree: the blocks a program running as this user
+     * may actually have, which on a host file system is the smaller number */
+    bytes = (uint64_t)st.f_blocks * st.f_frsize;
+    free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+
+    clusters = bytes / (DFREE_SECTOR * DFREE_CLUSTER);
+    free_clusters = free_bytes / (DFREE_SECTOR * DFREE_CLUSTER);
+
+    if (clusters > DFREE_MAX_CLUSTERS)
+        clusters = DFREE_MAX_CLUSTERS;
+    if (free_clusters > clusters)
+        free_clusters = clusters;
+
+    m68k_write_memory_32(addr,      free_clusters);
+    m68k_write_memory_32(addr + 4,  clusters);
+    m68k_write_memory_32(addr + 8,  DFREE_SECTOR);
+    m68k_write_memory_32(addr + 12, DFREE_CLUSTER);
+
+    return GEMDOS_E_OK;
 }
 
 uint32_t dta_addr;

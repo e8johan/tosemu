@@ -139,12 +139,13 @@ check: all
 	printf 'Hello World!\r\n' > out2
 	cmp out out2
 	$(TOSEMU) test-c-drives > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.24' out
 	# And again with the root of the drive moved, which is a different set
 	# of paths through the same calls: everything relative stops meaning
 	# what it did, and what Dgetpath hands out has to be a path on the
 	# drive rather than one on the host
 	TOS_BASE_PATH=$(CURDIR) $(TOSEMU) test-c-drives BASED > out; ! grep -q '^not ok' out
-	grep -q '^1\.\.19' out
+	grep -q '^1\.\.28' out
 	# And the same root spelled with a separator on the end, which is the
 	# natural way to write a directory in a settings file. It has to name
 	# the same drive: the base is what the front of every host path is
@@ -152,7 +153,7 @@ check: all
 	# resolves to, so the whole drive reads as empty.
 	TOS_BASE_PATH=$(CURDIR)/ $(TOSEMU) test-c-drives BASED > out; \
 	  ! grep -q '^not ok' out
-	grep -q '^1\.\.19' out
+	grep -q '^1\.\.28' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
