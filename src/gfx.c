@@ -381,6 +381,19 @@ static struct {
      */
     uint32_t serial;
 
+    /*
+     * And the last one that was something being pressed, which is not the same
+     * question.
+     *
+     * A grab has to answer a press or a keystroke in particular, and a
+     * compositor is entitled to check which: the pointer arriving in a window
+     * is something that happened to the person rather than something they did.
+     * Some desktops take whatever they are given and some refuse anything but
+     * the serial of the press they are still in the middle of - which is why a
+     * menu that works on one comes straight back down on another.
+     */
+    uint32_t press_serial;
+
     struct surface *screen;
 
     /* Keys waiting to be read, oldest first */
@@ -958,6 +971,10 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED || !w.xkb_state)
         return;
 
+    /* A key going down is one of the things a grab may answer, the same way a
+     * button going down is */
+    w.press_serial = serial;
+
     sym = xkb_state_key_get_one_sym(w.xkb_state, code);
 
     /*
@@ -1151,6 +1168,11 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
     (void)data; (void)p; (void)time;
 
     w.serial = serial;
+
+    /* And the one a grab has to answer, which is a press rather than any of
+     * the other things that carry a serial */
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+        w.press_serial = serial;
 
     /* GEM numbers them from the left, and has two */
     switch (button)
@@ -2196,14 +2218,14 @@ static void frame_press(struct window *win, int16_t buttons)
         return;
     }
 
-    /* Both of the rest have to be answering something the person did, and the
-     * serial of that is what proves it. There is nothing to answer when the
-     * input was made up rather than done, which is what happens under a test. */
-    if (!win->toplevel || !w.seat || !w.serial)
+    /* Both of the rest have to be answering the press this is, and the serial
+     * of that is what proves it. There is nothing to answer when the input was
+     * made up rather than done, which is what happens under a test. */
+    if (!win->toplevel || !w.seat || !w.press_serial)
         return;
 
     if (buttons == 2)
-        xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.serial,
+        xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.press_serial,
                                       w.frame_x, w.frame_y);
     /*
      * The size box on the end of the menu bar, which is at the very edge of it.
@@ -2217,10 +2239,10 @@ static void frame_press(struct window *win, int16_t buttons)
      */
     else if (win->frame_w
              && w.frame_x >= (win->sw + win->frame_w - wbox) * win->scale)
-        xdg_toplevel_resize(win->toplevel, w.seat, w.serial,
+        xdg_toplevel_resize(win->toplevel, w.seat, w.press_serial,
                             XDG_TOPLEVEL_RESIZE_EDGE_RIGHT);
     else
-        xdg_toplevel_move(win->toplevel, w.seat, w.serial);
+        xdg_toplevel_move(win->toplevel, w.seat, w.press_serial);
 
     wl_display_flush(w.display);
 }
@@ -3237,9 +3259,12 @@ void gfx_window_limits(int16_t handle, int16_t min_w, int16_t min_h,
  * the drag the person would have got by taking hold of a corner, and what
  * comes back is a configure saying how large the window has become.
  *
- * It has to be answering something the person did, and the serial of that is
- * what proves it. There is nothing to answer when the input was made up rather
- * than done, which is what happens under a test.
+ * It has to be answering the press that started it, and the serial of that is
+ * what proves it. The press in particular, rather than the last thing of any
+ * kind: a compositor that checks wants the one it is still in the middle of,
+ * and the pointer arriving in a window carries a serial too. There is nothing
+ * to answer at all when the input was made up rather than done, which is what
+ * happens under a test.
  */
 void gfx_window_drag_size(int16_t handle)
 {
@@ -3249,10 +3274,10 @@ void gfx_window_drag_size(int16_t handle)
         return;
 
     win = &w.windows[handle];
-    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+    if (!win->used || !win->toplevel || !w.seat || !w.press_serial)
         return;
 
-    xdg_toplevel_resize(win->toplevel, w.seat, w.serial,
+    xdg_toplevel_resize(win->toplevel, w.seat, w.press_serial,
                         XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT);
     wl_display_flush(w.display);
 }
@@ -3274,10 +3299,10 @@ void gfx_window_drag_move(int16_t handle)
         return;
 
     win = &w.windows[handle];
-    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+    if (!win->used || !win->toplevel || !w.seat || !w.press_serial)
         return;
 
-    xdg_toplevel_move(win->toplevel, w.seat, w.serial);
+    xdg_toplevel_move(win->toplevel, w.seat, w.press_serial);
     wl_display_flush(w.display);
 }
 
@@ -3302,10 +3327,10 @@ void gfx_window_menu(int16_t handle, int16_t x, int16_t y)
         return;
 
     win = &w.windows[handle];
-    if (!win->used || !win->toplevel || !w.seat || !w.serial)
+    if (!win->used || !win->toplevel || !w.seat || !w.press_serial)
         return;
 
-    xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.serial,
+    xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.press_serial,
                                   (x - win->sx) * win->scale,
                                   (y - win->sy + win->frame_h) * win->scale);
     wl_display_flush(w.display);
@@ -3429,9 +3454,17 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
      * nothing to answer when the input was made up rather than done, which is
      * what happens under a test. Asking anyway would have the menu dismissed
      * the moment it appeared.
+     *
+     * A press is what it wants to be answering, and a compositor that checks
+     * will take nothing else - so the last press is offered before the last
+     * thing of any kind. A GEM menu opens when the pointer arrives among the
+     * titles rather than when anything is pressed, so the press being answered
+     * is whatever the person did last, which is the best there is: what the
+     * menu is answering happened, and it was not a click.
      */
-    if (w.seat && w.serial)
-        xdg_popup_grab(win->popup, w.seat, w.serial);
+    if (w.seat && (w.press_serial || w.serial))
+        xdg_popup_grab(win->popup, w.seat,
+                       w.press_serial ? w.press_serial : w.serial);
 
     wl_surface_commit(win->surface);
     wl_display_roundtrip(w.display);
