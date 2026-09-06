@@ -1046,12 +1046,23 @@ static const struct wl_keyboard_listener keyboard_listener = {
 
 /* Pointer *****************************************************************/
 
+/*
+ * Whose surface that is.
+ *
+ * A window is asked about by its surface rather than by whether it is finished,
+ * and the difference is a real one: a window is made, told what it is and
+ * committed before it has a buffer, and the compositor may say the pointer is
+ * in it during the round trip that waits for the first configure. A menu drops
+ * down under the pointer, so that is not a rare ordering - and an enter nobody
+ * recognised leaves the pointer belonging to nothing, with every move it makes
+ * afterwards thrown away until it leaves and comes back.
+ */
 static struct window *window_of(struct wl_surface *surface)
 {
     int i;
 
     for (i = 0; i < WINDOWS; i++)
-        if (w.windows[i].used && w.windows[i].surface == surface)
+        if (w.windows[i].surface && w.windows[i].surface == surface)
             return &w.windows[i];
 
     return 0;
