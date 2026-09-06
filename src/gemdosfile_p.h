@@ -39,6 +39,7 @@ void gemdos_file_free();
 
 uint32_t GEMDOS_Dgetdrv();
 uint32_t GEMDOS_Dsetdrv();
+uint32_t GEMDOS_Dfree();
 
 uint32_t GEMDOS_Fseek();
 uint32_t GEMDOS_Fdatime();

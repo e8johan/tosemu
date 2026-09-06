@@ -41,6 +41,7 @@
 #include "bios.h"
 #include "gem.h"
 #include "screen.h"
+#include "linea.h"
 
 #include "m68k.h"
 
@@ -800,6 +801,11 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
     te->bp->p_env = endianize_32(place_environment(env, env_len));
+
+    /* And so does the line-A block, for the same reason. It is handed the
+     * screen this machine was built around rather than asking for one of its
+     * own, so that what a program reads out of it is the screen it was given */
+    linea_init(screen_w, screen_h, screen_planes);
 
     /* Relocating must take place after the "userram" has been registered, as
      * it takes place in the memory of the tos machine */

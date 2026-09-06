@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -139,12 +139,13 @@ check: all
 	printf 'Hello World!\r\n' > out2
 	cmp out out2
 	$(TOSEMU) test-c-drives > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.24' out
 	# And again with the root of the drive moved, which is a different set
 	# of paths through the same calls: everything relative stops meaning
 	# what it did, and what Dgetpath hands out has to be a path on the
 	# drive rather than one on the host
 	TOS_BASE_PATH=$(CURDIR) $(TOSEMU) test-c-drives BASED > out; ! grep -q '^not ok' out
-	grep -q '^1\.\.19' out
+	grep -q '^1\.\.28' out
 	# And the same root spelled with a separator on the end, which is the
 	# natural way to write a directory in a settings file. It has to name
 	# the same drive: the base is what the front of every host path is
@@ -152,7 +153,7 @@ check: all
 	# resolves to, so the whole drive reads as empty.
 	TOS_BASE_PATH=$(CURDIR)/ $(TOSEMU) test-c-drives BASED > out; \
 	  ! grep -q '^not ok' out
-	grep -q '^1\.\.19' out
+	grep -q '^1\.\.28' out
 	$(TOSEMU) test-c-bios > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(TOSEMU) test-c-xbios > out; ! grep -q '^not ok' out
@@ -161,6 +162,27 @@ check: all
 	# about: an application says something to whoever is debugging it, and
 	# tosemu is what there is.
 	grep -q 'Dbmsg: a message for the debugger' out
+	# Supervisor mode, which is mostly a question about the stack: a 68000
+	# swaps stack pointers when the S bit moves, and a caller that came back
+	# from Super standing somewhere else has lost everything it had put on
+	# its own stack, including where it was to return to.
+	$(TOSEMU) test-c-super > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The line-A, whose one implemented call hands over three addresses a
+	# program then follows. On the default screen and on a colour one,
+	# because what the block describes is the screen the machine was built
+	# around and a block written from some other one still looks like a
+	# block.
+	$(TOSEMU) test-c-linea > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-linea > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And a drawing routine, which is refused. The refusal stops the
+	# emulator, so what says it happened is the emulator's own output - and
+	# what says the program got that far is the count line before it.
+	$(TOSEMU) test-c-linea DRAW > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	grep -q 'line-A put pixel (\$$a001) not implemented' out
 	# Asking for memory and saying which kind it has to be, which is the
 	# call every compiler of the period makes before anything else
 	$(TOSEMU) test-c-mxalloc > out; ! grep -q '^not ok' out

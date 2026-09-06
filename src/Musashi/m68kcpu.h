@@ -1804,10 +1804,19 @@ INLINE void m68ki_exception_privilege_violation(void)
 	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_PRIVILEGE_VIOLATION] - CYC_INSTRUCTION[REG_IR]);
 }
 
+/* TOSEMU callback for the line-A, which is answered on the host side the way
+ * the OS traps are. It says whether it dealt with the opcode; one it does not
+ * know is vectored the way the hardware would, so that a program with a
+ * handler of its own still has it called. */
+int m68k_linea(uint);
+
 /* Exception for A-Line instructions */
 INLINE void m68ki_exception_1010(void)
 {
 	uint sr;
+
+	if (m68k_linea(REG_IR))
+		return;
 #if M68K_LOG_1010_1111 == OPT_ON
 	M68K_DO_LOG_EMU((M68K_LOG_FILEHANDLE "%s at %08x: called 1010 instruction %04x (%s)\n",
 					 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PPC), REG_IR,

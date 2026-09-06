@@ -21,6 +21,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               fontface.c \
+              linea.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files

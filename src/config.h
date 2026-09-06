@@ -56,6 +56,7 @@ extern int verbose;
 #define ENABLE_XBIOS_TRACE
 #define ENABLE_AES_TRACE
 #define ENABLE_VDI_TRACE
+#define ENABLE_LINEA_TRACE
 
 /* Tracing functions */
 
@@ -63,7 +64,8 @@ extern int verbose;
     (defined(ENABLE_BIOS_TRACE) && defined(BIOS_TRACE_CONTEXT)) || \
     (defined(ENABLE_XBIOS_TRACE) && defined(XBIOS_TRACE_CONTEXT)) || \
     (defined(ENABLE_AES_TRACE) && defined(AES_TRACE_CONTEXT)) || \
-    (defined(ENABLE_VDI_TRACE) && defined(VDI_TRACE_CONTEXT))
+    (defined(ENABLE_VDI_TRACE) && defined(VDI_TRACE_CONTEXT)) || \
+    (defined(ENABLE_LINEA_TRACE) && defined(LINEA_TRACE_CONTEXT))
 /* Braced, so that one of these at the top of a function cannot swallow an
  * else belonging to whatever is around it */
 #define     FUNC_TRACE_ENTER      if (verbose >= VERBOSE_CALLS) \

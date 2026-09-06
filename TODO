@@ -246,14 +246,38 @@
   reason the fonts from files are the ones worth getting exactly right, those
   being what a document of the period was actually set in.
 
-- Microsoft Write does not run, and it is not the fonts. WRITE.PRG in
-  tos_root spins inside the emulated CPU and never reaches a trap, so the
-  emulator never starts GEM at all - which is the same with GDOS switched off
-  and the same on the commit before any of this. What it would have shown is
-  the fonts from files, it being the one thing here that ships a complete
-  ASSIGN.SYS and thirty six .FNT files; those load correctly when a program
-  that does run asks for them, so what is in the way is somewhere in loading
-  or starting the program. Worth a disassembly rather than a guess.
+- The line-A answers $a000 and refuses the other fifteen. Refusing stops the
+  emulator and names the call, which is what an unimplemented GEMDOS call
+  does, and it is a great deal better than the nought vector that was there
+  before - a program executing one of these used to jump to address nought
+  and walk through the whole of memory. But a program that really draws
+  through the line-A still does not work, and there were plenty: it was the
+  fast way to put a pixel on the screen, and every demo and half the games
+  used it in preference to the VDI.
+
+  What each of them draws is in 3rdparty/emutos/vdi/, since the line-A and
+  the VDI are the same routines reached two ways, and EmuTOS's linea.S is
+  the table of which is which. The work is not the drawing, it is the
+  arguments: a line-A routine reads them out of the variable block in the
+  machine's memory and the VDI here takes them as C arguments on the host,
+  so each one wants the block unpacked into a call across the seam.
+
+  The three system fonts are the same seam and are the reason $a000 hands
+  back a table saying there are none. TOS answered with the machine's own
+  bitmap fonts, for a program that draws its own text; the copies here are
+  EmuTOS's, compiled for the host and sitting at host addresses that a 68000
+  cannot reach. Making them real means the header, the offset table and the
+  raster copied into the machine's memory the right way round - which is
+  bounded work, and nothing that has been run here has asked for it yet.
+
+- Microsoft Write runs now. It was three things in a row, and none of them
+  was the fonts: the line-A, which its loader calls once and which nothing
+  answered; Super, which took the caller's stack away; and Dfree, which was
+  not implemented and stopped the emulator the moment a document was open.
+  It starts, puts up its menu bar, opens Untitled and sets typed text. What
+  it has not been watched doing is printing, or loading a document off the
+  disk. It is the one thing here that ships a complete ASSIGN.SYS and thirty
+  six .FNT files, so it is the program to watch the fonts from files in.
 
   Atari Works is the one that does run, and it is where the font work was
   actually shaken out: it starts, opens its word processor, enumerates the
