@@ -465,16 +465,28 @@ int fontface_render(int id, int size64, const char *text, int length,
         return 0;
 
     /*
-     * A character may lean past the width its advances add up to - an italic
-     * f, or a letter whose ink starts left of its origin - so the bitmap is
-     * given a character's width of slack at each end rather than being cut to
-     * the extent. What is reported as the extent is still the advances, since
-     * that is what the application laid its page out from.
+     * The bitmap is the cell the string occupies and no more: as wide as the
+     * advances add up to, and as tall as the face is from its highest ink to
+     * its lowest.
+     *
+     * It is worth saying why it is not larger. A character can lean past its
+     * own advance - an italic f, or a letter whose ink starts left of its
+     * origin - and giving the bitmap a character's slack at each end so that
+     * such ink survives makes drawing wrong in a way that is much worse than
+     * losing it. The blit puts the whole rectangle down, and in replace mode
+     * that means writing the background over the slack: a word drawn next to
+     * one already on the screen erases its neighbour's edge. It shows while
+     * somebody is typing, where each keystroke redraws one run, and not on a
+     * full redraw, where everything is painted left to right and the damage is
+     * covered by what comes after it.
+     *
+     * A cell is also what the VDI does with a font from a file, so a string
+     * that leans is clipped here the same way it is clipped there.
      */
-    into->width = width + 2 * m.max_width;
-    into->height = m.top + m.descent + 2;
+    into->width = width;
+    into->height = m.top + m.descent;
     into->words = (into->width + 15) / 16;
-    into->origin_x = m.max_width;
+    into->origin_x = 0;
     into->origin_y = m.top;
 
     if (into->width <= 0 || into->height <= 0)

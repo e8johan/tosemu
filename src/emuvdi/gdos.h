@@ -158,7 +158,12 @@ int gdos_fsm_call(WORD *control, WORD *intin, WORD *ptsin,
 int gdos_fsm_text_call(WORD *control, WORD *intin, WORD *ptsin,
                        WORD *intout, WORD *ptsout);
 
-/* Adds the outline faces to the count a workstation reports when it opens */
-int gdos_fsm_opened(WORD *control, WORD *intout);
+/*
+ * The outline faces arriving at a workstation, and going away again, which is
+ * what vst_load_fonts and vst_unload_fonts mean for them. Answers how many
+ * faces the first of those added.
+ */
+int gdos_fsm_load(WORD handle);
+void gdos_fsm_unload(WORD handle);
 
 #endif /* EMUVDI_GDOS_H */
