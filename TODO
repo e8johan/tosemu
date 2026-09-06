@@ -249,12 +249,18 @@
 - Microsoft Write does not run, and it is not the fonts. WRITE.PRG in
   tos_root spins inside the emulated CPU and never reaches a trap, so the
   emulator never starts GEM at all - which is the same with GDOS switched off
-  and the same on the commit before any of this. It is the application the
-  font work was aimed at and the one that would show it: it ships a complete
-  ASSIGN.SYS, thirty six .FNT files and a document to open, and all of that
-  loads correctly when a program that does run asks for it. What is in the
-  way is somewhere in loading or starting the program, and is worth a
-  disassembly rather than a guess.
+  and the same on the commit before any of this. What it would have shown is
+  the fonts from files, it being the one thing here that ships a complete
+  ASSIGN.SYS and thirty six .FNT files; those load correctly when a program
+  that does run asks for them, so what is in the way is somewhere in loading
+  or starting the program. Worth a disassembly rather than a guess.
+
+  Atari Works is the one that does run, and it is where the font work was
+  actually shaken out: it starts, opens its word processor, enumerates the
+  faces and sets text in them. Three faults came out of watching it. What it
+  has not been watched doing is loading a document written in a face it then
+  has to substitute, which is where the metrics warning above stops being
+  theoretical.
 
 - Drawing outside a window is not promoted to a window of its own. form_dial
   says a rectangle is being reserved and that gets one, which covers dialogs;
