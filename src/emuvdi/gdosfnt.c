@@ -101,6 +101,13 @@
 #define FNT_FORM_WIDTH  (80)
 #define FNT_FORM_HEIGHT (82)
 
+/*
+ * How much room is left at each end of the offset table for characters the
+ * font does not have. A whole character set, because that is the furthest a
+ * character code can fall outside the range in either direction.
+ */
+#define FNT_OFF_SLACK (256)
+
 /* Reading the file's words and longs, in whichever order it turned out to be
  * written in. Motorola is the 68000's, which is what F_STDFORM says. */
 static UWORD word_at(const UBYTE *file, long at, int motorola)
@@ -251,7 +258,7 @@ Fonthead *gdos_font_read(const char *host_path)
     }
 
     font = host_vdi_alloc((long)sizeof *font);
-    off_table = table_alloc(off_bytes);
+    off_table = table_alloc(off_bytes + 2 * FNT_OFF_SLACK * 2);
     dat_table = table_alloc(raster_bytes);
     if (flags & F_HORZ_OFF)
         hor_table = table_alloc(chars * 2);
@@ -261,7 +268,7 @@ Fonthead *gdos_font_read(const char *host_path)
     {
         refuse(host_path, "there was no room for it");
         host_vdi_free(font);
-        host_vdi_free(off_table);
+        host_vdi_free(off_table);     /* still the base, not yet moved on */
         host_vdi_free(dat_table);
         host_vdi_free(hor_table);
         free(file);
@@ -298,8 +305,33 @@ Fonthead *gdos_font_read(const char *host_path)
     font->reserved = 0;
     font->next_font = NULL;     /* gdos_font_chain decides what follows */
 
+    /*
+     * The offset table, with the same value repeated either side of it.
+     *
+     * The VDI reads a character's width as off_table[c - first_ade + 1] minus
+     * off_table[c - first_ade], and does not check that the character is one
+     * the font has. For the fonts compiled in that hardly matters, they cover
+     * everything from a space up; for a font off a disk it matters a great
+     * deal, because the range is whatever somebody put in the file - and a
+     * document with a tab in it, or a character above the range, then reads
+     * outside the table entirely.
+     *
+     * Rather than let that be memory nobody owns, the table is allocated with
+     * a character set of room at each end and the pointer handed out points at
+     * the middle of it. The padding repeats the first and last offsets, so a
+     * character the font does not have measures nought - which is what a
+     * character with no picture should measure.
+     */
+    off_table += FNT_OFF_SLACK;
+
     for (i = 0; i <= (int)chars; i++)
         off_table[i] = word_at(file, (long)off_at + i * 2, motorola);
+
+    for (i = 1; i <= FNT_OFF_SLACK; i++)
+    {
+        off_table[-i] = off_table[0];
+        off_table[chars + i] = off_table[chars];
+    }
 
     if (hor_table)
         for (i = 0; i < (int)chars * 2; i++)
@@ -334,7 +366,9 @@ void gdos_font_free(Fonthead *font)
     if (!font)
         return;
 
-    host_vdi_free((void *)font->off_table);
+    /* The pointer handed out points into the middle of what was allocated -
+     * see the padding in gdos_font_read */
+    host_vdi_free((void *)(font->off_table - FNT_OFF_SLACK));
     host_vdi_free((void *)font->hor_table);
     host_vdi_free((void *)font->dat_table);
     host_vdi_free(font);
@@ -839,11 +873,43 @@ WORD *gdos_loaded_scratch(WORD *half)
  * the one characters are built in before they reach the screen, and it has to
  * be the larger one now that there are larger characters to build.
  */
+/*
+ * How many faces there are, counted the way vqt_name counts them.
+ *
+ * It walks the whole ring rather than one chain, and a face is a place where
+ * the id changes as it goes - so a font whose id is one the ring already has
+ * is another size of that face rather than a face of its own. That is what
+ * GDOS was for as much as anything: a .FNT carrying face id 1 adds a size to
+ * the system font.
+ *
+ * Counting it any other way is how the number an application is given stops
+ * agreeing with the list it can then ask for, and vst_load_fonts is the one
+ * number applications trust.
+ */
+static WORD ring_faces(void)
+{
+    const Fonthead *font, * const *chain = font_ring;
+    WORD id = -1, count = 0;
+
+    while ((font = *chain++))
+    {
+        do {
+            if (font->font_id != id)
+            {
+                id = font->font_id;
+                count++;
+            }
+        } while ((font = font->next_font));
+    }
+
+    return count;
+}
+
 WORD gdos_install(Vwk *vwk)
 {
-    Fonthead *chain, *font;
+    Fonthead *chain;
     WORD *scratch, half = 0;
-    WORD id = -1, count = 0;
+    WORD before, count;
 
     /* One chance, which is EmuTOS's rule and TOS's before it. Asking twice
      * answers with no faces that were not already there rather than counting
@@ -857,20 +923,14 @@ WORD gdos_install(Vwk *vwk)
     if (!chain || !scratch)
         return 0;
 
+    before = ring_faces();
+
     vwk->scrtchp = scratch;
     vwk->scrpt2 = half;
     vwk->loaded_fonts = chain;
-
-    /* A face is a run of sizes under one id, and the chain is sorted so that
-     * they are together - so the faces are the places where the id changes */
-    for (font = chain; font; font = font->next_font)
-        if (font->font_id != id)
-        {
-            id = font->font_id;
-            count++;
-        }
-
     font_ring[2] = chain;
+
+    count = (WORD)(ring_faces() - before);
     vwk->num_fonts += count;
 
     return count;
