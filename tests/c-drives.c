@@ -24,10 +24,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <mint/osbind.h>
+#include <mint/ostruct.h>
 
 #define DRIVE_C     (2)
 #define MAP_C       (1L << DRIVE_C)
 #define E_DRIVE     (-46)
+
+/* Dfree counts drives from one and takes nought to mean the current one, so
+ * the same drive has a different number here than it does anywhere else */
+#define DFREE_A     (DRIVE_C - 1)
+#define DFREE_C     (DRIVE_C + 1)
+#define DFREE_HERE  (0)
 
 static int n;
 static int fails;
@@ -47,6 +54,7 @@ static void check(long got, long want, const char *name)
 int main(int argc, char **argv)
 {
     char path[256];
+    _DISKINFO here, there;
     long h;
 
     check(Dgetdrv(), DRIVE_C, "Dgetdrv reports C:");
@@ -97,6 +105,31 @@ int main(int argc, char **argv)
     if (h >= 0)
         Fclose(h);
     check(Fdelete(path), 0, "Fdelete from the root of the drive succeeds");
+
+    /*
+     * How much room there is on the drive, which is what an application asks
+     * before it offers to save anything.
+     *
+     * There is no checking the numbers against the host's - whatever this is
+     * run on has some other amount of room on it, and it changes while the
+     * test is running - so what is checked is that they describe a disk: one
+     * that exists, that is not fuller than it is large, and whose size a
+     * program of the period can work out without the arithmetic turning over.
+     * The last is the whole reason the answer is not the host's own figures.
+     */
+    check(Dfree(&here, DFREE_HERE), 0, "Dfree answers for the current drive");
+    check(Dfree(&there, DFREE_C), 0, "and for C: named by number");
+    check(here.b_total == there.b_total, 1, "which are the same drive");
+
+    check(here.b_secsiz, 512, "a sector is what an ST formatted one to be");
+    check(here.b_clsiz > 0, 1, "and a cluster is some whole number of them");
+    check(here.b_total > 0, 1, "the drive has room on it");
+    check(here.b_free <= here.b_total, 1, "and no more free than it has");
+    check(here.b_total * here.b_clsiz * here.b_secsiz > 0, 1,
+          "how large it is still fits in the long that says so");
+
+    /* A: is not there, and a drive that is not there has no room on it */
+    check(Dfree(&there, DFREE_A), E_DRIVE, "Dfree on A: fails with EDRIVE");
 
     /*
      * The rest only holds when TOS_BASE_PATH has moved the root of the drive,
