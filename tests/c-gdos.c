@@ -150,6 +150,29 @@ static int ink_between(short x1, short x2, short y1, short y2)
     return ink;
 }
 
+/* The id of the first face that is in the list more than once, or 0. A count
+ * that is too high shows up as one of these rather than as an error. */
+static short repeated_face(short faces)
+{
+    char name[33];
+    short i, j, id, other;
+
+    for (i = 1; i <= faces; i++)
+    {
+        id = name_of(i, name);
+
+        for (j = 1; j < i; j++)
+        {
+            other = name_of(j, name);
+
+            if (other == id)
+                return id;
+        }
+    }
+
+    return 0;
+}
+
 /* How many of the sample fonts are in the list, which is what says the right
  * section of ASSIGN.SYS was read without having to know what else is there */
 static short samples_among(short faces)
@@ -326,6 +349,21 @@ int main(int argc, char **argv)
     check(samples_among(faces), faces_wanted,
           "and the list holds exactly the fonts that section names");
 
+    /*
+     * The count and the list have to agree. An application is given the one
+     * and then walks the other, so a count that is too high walks off the end
+     * - and vqt_name answers a element out of range with the system font
+     * rather than with nothing, so what that looks like is the same face
+     * twice rather than an error.
+     *
+     * The sample list has a font carrying face id 1 in it, which is the system
+     * font's, so this is the case that goes wrong: the size in it belongs to
+     * the system face rather than being a face of its own, and counting the
+     * faces in the loaded chain alone says otherwise.
+     */
+    check(repeated_face(faces), 0,
+          "no face is in the list twice, so the count and the list agree");
+
     if (!faces_wanted)
     {
         /* No font list was found, so none of the sample fonts can be in the
@@ -373,6 +411,24 @@ int main(int argc, char **argv)
         vqt_extent(handle, " !\"", extent);
         check(extent[2] - extent[0], SANS12_EXTENT,
               "and wider at the size above it, that being another font");
+
+        /*
+         * A character the font does not have. These samples run from a space
+         * to a double quote and nothing else, and the VDI reads a width as
+         * off_table[c - first_ade + 1] minus off_table[c - first_ade] without
+         * checking that the character is in range - so a Z reads outside the
+         * table. It has to measure nought rather than whatever was next to it
+         * in memory, which is what the padding at each end of the table is
+         * for.
+         */
+        vst_point(handle, 8, &extent[0], &extent[1], &extent[2], &extent[3]);
+        vqt_extent(handle, " !\"Z", extent);
+        check(extent[2] - extent[0], SANS08_EXTENT,
+              "a character the font does not have takes no width");
+
+        vqt_extent(handle, "\tZ !\"", extent);
+        check(extent[2] - extent[0], SANS08_EXTENT,
+              "and neither does one below the range, in front of the string");
     }
 
     /*

@@ -145,7 +145,18 @@ struct sample {
 static const struct sample samples[] = {
     { "TEST12.FNT", 100, 12, "Test Sans", 9, 7, 0, sample_offsets_large },
     { "MONO10.FNT", 101, 10, "Test Mono", 8, 4, F_MONOSPACE, sample_offsets },
-    { "TEST08.FNT", 100,  8, "Test Sans", 6, 5, 0, sample_offsets }
+    { "TEST08.FNT", 100,  8, "Test Sans", 6, 5, 0, sample_offsets },
+
+    /*
+     * And one carrying face id 1, which is the system font's. It is not a
+     * collision but one of the things GDOS was for: the size in it becomes
+     * another size of the system face rather than a face of its own, so it
+     * must not be counted as a new face and must not appear in the list a
+     * second time. Counting the faces in the loaded chain alone gets that
+     * wrong, and it is what an application is given as the answer to
+     * vst_load_fonts.
+     */
+    { "SYS11.FNT",    1, 11, "Test System", 7, 5, 0, sample_offsets }
 };
 
 #define SAMPLE_COUNT ((int)(sizeof samples / sizeof samples[0]))
@@ -265,6 +276,7 @@ static int write_assign(const char *dir)
     fprintf(f, "  %s\r\n", samples[2].file);
     fprintf(f, "  %s\r\n", samples[0].file);
     fprintf(f, "  %s\r\n", samples[1].file);
+    fprintf(f, "  %s\r\n", samples[3].file);
 
     fclose(f);
 
@@ -381,14 +393,18 @@ static void check_one_font(const char *dir)
     gdos_font_free(motorola);
 }
 
+/* The three the chain is checked with. The fourth is for the test that runs
+ * inside the emulator, where what it joins matters. */
+#define CHAIN_SAMPLES (3)
+
 static void check_the_chain(const char *dir)
 {
-    Fonthead *font[SAMPLE_COUNT];
+    Fonthead *font[CHAIN_SAMPLES];
     Fonthead *head;
     char path[1024];
     int i, read = 0;
 
-    for (i = 0; i < SAMPLE_COUNT; i++)
+    for (i = 0; i < CHAIN_SAMPLES; i++)
     {
         write_sample(dir, &samples[i], 0);
         snprintf(path, sizeof path, "%s/%s", dir, samples[i].file);
@@ -397,11 +413,11 @@ static void check_the_chain(const char *dir)
             read++;
     }
 
-    check(read, SAMPLE_COUNT, "three fonts are read");
-    if (read != SAMPLE_COUNT)
+    check(read, CHAIN_SAMPLES, "three fonts are read");
+    if (read != CHAIN_SAMPLES)
         return;
 
-    head = gdos_font_chain(font, SAMPLE_COUNT);
+    head = gdos_font_chain(font, CHAIN_SAMPLES);
 
     /*
      * The order is what vqt_name counts faces by and what vst_point picks a
@@ -418,7 +434,7 @@ static void check_the_chain(const char *dir)
     check(head->next_font->next_font->next_font == 0, 1,
           "with nothing after it");
 
-    for (i = 0; i < SAMPLE_COUNT; i++)
+    for (i = 0; i < CHAIN_SAMPLES; i++)
         gdos_font_free(font[i]);
 }
 
