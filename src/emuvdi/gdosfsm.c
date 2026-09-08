@@ -177,11 +177,11 @@ static int gather(const WORD *intin, int count, char *into, int room)
  * dots that is, which is the same arithmetic the other way round from the one
  * fontface_resolution was told.
  */
-static int screen_ydpi(void);
+static int device_ydpi(void);
 
 static LONG size_from_height(WORD height)
 {
-    int dpi = screen_ydpi();
+    int dpi = device_ydpi();
 
     if (dpi <= 0)
         dpi = 72;
@@ -190,7 +190,7 @@ static LONG size_from_height(WORD height)
 }
 
 
-/* Where the screen is, in dots to the inch ***********************************/
+/* Where the device is, in dots to the inch ***********************************/
 
 /*
  * An ST high screen is 640 by 400 in the space a monitor showed at about
@@ -202,23 +202,60 @@ static LONG size_from_height(WORD height)
  */
 #define FSM_BASE_DPI (72)
 
-static int screen_ydpi(void)
+/*
+ * And when what is being drawn on is not the screen at all, what that has
+ * instead. Nought while it is the screen, which is nearly always.
+ *
+ * It exists for the printer. A screen's resolution can be worked out from its
+ * shape because there were only ever a handful of shapes and they were all
+ * about the same size of glass; a page has the same shape at three hundred
+ * dots to the inch as at six hundred, so nothing about the bitmap says how
+ * large a point is on it and the device has to say.
+ */
+static int elsewhere_x, elsewhere_y;
+
+static int device_ydpi(void)
 {
+    if (elsewhere_y > 0)
+        return elsewhere_y;
+
     /* Two hundred lines where a high resolution screen has four hundred, in
      * the same physical space */
     return (V_REZ_VT < 300) ? FSM_BASE_DPI / 2 : FSM_BASE_DPI;
 }
 
-static int screen_xdpi(void)
+static int device_xdpi(void)
 {
+    if (elsewhere_x > 0)
+        return elsewhere_x;
+
     /* And three hundred and twenty columns where it has six hundred and forty */
     return (V_REZ_HZ < 400) ? FSM_BASE_DPI / 2 : FSM_BASE_DPI;
+}
+
+void gdos_fsm_device_dpi(int xdpi, int ydpi)
+{
+    if (xdpi == elsewhere_x && ydpi == elsewhere_y)
+        return;
+
+    elsewhere_x = xdpi;
+    elsewhere_y = ydpi;
+
+    /*
+     * Telling FreeType costs every open face its size, since each of them is
+     * set to one worked out from the resolution that has just changed. Which
+     * is why this leaves early when nothing has changed: a printer is bound
+     * and unbound around every call an application makes to it, and doing that
+     * to the faces on each of them would be a resize a character.
+     */
+    if (fontface_count() > 0)
+        fontface_resolution(device_xdpi(), device_ydpi());
 }
 
 void gdos_fsm_init(void)
 {
     if (fontface_init() > 0)
-        fontface_resolution(screen_xdpi(), screen_ydpi());
+        fontface_resolution(device_xdpi(), device_ydpi());
 }
 
 int gdos_fsm_faces(void)

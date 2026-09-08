@@ -20,7 +20,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
-              fontface.c \
+              fontface.c printer.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -104,7 +104,7 @@ WAYLANDLIBS =
 WAYLANDONLYLIBS =
 endif
 
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/textblit.c emuvdi/bridge.c \
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/prndev.c emuvdi/textblit.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 
@@ -197,6 +197,7 @@ all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check gdos-check screen-check settings-check scrap-check icon-check \
+        print-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -435,6 +436,17 @@ $(BIN)/icontest: $(SRC)/icontest.c $(GEN)/rsc/window-icon.h
 icon-check: $(BIN)/icontest
 	./$(BIN)/icontest
 
+# What comes out of the printer, checked without one. Host built like the rest
+# of these and for the same kind of reason: what a PDF page holds is a run
+# length encoded bitmap, and an application inside the emulator has no way of
+# asking whether the bytes that came out are the bytes that went in.
+$(BIN)/printtest: $(SRC)/printtest.c $(OBJ)/printer.o $(OBJ)/settings.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+print-check: $(BIN)/printtest
+	./$(BIN)/printtest
+
 # The character set and the line endings, checked without an emulator. Host
 # built for the same reason as the rest of these: an emulated program can say
 # what it read back, but not whether the bytes in between were right, and it
@@ -453,7 +465,8 @@ scrap-check: $(BIN)/scraptest
 # settings.o comes along because hostfs.c asks whether it is to say which
 # directories were read, and that is a setting rather than a variable now.
 $(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(SRC)/emuvdi/hoststubs.c \
-                $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o
+                $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
+                $(OBJ)/printer.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
@@ -470,7 +483,8 @@ emuvdi-check: $(BIN)/vditest
 # Atari's to redistribute. The same samples are what the test inside the
 # emulator loads, which is why this is built before tests/ is run.
 $(BIN)/gdostest: $(SRC)/emuvdi/gdostest.c $(SRC)/emuvdi/hoststubs.c \
-                 $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o
+                 $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
+                 $(OBJ)/printer.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
@@ -536,7 +550,7 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
-       icon-check gdos-check
+       icon-check gdos-check print-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu

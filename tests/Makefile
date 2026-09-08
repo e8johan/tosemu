@@ -19,11 +19,11 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
-GEMTESTNAME=c-gem c-vdi c-gdos c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
+GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll
 
 # Where the sources are, found through the makefile that was read rather than
@@ -283,6 +283,23 @@ check: all
 	! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) -r out nogdos ASSIGN.SYS GDOS.SYS
+	# Printing, which is a second VDI device rather than a second VDI. The
+	# job goes to a file instead of to a queue, so nothing here wants CUPS,
+	# a printer or a daemon - what is being checked is the emulator. Three
+	# things: that drawing on the printer lands on a page and not on the
+	# screen, that the screen is exactly as it was when the printer has
+	# been drawn on, and that a document comes out as one job with all its
+	# pages in it.
+	#
+	# A4 at a hundred and fifty dots to the inch, because the page size the
+	# test expects has to be a page size somebody chose. Three hundred is
+	# what a printer would be asked for and would check nothing more at
+	# four times the area.
+	$(RM) job.pdf
+	TOSEMU_PRINT_FILE=job.pdf TOSEMU_PRINTER_PAPER=a4 TOSEMU_PRINTER_DPI=150 \
+	  $(TOSEMU) test-c-print > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out job.pdf
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a

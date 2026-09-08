@@ -102,6 +102,25 @@ static const struct {
     { "TOSEMU_SCRAP_IN",    "scrap",   "paste",       0 },
     { "TOSEMU_SCRAP_OUT",   "scrap",   "copy",        0 },
 
+    /*
+     * The printer, which is a CUPS queue and a sheet of paper.
+     *
+     * The paper is said here rather than asked of the queue, and that is what
+     * talking to CUPS through lp costs: the queue knows what is in its tray
+     * and there is no way to ask it from a command line without reading
+     * something written for a person. So this is what the sheet is, and it is
+     * also what CUPS is told, which is what keeps the two from disagreeing.
+     *
+     * `file` is not a lesser printer. It is how the page is looked at without
+     * printing it - by a test, on a machine with no queues, or by somebody who
+     * wants the PDF rather than the paper.
+     */
+    { "TOSEMU_PRINTER",         "printer", "destination", 0 },
+    { "TOSEMU_PRINTER_PAPER",   "printer", "paper",       0 },
+    { "TOSEMU_PRINTER_DPI",     "printer", "resolution",  0 },
+    { "TOSEMU_PRINT_FILE",      "printer", "file",        0 },
+    { "TOSEMU_PRINT_COMMAND",   "printer", "command",     0 },
+
     { "TOSEMU_AESD",        "session", "socket",      0 },
 
     { "TOSEMU_SCREENSHOT",  "debug",   "screenshot",  0 },

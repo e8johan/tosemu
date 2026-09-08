@@ -102,6 +102,20 @@ const char *tos_program_dir(void)
     return ".";
 }
 
+/* And what it is called, which the printer puts on the job in the queue. There
+ * is no program, so the emulator's own name is the true answer. */
+const char *tos_program_name(void)
+{
+    return "TOSEMU";
+}
+
+/*
+ * How much the emulator was asked to say about itself, which main.c owns and
+ * these tests do not link. Nothing, because a test's output is what it printed
+ * on purpose.
+ */
+int verbose;
+
 /*
  * Drawing an object the application draws itself, which means running the
  * emulated CPU. There is none here, so it says so and leaves the object as it

@@ -61,6 +61,7 @@
 
 #include "emuvdi.h"
 #include "gdos.h"
+#include "prndev.h"
 
 /* EmuTOS's dispatcher, vdi_main.c */
 void screen(void);
@@ -589,6 +590,8 @@ static int loaded_fonts_answered(int16_t *control, int16_t *intout)
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
+    int printing;
+
     CONTRL = control;
     INTIN = intin;
     PTSIN = ptsin;
@@ -599,18 +602,38 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
         return;
 
     /*
-     * The SpeedoGDOS calls first, then the ordinary text calls while an
-     * outline face is the one selected. Both answer 0 for anything that is not
-     * theirs, which is nearly everything, so the usual path is two comparisons
-     * and then EmuTOS.
+     * Whether this call is one addressed to the printer, and if it is, the VDI
+     * pointed at the page for as long as it takes. Everything below then goes
+     * on exactly as it does for the screen, which is the whole point: the same
+     * drawing, the same fonts, different memory.
      */
-    if (gdos_fsm_call(control, intin, ptsin, intout, ptsout))
-        return;
+    printing = prndev_bind(control);
 
-    if (gdos_fsm_text_call(control, intin, ptsin, intout, ptsout))
-        return;
+    if (!prndev_served(control, intin, intout, ptsout))
+    {
+        /*
+         * The SpeedoGDOS calls first, then the ordinary text calls while an
+         * outline face is the one selected. Both answer 0 for anything that is
+         * not theirs, which is nearly everything, so the usual path is two
+         * comparisons and then EmuTOS.
+         */
+        if (!gdos_fsm_call(control, intin, ptsin, intout, ptsout)
+            && !gdos_fsm_text_call(control, intin, ptsin, intout, ptsout))
+            screen();
+    }
 
-    screen();
+    if (printing)
+        prndev_unbind(control);
+}
+
+void emuvdi_printer_reset(void)
+{
+    prndev_reset();
+}
+
+void emuvdi_printer_forget(void)
+{
+    prndev_forget();
 }
 
 /*
