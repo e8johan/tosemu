@@ -516,6 +516,25 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
             exit(1);
         }
 
+        /*
+         * The windows the application has closed, which are still standing on
+         * the desktop on purpose.
+         *
+         * A GEM application closes a window and opens it again to redraw it,
+         * which on an ST is a strip of screen painted twice and here would be
+         * a window of the desktop's taken away and another put up in its
+         * place - see gfx_settle. So one is left for a moment, and this is
+         * where the moment is measured: a wait that sleeps past it gives up
+         * early instead, or a window closed by an application that then
+         * settles down would sit there until something else happened.
+         */
+        {
+            long due = gfx_settle();
+
+            if (due >= 0 && (left < 0 || due < left))
+                left = due;
+        }
+
         poll(fds, nfds, (left < 0) ? -1 : (int)left);
 
         if (wayland_slot >= 0 && (fds[wayland_slot].revents & POLLIN))

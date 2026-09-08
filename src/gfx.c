@@ -278,6 +278,39 @@ struct window {
      * the one in front or stops being it */
     char name[64];
 
+    /*
+     * The application has closed it, but it is still on the desktop.
+     *
+     * A GEM window costs nothing to close and open again, and applications use
+     * the pair the way they use anything else that redraws: Atari Works closes
+     * the cell entry bar over its spreadsheet and opens it again every time
+     * the state changes, going round its event loop in between. On an ST that
+     * is a strip of screen erased and painted; here it would be a window of
+     * the desktop's taken away and a new one put up in its place, which
+     * flashes, loses whatever the person had done with it and may land
+     * somewhere else - and a window that does that on every keystroke is one
+     * nobody can work in.
+     *
+     * So closing marks and does not destroy, and opening the same handle again
+     * takes the mark off - see gfx_settle, which is where a window that was
+     * really closed is taken away.
+     */
+    int closed;
+
+    /*
+     * And when the machine first stopped to wait with it closed, which is what
+     * the moment before taking it away is measured from.
+     *
+     * Not the moment it was closed, which is a different thing and the wrong
+     * one. An application that closes a window carries on working - Atari
+     * Works goes through its whole menu tree before it stops - and none of
+     * that reaches anybody, because nothing reaches the screen until the
+     * machine stops. Measured from the close, the wait would be over before
+     * the machine ever paused, and the window would go on the first pause
+     * after it however brief that turned out to be.
+     */
+    unsigned long long stopped_at;
+
     /* The compositor dismissed it, which only happens to menus */
     int gone;
 
@@ -3179,19 +3212,59 @@ int gfx_showing()
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
                      int16_t sw, int16_t sh, int own_frame)
 {
+    struct window *win;
+
     if (!gfx_showing() || handle < 1 || handle >= WINDOWS)
         return;
 
     if (sw <= 0 || sh <= 0)
         return;
 
-    gfx_window_close(handle);
+    win = &w.windows[handle];
 
-    if (window_create(&w.windows[handle], title, w.screen, x, y, sw, sh, 0,
-                      own_frame))
-        w.windows[handle].handle = handle;
+    /*
+     * The window this handle had, if it is still standing there closed.
+     *
+     * Opening it again is the application asking for the window back, and the
+     * one on the desktop is the one it means: same handle, same place in the
+     * stack, same corner the person dragged it to. Where it is on the emulated
+     * screen, what it is called and how large it is are all the application's
+     * to change, and are taken as said - only the frame is not, a window that
+     * draws its own having asked the desktop for none and being unable to
+     * change its mind without being made again.
+     */
+    if (win->used && win->closed && win->own_frame == own_frame)
+    {
+        win->closed = 0;
+        win->sx = x;
+        win->sy = y;
+
+        gfx_window_title(handle, title);
+
+        /* And no size has been said about this window since, so a configure
+         * repeating the one it opened at is news again */
+        win->told_sw = 0;
+        win->told_sh = 0;
+
+        if (sw == win->sw && sh == win->sh)
+        {
+            window_present(win);
+            return;
+        }
+
+        if (window_resize(win, sw, sh))
+        {
+            window_present(win);
+            return;
+        }
+    }
+
+    window_destroy(win);
+
+    if (window_create(win, title, w.screen, x, y, sw, sh, 0, own_frame))
+        win->handle = handle;
     else
-        window_destroy(&w.windows[handle]);
+        window_destroy(win);
 }
 
 /*
@@ -3440,10 +3513,81 @@ void gfx_window_title(int16_t handle, const char *title)
 
 void gfx_window_close(int16_t handle)
 {
+    if (handle < 1 || handle >= WINDOWS || !w.windows[handle].used)
+        return;
+
+    w.windows[handle].closed = 1;
+    w.windows[handle].stopped_at = 0;
+}
+
+void gfx_window_delete(int16_t handle)
+{
     if (handle < 1 || handle >= WINDOWS)
         return;
 
     window_destroy(&w.windows[handle]);
+}
+
+/*
+ * How long the machine has to stand still with a window closed before the
+ * window is taken away, in milliseconds.
+ *
+ * Long enough for an application that closes a window and opens it again to
+ * pause in between, which Atari Works does: it goes back to its event loop and
+ * rebuilds the entry bar over its spreadsheet on whatever it is told next, and
+ * that is a fifth of a second away when nothing else happens, because a fifth
+ * of a second is what its own timer is set to. Anything shorter leaves the
+ * flash in for anybody whose hands are still.
+ *
+ * Short enough that a window somebody has really finished with does not sit
+ * there afterwards - and mostly it never gets this far, because an application
+ * that has finished with a window deletes it, and that takes it away at once.
+ */
+#define STILL_CLOSED (400)
+
+long gfx_settle(void)
+{
+    unsigned long long now;
+    long soonest = -1;
+    int i;
+    int went = 0;
+
+    if (!gfx_showing())
+        return -1;
+
+    now = now_ns();
+
+    for (i = 1; i < WINDOWS; i++)
+    {
+        struct window *win = &w.windows[i];
+        long stopped_for;
+
+        if (!win->used || !win->closed)
+            continue;
+
+        /* The first time the machine has stopped since it was closed, which is
+         * when the waiting starts */
+        if (!win->stopped_at)
+            win->stopped_at = now;
+
+        stopped_for = (long)((now - win->stopped_at) / 1000000ull);
+
+        if (stopped_for >= STILL_CLOSED)
+        {
+            window_destroy(win);
+            went = 1;
+        }
+        else if (soonest < 0 || STILL_CLOSED - stopped_for < soonest)
+            soonest = STILL_CLOSED - stopped_for;
+    }
+
+    /* Said now rather than at the next flush. What comes after this is a wait
+     * that may last as long as the person leaves it, and a window taken away
+     * in a buffer nobody has posted is a window still on the desktop. */
+    if (went)
+        gfx_flush();
+
+    return soonest;
 }
 
 /*
@@ -4071,6 +4215,12 @@ static void window_present(struct window *win)
     if (!win->used || !win->configured || !win->pixels)
         return;
 
+    /* A window the application has closed goes on showing what it showed when
+     * it was closed. The AES no longer draws in that rectangle of the screen
+     * and whatever appears there now belongs to something else. */
+    if (win->closed)
+        return;
+
     if (win->dragging)
         window_outline(win);
     else
@@ -4183,6 +4333,16 @@ void gfx_window_title(int16_t handle, const char *title)
 void gfx_window_close(int16_t handle)
 {
     (void)handle;
+}
+
+void gfx_window_delete(int16_t handle)
+{
+    (void)handle;
+}
+
+long gfx_settle(void)
+{
+    return -1;
 }
 
 void gfx_window_limits(int16_t handle, int16_t min_w, int16_t min_h,
