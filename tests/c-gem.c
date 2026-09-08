@@ -268,6 +268,34 @@ int main(int argc, char **argv)
         check(intout[1], 20, "wind_get gives back where it was put");
         check(intout[3], 200, "and how wide it was made");
 
+        /*
+         * Which window is on top. That is a question about the screen rather
+         * than about a window, and the AES has never looked at the handle it
+         * was asked with - see wm_get in EmuTOS's gemwmlib.c, where WF_TOP is
+         * named as one of the fields that needs no valid one.
+         *
+         * So it is asked here twice, the second time with a number that is not
+         * a window at all, because that is what applications do: one with a
+         * handle to hand and no reason to think about it passes whatever it
+         * has. GenST passes the handle of its workstation, and an AES that
+         * refuses leaves it reading an intout nobody wrote - it decides its
+         * window is not in front and ignores everything picked from its menus.
+         */
+        intin[0] = handle; intin[1] = 10;   /* WF_TOP */
+        intout[1] = -1;
+        check(call_aes(104, 6, 5, 0, 0), 1, "wind_get says which window is on top");
+        check(intout[1], handle, "and it is the one that was just opened");
+
+        intin[0] = handle + 1; intin[1] = 11;   /* WF_FIRSTXYWH */
+        check(call_aes(104, 6, 5, 0, 0), 0,
+              "a handle that is not a window is refused what a window has");
+
+        intin[0] = handle + 1; intin[1] = 10;   /* WF_TOP */
+        intout[1] = -1;
+        check(call_aes(104, 6, 5, 0, 0), 1,
+              "and answered anyway about which window is on top");
+        check(intout[1], handle, "with the one that is on top");
+
         /* The part to draw in is smaller, by the title bar */
         intin[0] = handle; intin[1] = 4;    /* WF_WORKXYWH */
         call_aes(104, 6, 5, 0, 0);

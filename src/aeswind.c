@@ -650,6 +650,32 @@ uint32_t AES_wind_get()
 
     desk_area();
 
+    /*
+     * The two that are about the screen rather than about a window, and are
+     * answered whatever handle they were asked with.
+     *
+     * Which window is on top and where the AES keeps its buffer are the same
+     * question wherever it is asked from, so the AES has never looked at the
+     * handle for either - see wm_get in EmuTOS's gemwmlib.c, where they are
+     * named as the fields that do not need a valid one. An application that
+     * has a number to hand and no reason to think about it passes whatever it
+     * has: GenST asks which window is on top and passes the handle of its
+     * workstation, and being refused it reads an intout nobody wrote, decides
+     * its window is not in front, and ignores everything picked from its menus.
+     */
+    switch (what)
+    {
+        case WF_SCREEN:
+            /* Where the AES keeps its own buffer, which it does not have one
+             * of here. Answering with nothing is how an application is told to
+             * do without it. */
+            answer_rect(0, 0, 0, 0);
+            return AES_E_OK;
+        case WF_TOP:
+            aes_set_intout(1, topped);
+            return AES_E_OK;
+    }
+
     /* The desktop is a window like any other as far as this is concerned, and
      * is what an application asks about to find out how large the screen is */
     if (handle == 0)
@@ -660,15 +686,6 @@ uint32_t AES_wind_get()
             case WF_CURRXYWH:
             case WF_FULLXYWH:
                 answer_rect(desk_x, desk_y, desk_w, desk_h);
-                return AES_E_OK;
-            case WF_SCREEN:
-                /* Where the AES keeps its own buffer, which it does not have
-                 * one of here. Answering with nothing is how an application is
-                 * told to do without it. */
-                answer_rect(0, 0, 0, 0);
-                return AES_E_OK;
-            case WF_TOP:
-                aes_set_intout(1, topped);
                 return AES_E_OK;
         }
     }
@@ -725,10 +742,6 @@ uint32_t AES_wind_get()
 
         case WF_NEXTXYWH:
             answer_rect(0, 0, 0, 0);
-            break;
-
-        case WF_TOP:
-            aes_set_intout(1, topped);
             break;
 
         case WF_HSLIDE:
