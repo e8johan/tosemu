@@ -114,6 +114,16 @@ wants to be alone.
 
 **Never kill a running `tosaesd`.** It is probably the session someone is using.
 
+**A test run must not be able to print.** Without a word said the printer is
+whichever queue CUPS calls the default one, so a test that opens a workstation
+on device 21 — or one that means to and is run without its settings — sends a
+page to somebody's printer. `$(NO_PRINTER)` in `tests/Makefile` points the
+command at `/bin/true`, and it is folded into `$(TOSEMU)` the way
+`$(NO_DAEMON)` is. The test that means to print says `TOSEMU_PRINT_FILE`
+instead, which wins over a command whichever order they are said in. Keep it
+that way, and remember that wasting somebody's paper is the one thing here
+that cannot be undone by running the suite again.
+
 **A settings file in someone's home directory decides things the tests
 assert**, the same way a live daemon does. `~/.tosemu` is read unless
 `--no-config` says otherwise, which is why `$(TOSEMU)` in `tests/Makefile`
