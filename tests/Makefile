@@ -70,10 +70,22 @@ NO_DAEMON=TOSEMU_AESD=$(CURDIR)/nosuch.socket
 # numbers rather than told to go and find them.
 NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
 
+# And a printer that cannot print, for the same reason as the daemon: a run of
+# this suite must not be able to put ink on somebody's paper. Without a word
+# said the printer is whichever queue CUPS calls the default one, so a test
+# that opened a workstation on device 21 by accident - or one that meant to and
+# was run without its settings - would send a page to it.
+#
+# It stops the job at the last step rather than earlier on, so everything up to
+# handing the file over is exercised in every run. The test that means to print
+# says where the job is to be written instead, and a file wins over a command
+# whichever order they are said in.
+NO_PRINTER=TOSEMU_PRINT_COMMAND=/bin/true
+
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) ../../bin/tosemu --no-config
+TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER) ../../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
