@@ -319,3 +319,63 @@
   from would have shown for it, which is the right answer for a program that
   never said what its own icon was. What a file would add is a name and a
   picture belonging to the program rather than to the emulator running it.
+
+- The printer prints, and five things about it are known to be short of what a
+  driver of the period did.
+
+  Bitmap fonts are the screen's. `ASSIGN.SYS` has a section per device and the
+  printer sections are the ones holding the printer fonts, which is exactly
+  what Atari sold them for: a ten point .FNT is thirteen scan lines tall
+  because a screen is about seventy two dots to the inch, and the same file on
+  a three hundred dot page is type a person cannot read. gdos_assign_init takes
+  the device number already and is called once, for the screen; a printer
+  wants its own list, its own font chain and its own scratch buffer, and
+  vst_load_fonts wants to answer for whichever device the handle names. The
+  outline faces need none of this - a size in points becomes a size in pixels
+  through the device's resolution, which prndev.c already says - so a document
+  set in one of those prints correctly today and one set in a .FNT does not.
+
+  v_bit_image and vq_scan are not answered. Both belong to a driver that could
+  only hold a band of a page at a time: vq_scan says how tall a band is so that
+  an application can draw the page in strips, and v_bit_image prints a picture
+  straight out of a file. This driver holds the page, so the first has nothing
+  interesting to say and the second is a file format nobody has written the
+  reader for. An application that calls vq_scan gets no answer rather than a
+  wrong one, which is a call it has to be watched making before it is worth
+  guessing at.
+
+  v_output_window prints the sheet rather than the rectangle it was given, for
+  the same reason: the rectangle was how a program handed a band driver one
+  band, and there are no bands here.
+
+  The unprintable margins are reported as nothing, INQ_TAB 40 to 43 being
+  nought. Every printer has them and none of them has the same ones, and there
+  is no way to ask a queue what its are through lp - which is the price of not
+  linking libcups. What it costs is a program that lays a page out inside the
+  margins it was told about: told none, it uses the whole sheet and the printer
+  clips what it cannot reach. Asking properly means libcups and
+  cupsGetDestMediaDefault, which is a build dependency for one number.
+
+  And a paper size is a setting rather than what is in the tray, for the same
+  reason and with the same answer.
+
+- Drawing outside the device is only stopped on the printer. A workstation
+  opens with clipping off, and with it off the VDI does not check where it is
+  drawing: a row below the last one is written past the end of the memory the
+  device has, which is the screen surface or the page. The printer's
+  workstation is opened with clipping on because a page is as large as a
+  setting on this machine says and no program can have been written for it -
+  see prndev.c. The screen has the same hole and nothing has fallen down it,
+  every program having been told the size of the screen it is drawing on. The
+  honest fix is for the surfaces to have a row of slack at the end so that an
+  overrun lands somewhere harmless, rather than for the VDI to be made to check
+  on every call what GEM said it would not.
+
+- There is no PRN:. A program that prints by writing characters to the printer
+  port rather than by drawing on a workstation reaches nothing - the BIOS
+  device handle -3 above, and Cprnout and Bconout(0) with it. That is a
+  different kind of printing from the one that works now: it is a byte stream
+  of somebody's escape codes, so making it print means either deciding which
+  printer it is pretending to be and rendering that, or handing the bytes to
+  CUPS as text and letting the queue make what it can of them. The second is
+  cheap and is probably what a program that does this wants.

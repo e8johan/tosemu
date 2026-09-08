@@ -337,6 +337,11 @@ void gem_forget(void)
     gfx_forget();
     aes_client_forget();
 
+    /* And the printer, which is the same argument again: a half drawn page and
+     * a half written job belong to the parent, and finishing either would put
+     * a second copy of somebody else's document in the queue */
+    emuvdi_printer_forget();
+
     if (screen)
         surface_free(screen);
     screen = 0;

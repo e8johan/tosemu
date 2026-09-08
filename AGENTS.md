@@ -18,6 +18,7 @@ runs through the whole program and most of the interesting bugs live on it.
       vdi.c                      the VDI trap, which hands arrays to emuvdi
       emuvdi/                    EmuTOS's VDI and parts of its AES, hosted
       gfx.c surface.c            the screen as memory, and as windows
+      printer.c                  a sheet of paper, and CUPS at the end of it
       screen.c                   which screen the machine has
       settings.c                 everything tosemu can be told, and where from
       aesd.c aesclient.c         the daemon emulators share, and the client
@@ -150,7 +151,10 @@ and diffs against `src/emuvdi/vditest.expected`; `bin/gdostest`
 (`make gdos-check`) reads font files it writes itself, in both byte orders;
 `bin/screentest` (`make screen-check`) checks the display arithmetic;
 `bin/settingstest` (`make settings-check`) checks the reading of a settings
-file. The stubs that stand in for the emulator in the first two are shared, in
+file; `bin/printtest` (`make print-check`) draws a page and decodes the PDF
+back, which is the only place the run length encoder is checked — a dropped
+byte there still leaves a file that looks like a PDF and has the right number
+of pages in it. The stubs that stand in for the emulator in the first two are shared, in
 `src/emuvdi/hoststubs.c`. These are for
 the things an application cannot reach — what a compositor answers is not
 something a test can arrange, and neither is whether a remark in a file was

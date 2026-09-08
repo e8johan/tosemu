@@ -319,6 +319,21 @@ void emuvdi_objc_draw(void *tree, int16_t start, int16_t depth,
 int emuvdi_implements(int16_t opcode);
 
 /*
+ * Every printer workstation forgotten, and whatever was being printed through
+ * one sent on its way. For the machine going away with one still open, which
+ * is a program that printed and did not close what it printed through - see
+ * emuvdi/prndev.h.
+ */
+void emuvdi_printer_reset(void);
+
+/*
+ * And the same for a child of fork, which has a copy of the parent's page and
+ * the parent's half written job and owns neither: everything forgotten and
+ * nothing sent. See gem_forget.
+ */
+void emuvdi_printer_forget(void);
+
+/*
  * Whether there are fonts on the disk for this machine, which is the whole of
  * what vq_gdos has to answer.
  *

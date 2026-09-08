@@ -343,6 +343,14 @@ void vdi_reset()
 {
     /* The screen belongs to GEM rather than to either half of it, and
      * gem_reset lets it go */
+
+    /*
+     * The printer does not, though. A page being printed is not part of the
+     * machine and does not go with it: an application that drew five pages and
+     * quit without closing its workstation meant to print five pages, and the
+     * job is sent rather than dropped on the floor.
+     */
+    emuvdi_printer_reset();
 }
 
 void vdi_trap()

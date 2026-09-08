@@ -105,6 +105,7 @@ What is here
                  that answer straight to a Vwk *
     hostvars.c   the globals the VDI draws through, which EmuTOS keeps in
                  assembly because line-A needs them at fixed offsets
+    prndev.c     the printer, as a second device - see below
     fonts.c      the three ST system fonts, taken directly rather than through
                  EmuTOS's bios/font.c, which asks country.c which fonts a
                  machine sold in a given country should have
@@ -221,6 +222,44 @@ bitmaps a call names are only two words apart, the source read swallows the
 destination address as its high half. Four reads now take thirty two bits,
 which is what the caller wrote - the AES stores them through ULONG_AT, which
 is thirty two bits wide, and so was already doing it that way.
+
+
+A second device
+---------------
+
+EmuTOS's VDI has one device. There is one physical workstation, phys_work, and
+one set of variables saying where to draw and how large the device is: v_bas_ad
+and V_REZ_HZ and their relations describe the surface, DEV_TAB, SIZ_TAB and
+INQ_TAB describe what the device reports. That is not a limitation of the port
+- it is what a VDI in a ROM was, there being one screen in the machine.
+
+The printer is a second device anyway, and prndev.c is the whole of how. Two
+things make it work and both are worth knowing before touching it.
+
+A printer workstation is one of EmuTOS's virtual workstations. vdi_v_opnwk
+reinitialises the VDI and throws away every virtual workstation open against
+the physical one, so an application's v_opnwk for the printer must never reach
+it - the AES's own workstation would go with it, in the middle of a program.
+vdi_v_opnvwk does everything a printer workstation wants: a handle of its own,
+the device's tables in work_out, attributes taken from work_in. So opcode 1
+with a printer device in intin[0] is served as opcode 100 and the application
+cannot tell.
+
+And a call on a printer handle borrows the variables. bind saves what the
+screen had, points them at the page and puts the printer's tables in; unbind
+puts all of it back, CUR_WORK included. Everything between the two - EmuTOS's
+dispatcher, the fonts, the raster operations - runs exactly as it does for the
+screen and knows nothing about any of this. A borrow that is not given back
+leaves an application drawing its windows onto a sheet of paper, which from
+inside the application looks like the screen having stopped; tests/c-print.c
+checks for it after every kind of printer call it makes.
+
+The printer has as many colours as the screen, and that is the one place the
+two devices are not independent. MAP_COL maps a colour index onto a pen and is
+built from how many colours there are, and the palette maps a pen onto a
+colour; both are the machine's rather than a device's. Giving the printer its
+own count means giving it its own copy of each, and what that would buy is a
+colour printer on a monochrome machine.
 
 
 Things that bite

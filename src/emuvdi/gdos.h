@@ -138,6 +138,19 @@ WORD gdos_install(Vwk *vwk);
  * screen has. Call once, after the surface is settled. */
 void gdos_fsm_init(void);
 
+/*
+ * And says that what is being drawn on is not the screen, which is what makes
+ * a twelve point line of text twelve points tall on a page rather than the
+ * eighth of an inch a screen font would make of it. Nought and nought says the
+ * screen again.
+ *
+ * A device's resolution is not something that can be read off its bitmap: a
+ * page is the same shape at three hundred dots to the inch as at six hundred,
+ * so the device has to say. A screen can be guessed at because there were only
+ * ever a few of them.
+ */
+void gdos_fsm_device_dpi(int xdpi, int ydpi);
+
 /* How many faces it offers, which is what says whether vq_gdos may answer
  * SpeedoGDOS rather than FontGDOS */
 int gdos_fsm_faces(void);
