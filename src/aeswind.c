@@ -628,7 +628,10 @@ uint32_t AES_wind_delete()
     if (topped == aes_intin(0))
         topped = 0;
 
-    gfx_window_close(aes_intin(0));
+    /* And off the desktop now rather than in its own time. Giving the handle
+     * back is an application saying it has finished with the window, so there
+     * is nothing left that it could open again. */
+    gfx_window_delete(aes_intin(0));
 
     return AES_E_OK;
 }
@@ -1023,7 +1026,7 @@ uint32_t AES_wind_new()
             continue;
 
         if (win->open)
-            gfx_window_close(handle);
+            gfx_window_delete(handle);
 
         memset(win, 0, sizeof *win);
     }

@@ -76,7 +76,38 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
 void gfx_window_move(int16_t handle, int16_t x, int16_t y,
                      int16_t w, int16_t h);
 void gfx_window_title(int16_t handle, const char *title);
+
+/*
+ * Closing a window and finishing with one, which GEM keeps apart and so does
+ * this.
+ *
+ * A closed window is not taken off the desktop straight away. An application
+ * that closes one and opens it again is redrawing it rather than taking it
+ * away - on an ST that is a strip of screen painted twice, and it costs so
+ * little that applications do it whenever anything about the window changes.
+ * Atari Works closes and opens the entry bar over its spreadsheet on every
+ * change of state, and a menu bar swapped for another goes the same way. Doing
+ * as it says would flash a window of the desktop's off and on again several
+ * times a second.
+ *
+ * Deleting one is different: the handle is given back, and an application that
+ * has finished with a window says so this way. That takes the window away at
+ * once, which is what makes the delay above cost nothing where it would show -
+ * closing a window is nearly always followed by deleting it.
+ */
 void gfx_window_close(int16_t handle);
+void gfx_window_delete(int16_t handle);
+
+/*
+ * The machine is about to stop and wait, so any window that was really closed
+ * goes now.
+ *
+ * What comes back is how many milliseconds until the next one is due to go, or
+ * -1 when none is waiting. A wait that would sleep longer than that has to
+ * give up early and ask again, or a window closed just before an application
+ * settled down would stay on the desktop until something else happened.
+ */
+long gfx_settle(void);
 
 /*
  * How large the desktop may make a window, in the screen's own pixels. Until
