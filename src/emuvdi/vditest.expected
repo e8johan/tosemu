@@ -251,6 +251,15 @@ the console, one character in each cell of the top row
 23 |                                                                |
    +----------------------------------------------------------------+
 
+read back whole
+   "ABCDEFGH" (8 characters)
+
+read back from the middle of the line
+   "CDE" (3 characters)
+
+read back to the bottom, the blank rows trimmed away
+   "ABCDEFGH\r\n\r\n" (12 characters)
+
 the console, ESC Y to the middle and ESC p for reverse video
    +----------------------------------------------------------------+
  0 |                                                                |
@@ -306,3 +315,9 @@ the console, a fourth line on a screen three rows tall
 22 |  MM      MMMM    MMMMM  MM                                     |
 23 |                                                                |
    +----------------------------------------------------------------+
+
+read back after the scroll
+   "two\r\nthree\r\nfour" (16 characters)
+
+read back from a drag made bottom to top
+   "two\r\nthree\r\nfour" (16 characters)

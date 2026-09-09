@@ -51,6 +51,8 @@
 #include "config.h"
 #include "gem_p.h"
 #include "gfx.h"
+#include "scrap.h"
+#include "scraptext.h"
 #include "settings.h"
 #include "surface.h"
 #include "tossystem.h"
@@ -90,7 +92,40 @@ static struct {
     int have;                   /* one key read ahead - see terminal_fill */
     unsigned char ahead;
     struct termios was;
+
+    /* Keys still to come out of something pasted into the console window */
+    char *pasted;
+    int pasted_length;
+    int pasted_at;
 } c;
+
+/*
+ * What has been selected in the console window, to be copied out of it.
+ *
+ * A console window is not a GEM window and the application knows nothing about
+ * it, so the pointer in it is not the application's business either - which
+ * leaves it free to mean what it means in a terminal. Dragging selects, letting
+ * go copies, and the middle button pastes.
+ *
+ * Letting go is what copies, rather than a key, because every key belongs to
+ * the program: it is sitting in a console read waiting for one, and any that
+ * this took would be one it never saw. A terminal can afford Ctrl-Shift-C
+ * because the shell underneath it is not listening for Ctrl-Shift-C.
+ *
+ * The selection is shown by turning the cells inside out, which is how the
+ * cursor is shown and for the same reason: doing it twice puts back what was
+ * there, so nothing has to be remembered.
+ */
+static struct {
+    int16_t px, py;             /* where the pointer was, in console pixels */
+
+    int dragging;
+    int moved;                  /* and it has been somewhere else since */
+    int shown;                  /* the cells are currently inside out */
+
+    int16_t ax, ay;             /* where the drag started, in cells */
+    int16_t bx, by;             /* and where it has reached */
+} sel;
 
 /* Milliseconds since some fixed point, which is all staleness needs */
 static long now_ms(void)
@@ -332,16 +367,349 @@ static void screen_show(int wanted)
     c.stale = 0;
 }
 
-static void screen_out(int ch)
+/*
+ * The same, for something that changed what is on the console without the
+ * program having written anything.
+ *
+ * A selection appearing and disappearing as the pointer moves is the one thing
+ * here that has to be on the screen at once rather than when the next character
+ * comes out - there may not be a next character, the program being sat in a
+ * read - and it is not worth a screenshot, nobody having asked for a picture of
+ * a half finished drag.
+ */
+static void screen_present(void)
 {
-    /* Borrowed and given back, the way a printer workstation borrows it - see
-     * emuvdi/prndev.c. Everything the VDI draws goes to whatever was selected
-     * last, and the application is entitled to go on drawing where it was */
+    if (c.windowed)
+        gfx_present();
+}
+
+/* Selecting, copying and pasting *******************************************/
+
+/*
+ * Borrowing the console's surface for a moment.
+ *
+ * Everything the VDI draws goes to whatever was selected last, so anything that
+ * touches the console has to say so and put back what it found - the way a
+ * printer workstation does, see emuvdi/prndev.c. The application is entitled to
+ * go on drawing where it was.
+ */
+static struct surface *console_borrow(void)
+{
     struct surface *was = surface_selected();
 
     surface_select(c.shows);
-    emuvdi_console_out(ch);
+
+    return was;
+}
+
+static void console_return(struct surface *was)
+{
     surface_select(was ? was : gem_screen_surface());
+}
+
+/* What is on the console now, so that a place the pointer was can be turned
+ * into a place in the text */
+static void console_cells(int16_t *cols, int16_t *rows,
+                          int16_t *width, int16_t *height)
+{
+    struct surface *was = console_borrow();
+
+    emuvdi_console_cells(cols, rows, width, height);
+
+    console_return(was);
+}
+
+/*
+ * The selected cells, turned inside out or put back.
+ *
+ * The same operation both ways round, which is what makes it safe: there is no
+ * copy of what was underneath to get out of step with what is drawn. What it
+ * does mean is that nothing may draw over those cells while they are inverted,
+ * which is why writing to the console takes the selection away first.
+ */
+static void selection_paint(void)
+{
+    struct surface *was;
+    int16_t cols, rows, cw, ch;
+    int16_t ax = sel.ax, ay = sel.ay, bx = sel.bx, by = sel.by;
+    int16_t y;
+
+    if (!c.shows)
+        return;
+
+    was = console_borrow();
+
+    emuvdi_console_cells(&cols, &rows, &cw, &ch);
+
+    /* Reading order, whichever end the drag started at */
+    if (ay > by || (ay == by && ax > bx))
+    {
+        int16_t t;
+
+        t = ax; ax = bx; bx = t;
+        t = ay; ay = by; by = t;
+    }
+
+    for (y = ay; y <= by && y < rows; y++)
+    {
+        int16_t from = (y == ay) ? ax : 0;
+        int16_t to = (y == by) ? bx : (int16_t)(cols - 1);
+        int16_t x;
+
+        for (x = from; x <= to && x < cols; x++)
+            emuvdi_console_invert(x, y);
+    }
+
+    console_return(was);
+}
+
+static void screen_present(void);
+
+/* Taking the selection away, which is what anything that changes the console
+ * has to do before it changes it */
+static void selection_clear(void)
+{
+    if (!sel.shown)
+        return;
+
+    selection_paint();
+    sel.shown = 0;
+
+    screen_present();
+}
+
+/*
+ * What was selected, on the desktop's clipboard.
+ *
+ * Straight to the desktop rather than through the scrap directory: this is not
+ * a GEM cut - no application made it and none knows it happened - so there is
+ * no SCRAP file for one to have written and nothing for another GEM program to
+ * find. What a person selected in a console window is for the desktop.
+ */
+static void selection_copy(void)
+{
+    struct surface *was;
+    char atari[4096];
+    char *utf8;
+    size_t utf8_length;
+    int length;
+
+    if (!c.shows)
+        return;
+
+    was = console_borrow();
+    length = emuvdi_console_text(sel.ax, sel.ay, sel.bx, sel.by,
+                                 atari, (int)sizeof atari);
+    console_return(was);
+
+    if (length <= 0)
+        return;
+
+    utf8 = scrap_text_to_utf8(atari, (size_t)length, &utf8_length);
+    if (!utf8)
+        return;
+
+    scrap_desktop_give_text(utf8, utf8_length);
+
+    free(utf8);
+}
+
+/*
+ * And the other way: what the desktop is offering, as keys.
+ *
+ * Keys rather than characters, because a console read is a read of the
+ * keyboard - so a paste has to arrive the way typing does, one key at a time
+ * through whatever the program is using to ask for them. Which also means a
+ * program that is not reading the keyboard gets nothing until it does, exactly
+ * as it would if somebody typed while it was busy.
+ */
+static void selection_paste(void)
+{
+    char *utf8;
+    char *text;
+    size_t utf8_length, length;
+
+    utf8 = scrap_desktop_text(&utf8_length);
+    if (!utf8)
+        return;
+
+    text = scrap_text_from_utf8(utf8, utf8_length, &length);
+    free(utf8);
+
+    if (!text)
+        return;
+
+    if (length == 0)
+    {
+        free(text);
+        return;
+    }
+
+    free(c.pasted);
+
+    c.pasted = text;
+    c.pasted_length = (int)length;
+    c.pasted_at = 0;
+}
+
+/* A key out of what was pasted, or 0 when there is none left */
+static uint32_t pasted_key(void)
+{
+    unsigned char ch;
+
+    while (c.pasted && c.pasted_at < c.pasted_length)
+    {
+        ch = (unsigned char)c.pasted[c.pasted_at++];
+
+        /*
+         * A line ending is one key. An ST spells it CR LF, which is what
+         * scraptext hands back, and what a person pressing Return produces is
+         * the CR - so the LF after it is dropped rather than delivered as a
+         * character nobody typed.
+         */
+        if (ch == '\n')
+            continue;
+
+        /* Return carries the scan code a program looking for it expects; the
+         * rest are characters, which is all a clipboard has */
+        if (ch == '\r')
+            return (0x1cu << 16) | '\r';
+
+        return ch;
+    }
+
+    free(c.pasted);
+    c.pasted = 0;
+    c.pasted_length = 0;
+    c.pasted_at = 0;
+
+    return 0;
+}
+
+void host_console_motion(int16_t x, int16_t y)
+{
+    sel.px = x;
+    sel.py = y;
+
+    if (!sel.dragging)
+        return;
+
+    {
+        int16_t cols, rows, cw, ch;
+        int16_t cx, cy;
+
+        console_cells(&cols, &rows, &cw, &ch);
+
+        if (cw <= 0 || ch <= 0)
+            return;
+
+        cx = (int16_t)(x / cw);
+        cy = (int16_t)(y / ch);
+
+        if (cx < 0) cx = 0;
+        if (cy < 0) cy = 0;
+        if (cx >= cols) cx = (int16_t)(cols - 1);
+        if (cy >= rows) cy = (int16_t)(rows - 1);
+
+        if (cx == sel.bx && cy == sel.by)
+            return;
+
+        /* Off and on again rather than worked out as a difference: the shape
+         * of a selection changes wholesale when the drag crosses a line */
+        if (sel.shown)
+            selection_paint();
+
+        sel.bx = cx;
+        sel.by = cy;
+        sel.moved = 1;
+
+        selection_paint();
+        sel.shown = 1;
+
+        screen_present();
+    }
+}
+
+void host_console_button(int16_t button, int down)
+{
+    int16_t cols, rows, cw, ch;
+
+    if (!c.shows)
+        return;
+
+    /* The middle one pastes, the way it does in a terminal, and does it on the
+     * press because that is when the person did it */
+    if (button == 3)
+    {
+        if (down)
+            selection_paste();
+
+        return;
+    }
+
+    /* And the right one takes a selection away, there being nothing else for
+     * it to mean here */
+    if (button == 2)
+    {
+        if (down)
+            selection_clear();
+
+        return;
+    }
+
+    console_cells(&cols, &rows, &cw, &ch);
+
+    if (cw <= 0 || ch <= 0)
+        return;
+
+    if (down)
+    {
+        selection_clear();
+
+        sel.ax = sel.bx = (int16_t)(sel.px / cw);
+        sel.ay = sel.by = (int16_t)(sel.py / ch);
+
+        if (sel.ax >= cols) sel.ax = sel.bx = (int16_t)(cols - 1);
+        if (sel.ay >= rows) sel.ay = sel.by = (int16_t)(rows - 1);
+
+        sel.dragging = 1;
+        sel.moved = 0;
+
+        return;
+    }
+
+    sel.dragging = 0;
+
+    /*
+     * A press that never went anywhere is a click rather than a selection, and
+     * a click means "nothing is selected" - copying the one character under the
+     * pointer would put something on the clipboard that nobody asked for.
+     */
+    if (!sel.moved)
+    {
+        selection_clear();
+        return;
+    }
+
+    selection_copy();
+}
+
+/* What a console is for, still ***********************************************/
+
+static void screen_out(int ch)
+{
+    struct surface *was;
+
+    /*
+     * Whatever was selected stops being selected the moment something is
+     * written, because the selection is shown by turning cells inside out and
+     * a cell drawn over while it is inverted can never be put back.
+     */
+    selection_clear();
+
+    was = console_borrow();
+    emuvdi_console_out(ch);
+    console_return(was);
 
     c.stale = 1;
 
@@ -473,8 +841,15 @@ static uint32_t screen_key(int wait)
     for (;;)
     {
         uint16_t key;
+        uint32_t from_paste;
         struct pollfd waiting;
         int fd;
+
+        /* What was pasted comes first and comes before anything typed, being
+         * already in hand */
+        from_paste = pasted_key();
+        if (from_paste)
+            return from_paste;
 
         /* What is on the console before a key is asked for, so that a prompt
          * is on the screen before anybody is expected to answer it */
@@ -571,6 +946,10 @@ int console_ready(void)
         screen_show(0);
 
     gfx_dispatch_ready();
+
+    /* Something pasted is a key waiting as much as one being held down is */
+    if (c.pasted && c.pasted_at < c.pasted_length)
+        return 1;
 
     return gfx_key_ready();
 }
@@ -690,6 +1069,11 @@ void console_settle(void)
      * goes back to the console carries on where it left off - which is what an
      * ST did, the text being on a screen nobody had erased.
      */
+    /* The selection with it. It is shown by turning cells inside out, and one
+     * left that way would be waiting to be found the next time the console
+     * comes back - inverted, and with nothing left that knows why. */
+    selection_clear();
+
     if (c.windowed)
         gfx_console_close();
 
@@ -720,6 +1104,13 @@ void console_forget(void)
     c.decided = 0;
     c.on_screen = 0;
 
+    free(c.pasted);
+    c.pasted = 0;
+    c.pasted_length = 0;
+    c.pasted_at = 0;
+
+    memset(&sel, 0, sizeof sel);
+
     /*
      * The terminal is not forgotten with the rest. It belongs to the process
      * rather than to the program, and this process shares it with the one that
@@ -738,5 +1129,8 @@ void console_close(void)
     if (c.shows)
         surface_free(c.shows);
 
+    free(c.pasted);
+
     memset(&c, 0, sizeof c);
+    memset(&sel, 0, sizeof sel);
 }

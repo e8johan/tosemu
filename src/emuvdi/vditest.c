@@ -173,6 +173,7 @@ static void workstation_init(void)
 /* The console: bios/vt52.c out of the submodule, drawing through conout.c */
 void vt52_init(void);
 void cputc(WORD ch);
+int host_console_text(int ax, int ay, int bx, int by, char *out, int size);
 
 static void cputs(const char *text)
 {
@@ -180,6 +181,35 @@ static void cputs(const char *text)
 
     for (i = 0; text[i]; i++)
         cputc((unsigned char)text[i]);
+}
+
+/*
+ * What the console says between two cells, which is the copy of the characters
+ * conout.c keeps beside the pixels rather than anything read back off them.
+ *
+ * Printed beside the picture of the same screen on purpose: the two are made by
+ * different code from the same writes, so one of them going wrong shows up as
+ * the pair disagreeing.
+ */
+static void showtext(const char *what, int ax, int ay, int bx, int by)
+{
+    char text[256];
+    int n = host_console_text(ax, ay, bx, by, text, (int)sizeof text);
+    int i;
+
+    printf("\n%s\n   \"", what);
+
+    for (i = 0; i < n; i++)
+    {
+        if (text[i] == '\r')
+            printf("\\r");
+        else if (text[i] == '\n')
+            printf("\\n");
+        else
+            putchar(text[i]);
+    }
+
+    printf("\" (%d characters)\n", n);
 }
 
 /* v_gtext as an application makes it: the string in intin, the position in
@@ -339,6 +369,17 @@ int main(void)
     cputs("ABCDEFGH");
     show("the console, one character in each cell of the top row");
 
+    /*
+     * And the same screen read back as text, which is the copy of the
+     * characters kept beside the pixels. It is what makes the console window's
+     * text selectable, and there is no other way to know what a cell says: a
+     * cell holding an A is eight by eight bits that happen to look like one.
+     */
+    showtext("read back whole", 0, 0, 7, 0);
+    showtext("read back from the middle of the line", 2, 0, 4, 0);
+    showtext("read back to the bottom, the blank rows trimmed away",
+             0, 0, 7, 2);
+
     memset(surface, 0, sizeof surface);
     vt52_init();
     cputs("\033Y!$Mid\033pRev");
@@ -348,6 +389,14 @@ int main(void)
     vt52_init();
     cputs("one\r\ntwo\r\nthree\r\nfour");
     show("the console, a fourth line on a screen three rows tall");
+
+    /* Which the characters had to scroll for as well: read back as it stood
+     * before the screen moved, the first line would still be "one" */
+    showtext("read back after the scroll", 0, 0, 7, 2);
+
+    /* And the same range named the other way round, which is a drag made
+     * upwards - what comes back is the text, not the text backwards */
+    showtext("read back from a drag made bottom to top", 7, 2, 0, 0);
 
     return 0;
 }

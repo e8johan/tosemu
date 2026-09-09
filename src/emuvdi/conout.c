@@ -51,6 +51,7 @@
 #include "lineavars.h"
 #include "conout.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -102,6 +103,155 @@ UBYTE conterm = 0x07;
  * console.c, which is the only reader.
  */
 ULONG host_console_written;
+
+/*
+ * What is on the console, a character to a cell.
+ *
+ * Everything below draws pixels, and pixels are not something the text can be
+ * got back out of: a cell holding an A is eight by sixteen bits that happen to
+ * look like one, and working out which character that was would mean comparing
+ * it against every glyph in the font. So the characters are kept beside them as
+ * they are drawn.
+ *
+ * It is not the console's own bookkeeping - nothing here reads it back to
+ * decide anything. It is what makes the text selectable, which is the whole
+ * reason for it: a person can drag across the console window and copy what it
+ * says, and there is no other way to know what it says.
+ *
+ * The grid is as large as the cells the font and the surface work out to, and
+ * it follows them: a console on a different screen has a different shape, and
+ * grid_fit is where that is noticed.
+ */
+static UBYTE *grid;
+static int grid_cols;
+static int grid_rows;
+
+static void grid_fit(void)
+{
+    int cols = v_cel_mx + 1;
+    int rows = v_cel_my + 1;
+
+    if (cols == grid_cols && rows == grid_rows)
+        return;
+
+    free(grid);
+
+    grid = 0;
+    grid_cols = 0;
+    grid_rows = 0;
+
+    if (cols <= 0 || rows <= 0)
+        return;
+
+    grid = malloc((size_t)cols * rows);
+    if (!grid)
+        return;
+
+    /* Spaces rather than noughts, so that a cell nothing has been written to
+     * reads back as the blank it looks like */
+    memset(grid, ' ', (size_t)cols * rows);
+
+    grid_cols = cols;
+    grid_rows = rows;
+}
+
+static void grid_put(int cx, int cy, UBYTE ch)
+{
+    if (!grid || cx < 0 || cy < 0 || cx >= grid_cols || cy >= grid_rows)
+        return;
+
+    grid[(size_t)cy * grid_cols + cx] = ch;
+}
+
+/* How the console is laid out, for whoever has to turn a place the pointer was
+ * into a cell */
+void host_console_cells(int *cols, int *rows, int *width, int *height)
+{
+    grid_fit();
+
+    *cols = grid_cols;
+    *rows = grid_rows;
+
+    /* Which is max_cell_width, worked out the way font_set_default worked the
+     * column count out of it */
+    *width = grid_cols ? (V_REZ_HZ / grid_cols) : 0;
+    *height = v_cel_ht;
+}
+
+/*
+ * What the console says between two cells, in reading order, spelled the way an
+ * ST spells text: CR LF between lines.
+ *
+ * Trailing spaces on a line are dropped, because a console line is padded out
+ * to the width of the screen with blanks nobody typed - a selection three lines
+ * tall would otherwise come back with a hundred and fifty spaces in it.
+ *
+ * Answers how many characters were written, and NUL terminates when there is
+ * room for it.
+ */
+int host_console_text(int ax, int ay, int bx, int by, char *out, int size)
+{
+    int length = 0;
+    int y;
+
+    grid_fit();
+
+    if (!grid || size <= 0)
+        return 0;
+
+    /* Reading order, whichever end the drag started at */
+    if (ay > by || (ay == by && ax > bx))
+    {
+        int t;
+
+        t = ax; ax = bx; bx = t;
+        t = ay; ay = by; by = t;
+    }
+
+    if (ay < 0)
+        ay = 0;
+    if (by >= grid_rows)
+        by = grid_rows - 1;
+
+    for (y = ay; y <= by; y++)
+    {
+        /* A middle line runs the whole width; the first starts where the drag
+         * did and the last ends where it ended */
+        int from = (y == ay) ? ax : 0;
+        int to = (y == by) ? bx : grid_cols - 1;
+        int x;
+
+        if (from < 0)
+            from = 0;
+        if (to >= grid_cols)
+            to = grid_cols - 1;
+
+        while (to >= from && grid[(size_t)y * grid_cols + to] == ' ')
+            to--;
+
+        for (x = from; x <= to; x++)
+        {
+            if (length >= size)
+                return length;
+
+            out[length++] = (char)grid[(size_t)y * grid_cols + x];
+        }
+
+        if (y == by)
+            break;
+
+        if (length + 2 > size)
+            return length;
+
+        out[length++] = '\r';
+        out[length++] = '\n';
+    }
+
+    if (length < size)
+        out[length] = 0;
+
+    return length;
+}
 
 /*
  * The bell, which on an ST was the sound chip.
@@ -313,6 +463,9 @@ void ascii_out(int ch)
         row_put(v_cur_cx, v_cur_cy * v_cel_ht + row, glyph_row(ch, row),
                 fg, bg);
 
+    grid_fit();
+    grid_put(v_cur_cx, v_cur_cy, (UBYTE)ch);
+
     host_console_written++;
 
     /*
@@ -371,10 +524,17 @@ void blank_out(int topx, int topy, int botx, int boty)
     if (boty > v_cel_my)
         boty = v_cel_my;
 
+    grid_fit();
+
     for (y = topy; y <= boty; y++)
+    {
         for (row = 0; row < v_cel_ht; row++)
             for (x = topx; x <= botx; x++)
                 row_put(x, y * v_cel_ht + row, 0, 0, v_col_bg);
+
+        for (x = topx; x <= botx; x++)
+            grid_put(x, y, ' ');
+    }
 }
 
 /*
@@ -392,6 +552,15 @@ void scroll_up(UWORD top_line)
 
     memmove(dst, src, count);
 
+    /* And the characters with them, or what is copied back off the console
+     * would be the text as it stood before the screen moved */
+    grid_fit();
+
+    if (grid && top_line < (UWORD)grid_rows)
+        memmove(grid + (size_t)top_line * grid_cols,
+                grid + (size_t)(top_line + 1) * grid_cols,
+                (size_t)(grid_rows - 1 - top_line) * grid_cols);
+
     blank_out(0, v_cel_my, v_cel_mx, v_cel_my);
 }
 
@@ -402,6 +571,13 @@ void scroll_down(UWORD start_line)
     ULONG count = (ULONG)v_cel_wr * (v_cel_my - start_line);
 
     memmove(dst, src, count);
+
+    grid_fit();
+
+    if (grid && start_line < (UWORD)grid_rows)
+        memmove(grid + (size_t)(start_line + 1) * grid_cols,
+                grid + (size_t)start_line * grid_cols,
+                (size_t)(grid_rows - 1 - start_line) * grid_cols);
 
     blank_out(0, start_line, v_cel_mx, start_line);
 }

@@ -698,6 +698,85 @@ static char *offer_utf8(size_t *length)
     return 0;
 }
 
+/*
+ * Handing something over to the desktop, and to whatever is standing in for
+ * one.
+ *
+ * Two ways of offering the same cut, because a test has no desktop to offer it
+ * to: TOSEMU_SCRAP_OUT names a file to write the text into, which is the half a
+ * test can read back, and the selection itself is what a person gets.
+ *
+ * The picture goes beside the text rather than instead of it, so that the
+ * program pasting picks which it wants. Either may be null.
+ *
+ * Taking the selection can refuse - no compositor, or nothing the person has
+ * done that this program saw, which is the serial a selection has to be taken
+ * with. That is not worth reporting from here: what was cut is still wherever
+ * it was cut from.
+ */
+static void give_to_desktop(const char *utf8, size_t utf8_length,
+                            const void *png, size_t png_length)
+{
+    struct gfx_offer what[2];
+    int n = 0;
+
+    const char *where = setting("TOSEMU_SCRAP_OUT");
+
+    if (utf8 && where && where[0])
+    {
+        FILE *f = fopen(where, "wb");
+
+        if (f)
+        {
+            if (utf8_length)
+                fwrite(utf8, 1, utf8_length, f);
+
+            fclose(f);
+        }
+    }
+
+    if (utf8)
+    {
+        what[n].mimes = text_kinds;
+        what[n].mimes_n = TEXT_KINDS;
+        what[n].bytes = utf8;
+        what[n].length = utf8_length;
+        n++;
+    }
+
+    if (png)
+    {
+        what[n].mimes = image_kinds;
+        what[n].mimes_n = IMAGE_KINDS;
+        what[n].bytes = png;
+        what[n].length = png_length;
+        n++;
+    }
+
+    gfx_selection_give(what, n);
+}
+
+/*
+ * The same, and the other way round, for text that never went near the scrap
+ * directory.
+ *
+ * The console is what wants these. What a person selects in a console window is
+ * not a GEM cut - no application did it and no SCRAP file is written - so it
+ * goes straight to the desktop, and what comes back from the desktop is turned
+ * into keys rather than into a file. They are here rather than in console.c
+ * because this is where the clipboard is spoken to, and because the stand-ins
+ * that let a test arrange one are here as well.
+ */
+void scrap_desktop_give_text(const char *utf8, size_t length)
+{
+    give_to_desktop(utf8, length, 0, 0);
+}
+
+char *scrap_desktop_text(size_t *length)
+{
+    return offer_utf8(length);
+}
+
 void scrap_refresh(void)
 {
     unsigned long long when;
@@ -808,14 +887,10 @@ void scrap_refresh(void)
 static void offer_scrap(void)
 {
     char source[SCRAP_PATH];
-    const char *where;
     char *atari;
     char *utf8 = 0;
     void *png = 0;
     size_t atari_length, utf8_length = 0, png_length = 0;
-    FILE *f;
-
-    where = setting("TOSEMU_SCRAP_OUT");
 
     /*
      * What came from the desktop does not go back to it.
@@ -871,54 +946,7 @@ static void offer_scrap(void)
     if (!utf8 && !png)
         return;
 
-    /* Where a test looks, there being no desktop in one to look at. The text,
-     * because that is the half a test can read back. */
-    if (utf8 && where && where[0])
-    {
-        f = fopen(where, "wb");
-
-        if (f)
-        {
-            if (utf8_length)
-                fwrite(utf8, 1, utf8_length, f);
-
-            fclose(f);
-        }
-    }
-
-    /*
-     * And the desktop itself, with the picture beside the text when there is
-     * one - the same cut said two ways, and the program pasting picks.
-     *
-     * This can refuse: no compositor, or nothing the person has done that this
-     * program saw, which is the serial a selection has to be taken with. A
-     * refusal is not worth reporting - the scrap is still on disk and another
-     * GEM application can still paste it.
-     */
-    {
-        struct gfx_offer what[2];
-        int n = 0;
-
-        if (utf8)
-        {
-            what[n].mimes = text_kinds;
-            what[n].mimes_n = TEXT_KINDS;
-            what[n].bytes = utf8;
-            what[n].length = utf8_length;
-            n++;
-        }
-
-        if (png)
-        {
-            what[n].mimes = image_kinds;
-            what[n].mimes_n = IMAGE_KINDS;
-            what[n].bytes = png;
-            what[n].length = png_length;
-            n++;
-        }
-
-        gfx_selection_give(what, n);
-    }
+    give_to_desktop(utf8, utf8_length, png, png_length);
 
     free(utf8);
     free(png);

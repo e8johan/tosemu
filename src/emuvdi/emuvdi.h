@@ -70,6 +70,31 @@ int16_t emuvdi_console_cursor(int16_t function, int16_t operand);
 unsigned long emuvdi_console_written(void);
 
 /*
+ * And reading it back, which is what makes the text on it selectable.
+ *
+ * The console draws pixels, and a cell holding an A is eight by sixteen bits
+ * that happen to look like one - so the characters are kept beside them as
+ * they are drawn, and this is how they are got at. See conout.c.
+ *
+ * The cells say how a place the pointer was becomes a place in the text: how
+ * many there are and how large one is, in the console surface's own pixels.
+ */
+void emuvdi_console_cells(int16_t *cols, int16_t *rows,
+                          int16_t *width, int16_t *height);
+
+/*
+ * The text between two cells, in reading order and spelled the way an ST
+ * spells it - CR LF between lines, and the blanks a line is padded out with
+ * dropped. Answers how many characters were written.
+ */
+int emuvdi_console_text(int16_t ax, int16_t ay, int16_t bx, int16_t by,
+                        char *out, int size);
+
+/* And turning a cell inside out, which is how a selection is shown: the same
+ * way the cursor is, so nothing has to be remembered to put it back */
+void emuvdi_console_invert(int16_t cx, int16_t cy);
+
+/*
  * Serves one VDI call.
  *
  * The five arrays are the ones the caller passed, already copied out of the

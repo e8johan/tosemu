@@ -86,4 +86,23 @@ int scrap_fd(void);
  * was cut to the desktop */
 void scrap_pump(void);
 
+/*
+ * The desktop's clipboard as text, without the scrap directory in the middle.
+ *
+ * The console is what wants these. Text selected in a console window is not a
+ * GEM cut - no application did it, and there is no SCRAP file for one to have
+ * written - so it goes straight to the desktop, and what comes back is turned
+ * into keys rather than into a file.
+ *
+ * Both are UTF-8 with LF between lines, which is what a desktop deals in;
+ * scraptext.h is what turns that into an ST's text and back. Taking the
+ * selection can refuse, for the reasons in gfx.h, and the stand-ins that let a
+ * test arrange a desktop - TOSEMU_SCRAP_IN and TOSEMU_SCRAP_OUT - work here
+ * exactly as they do for a GEM cut.
+ */
+void scrap_desktop_give_text(const char *utf8, size_t length);
+
+/* Allocates; the caller frees. Null when the desktop is offering no text. */
+char *scrap_desktop_text(size_t *length);
+
 #endif /* SCRAP_H */
