@@ -61,4 +61,20 @@ char *scrap_text_from_utf8(const char *utf8, size_t length, size_t *out_length);
  */
 unsigned scrap_text_codepoint(unsigned char atari);
 
+/*
+ * A key the person pressed, as the character an ST would have sent for it.
+ *
+ * The layout belongs to the desktop, so what a keypress means arrives as
+ * Unicode: a Swedish keyboard types U+00E5 for a with a ring, whatever byte an
+ * ST would have used. Below 0x80 the two agree, and that covers ASCII and the
+ * control codes a program reads Return, Tab and Control-and-a-letter as. An
+ * accented letter does not agree and has to be looked up.
+ *
+ * -1 for a character the ST has no byte for, which is a keypress that types
+ * nothing rather than one that types a question mark: a paste has to keep the
+ * shape of the text it came from, and a person who has just pressed a key can
+ * see for themselves that nothing happened.
+ */
+int scrap_text_key(unsigned codepoint);
+
 #endif /* SCRAPTEXT_H */

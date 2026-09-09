@@ -19,12 +19,13 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
-            c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll
+            c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll \
+            c-keyboard
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -447,6 +448,13 @@ check: all
 	# compositor the timer is the only thing that can end one, so a wait
 	# that blocks stops the emulator and the count line goes missing.
 	$(TOSEMU) test-c-poll > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# What a key types when the keyboard is not an American one. The letters
+	# are UTF-8 here, the way a setting written by a person is and the way a
+	# compositor reports a keypress, and the ST has its own byte for each of
+	# them.
+	TOSEMU_KEYS='åäöÅÄÖa\r' $(TOSEMU) test-c-keyboard > out; \
+	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42

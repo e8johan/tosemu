@@ -94,6 +94,7 @@
 #include "surface.h"
 #include "screen.h"
 #include "settings.h"
+#include "scraptext.h"
 #include "emuvdi/emuvdi.h"
 
 /* Told to the AES when a window's frame is used to close it, so that the
@@ -590,11 +591,19 @@ static void key_post(uint16_t key)
  * test suite has nobody to do the pressing. TOSEMU_KEYS is a run of characters
  * to hand over as though they had been, and \r stands for Return, which is
  * what dismisses a dialog by its default button.
+ *
+ * A setting is host text, so it is UTF-8, and it goes through the same
+ * conversion a paste does - typing an accented letter is the case worth
+ * testing and it cannot be written here otherwise. That drops control
+ * characters, which were never writable in a settings file anyway, and turns
+ * a character the ST has no byte for into a question mark. The \r escape is
+ * two ASCII characters and survives the conversion to be read below.
  */
 static void keys_from_environment(void)
 {
     static int done;
     const char *keys = setting("TOSEMU_KEYS");
+    char *atari;
     int i;
 
     if (done || !keys)
@@ -602,12 +611,16 @@ static void keys_from_environment(void)
 
     done = 1;
 
-    for (i = 0; keys[i]; i++)
+    atari = scrap_text_from_utf8(keys, strlen(keys), 0);
+    if (!atari)
+        return;
+
+    for (i = 0; atari[i]; i++)
     {
-        char c = keys[i];
+        char c = atari[i];
         uint16_t scan = 0;
 
-        if (c == '\\' && keys[i+1] == 'r')
+        if (c == '\\' && atari[i+1] == 'r')
         {
             c = '\r';
             scan = 0x1c;    /* Return, which a dialog looks at */
@@ -616,6 +629,8 @@ static void keys_from_environment(void)
 
         key_post((uint16_t)((scan << 8) | (unsigned char)c));
     }
+
+    free(atari);
 }
 
 static void clicks_from_environment(void);
@@ -1035,7 +1050,7 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
     xkb_keycode_t code = key + 8;   /* Wayland counts from a different place */
     xkb_keysym_t sym;
     uint16_t scan, ch = 0;
-    char utf8[8];
+    uint32_t cp;
 
     (void)data; (void)kb; (void)time;
 
@@ -1073,10 +1088,28 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
     if (scan == 0 && key >= 1 && key < 0x54)
         scan = (uint16_t)key;
 
-    /* Anything that types a single byte types it. GEM predates any of the
-     * ways of saying more than one. */
-    if (xkb_state_key_get_utf8(w.xkb_state, code, utf8, sizeof utf8) == 1)
-        ch = (unsigned char)utf8[0];
+    /*
+     * And what it types, in the ST's alphabet rather than the desktop's.
+     *
+     * The layout is the host's, so the answer is Unicode, and scrap_text_key
+     * is what knows the ST's spelling of it. Asking for the codepoint rather
+     * than for UTF-8 is the point: this used to take the character only when
+     * xkb wrote a single byte, and UTF-8 spends two on every letter outside
+     * ASCII, so a Nordic keyboard typed nothing at all and left the
+     * application to make what it could of a scan code with no character.
+     *
+     * A character the ST has no byte for types nothing, and the scan code
+     * still goes, so a shortcut on such a key keeps working.
+     */
+    cp = xkb_state_key_get_utf32(w.xkb_state, code);
+
+    if (cp)
+    {
+        int typed = scrap_text_key(cp);
+
+        if (typed >= 0)
+            ch = (uint16_t)typed;
+    }
 
     if (scan == 0 && ch == 0)
         return;     /* A key GEM has no way of describing */
