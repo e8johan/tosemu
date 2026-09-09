@@ -269,6 +269,9 @@ be there rather than one that has to be.
     keys   = \r
     clicks = 100,50 200,60
 
+    [console]
+    output = screen
+
     [files]
     base = /home/me/tos
 
@@ -292,6 +295,7 @@ Which is which:
 | `[machine] memory`     | `TOSEMU_MEMORY`      |
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |
+| `[console] output`     | `TOSEMU_CONSOLE`     |
 | `[files] base`         | `TOS_BASE_PATH`      |
 | `[fonts] assign`       | `TOSEMU_FONTS_ASSIGN` |
 | `[fonts] substitutes`  | `TOSEMU_FONTS_SUBSTITUTES` |
@@ -393,6 +397,45 @@ compiler drivers use the ARGV convention: a length byte of 127 says the
 arguments were passed through an `ARGV` variable in the environment instead,
 which tosemu carries from one program to the next as it stands.
 
+
+
+The console
+===========
+
+An ST's console was its own screen and keyboard, reached through the VT52 in the
+BIOS, and it was the same screen GEM drew on. Programs that were both are the
+rule rather than the exception for software of the period: an assembler with a
+GEM editor round it writes its listing over the desktop, waits for a key and
+leaves the application to redraw.
+
+There are two places it can go here and the difference is not a preference.
+
+On the screen, which is what a GEM program gets: a window of its own, the text
+drawn with the machine's own 8x16 font, the Atari character set, and the VT52
+escape sequences meaning what they meant. It is the faithful answer and it is
+where the person is already looking. The window appears when a character
+actually reaches it - a program that only sets the wrap mode has said nothing -
+and goes when the application next waits for a GEM event, which is where an ST
+redrew over the text.
+
+On the terminal tosemu was started from, which is what a program run from a
+shell gets. That is where console output has always gone, it is what a Makefile
+reads and what a redirect captures, and the bytes are passed through as they
+were written. The terminal goes into cbreak while the program is running so that
+a keypress is a keypress rather than a line, and is put back at the end.
+
+Which one it is comes from whether GEM has been started - by this program or by
+the one that ran it, so GenST's assembler counts as a GEM program even though it
+never calls GEM itself - and from whether there is a compositor to put a window
+on. `TOSEMU_CONSOLE` says it outright: `screen` asks for a console screen even
+with no desktop to show it on, where it is drawn and can be looked at with
+`TOSEMU_SCREENSHOT`, and `terminal` asks for the terminal on a machine that has
+one, which is what somebody redirecting an assembler's listing into a file
+wants.
+
+A program waiting for a key with no way for one to arrive is stopped and told
+so, rather than left waiting: no window and no keyboard, or standard input that
+has ended. That is the same answer `evnt_multi` gives for the same dead end.
 
 
 Fonts
