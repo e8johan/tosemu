@@ -33,8 +33,10 @@
   everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
   tosemu has a console but no serial port or printer, so -1 is the one with an
   answer to give, and the other two keep reporting EIHNDL.
-- Console output goes straight to the host rather than through handle 1, so
-  Cconout and Cconws ignore an Fforce that redirected it.
+- Console output goes to the console rather than through handle 1, so Cconout
+  and Cconws ignore an Fforce that redirected it. Everything a program writes
+  now passes through one place - console.c - which is what makes this doable at
+  all; before it there was no single point to redirect.
 - Ptermres, which has nowhere to stay resident in.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
@@ -379,3 +381,31 @@
   printer it is pretending to be and rendering that, or handing the bytes to
   CUPS as text and letting the queue make what it can of them. The second is
   cheap and is probably what a program that does this wants.
+
+- The console on a terminal passes the VT52 through rather than interpreting
+  it. A program that clears the screen sends ESC E and the terminal, which
+  speaks ANSI, prints an E; GenST sets the wrap mode with ESC v and a stray v
+  is what starts its output. The Atari character set goes out raw as well, so
+  an accented letter is a byte no UTF-8 terminal has a glyph for.
+
+  Neither is worth fixing there, which is why this is written down rather than
+  done: the console on a screen has the VT52 and the Atari font and gets both
+  right, and the terminal one exists so that a program's output can be piped
+  into a file or read by a Makefile - which is a use that wants the bytes as
+  they were written. What would close it is translating the escapes a terminal
+  can express and dropping the rest, the way EmuTOS's CONF_SERIAL_CONSOLE_ANSI
+  does, and it would cost the pipe its transparency.
+
+- A console window is taken away when the application next waits for a GEM
+  event, which is where an ST redrew over the text. A program that writes a
+  line, goes round its event loop and writes another therefore gets a window
+  that flashes. Nothing seen here does it - a program that drops to the console
+  stays there until it is finished - and the alternative is a rule about how
+  long a console stays up, which is the same kind of guess the drawing
+  heuristics above are.
+
+- The console reads standard input and so does Fread on handle 0, and neither
+  knows about the other. Asking whether a key is waiting reads one and keeps
+  it, so a program that mixes the two can have a byte taken by the console that
+  it meant to read as a file. It is the same seam as the handle 1 item above
+  and closes with it.

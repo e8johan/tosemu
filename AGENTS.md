@@ -15,8 +15,11 @@ runs through the whole program and most of the interesting bugs live on it.
       main.c cpu.c memory.c      the machine and its memory
       gemdos*.c bios.c xbios*.c  the OS calls, dispatched from traps
       aes*.c                     the AES: windows, menus, objects, events
+      console.c                  the text screen, and the keyboard it is read
+                                 from - a window or the terminal
       vdi.c                      the VDI trap, which hands arrays to emuvdi
-      emuvdi/                    EmuTOS's VDI and parts of its AES, hosted
+      emuvdi/                    EmuTOS's VDI, its console and parts of its
+                                 AES, hosted
       gfx.c surface.c            the screen as memory, and as windows
       printer.c                  a sheet of paper, and CUPS at the end of it
       screen.c                   which screen the machine has
@@ -139,6 +142,14 @@ misspelt name in a file get complained about instead of ignored.
 displays and a build server has none, so anything that asks Wayland has to be
 checked with `$(NO_DISPLAY)` for what it does when there is nothing to ask, and
 the arithmetic checked separately — that is what `bin/screentest` is for.
+
+The corollary has bitten: the whole suite runs with `TOSEMU_NO_WINDOW=1`, so
+every early return in `gfx.c` that begins `if (!gfx_showing())` is taken in
+every check. A change to which handles `gfx_window_open` will accept passed
+`make check` and stopped the menu bar getting a window, because with no window
+it never got one anyway. Anything touching that file wants running against a
+compositor by hand, and `WAYLAND_DEBUG=1 bin/tosemu prog.prg | grep set_title`
+is the cheap way to see which windows were really opened.
 
 ## Tests
 
