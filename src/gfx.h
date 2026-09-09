@@ -49,6 +49,17 @@ struct surface;
 int gfx_open(struct surface *screen);
 void gfx_close(void);
 
+/*
+ * Whether opening one would be worth trying, asked without trying.
+ *
+ * The console has to decide whether it is a screen or a terminal before it has
+ * anything to draw, and it must not build a screen to find out - a program
+ * that only ever prints a line would be paying for a compositor it is not
+ * going to use. This is the same question gfx_open answers by connecting, up
+ * to the point where connecting is the only way to know more.
+ */
+int gfx_possible(void);
+
 /* Lets go of a connection this process inherited by being forked, without
  * tearing down what belongs to the parent */
 void gfx_forget(void);
@@ -167,6 +178,20 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
 void gfx_dialog_close();
 
 /*
+ * And the console, which is a window of its own for the same reason a dialog
+ * is: what it draws would otherwise appear inside every window showing that
+ * part of the screen.
+ *
+ * It belongs to nothing. A console is not a dialog of the application's - a
+ * program that has dropped to it is not a GEM program for as long as it is
+ * there, and the whole of what it can be asked is to press a key - so it is a
+ * window in its own right, with the desktop's frame round it and its own place
+ * in the window list. See console.c.
+ */
+void gfx_console_open(struct surface *shows, int16_t w, int16_t h);
+void gfx_console_close(void);
+
+/*
  * The connection, for the event loop to wait on beside its timer, or -1 when
  * there is no window.
  */
@@ -265,6 +290,10 @@ void gfx_present();
  * other part of the emulator from having to know a window was involved.
  */
 int gfx_key_take(uint16_t *key);
+
+/* Whether one is waiting, without taking it. The console polls this - Cconis
+ * and Bconstat ask whether a key is there and must not swallow it. */
+int gfx_key_ready(void);
 
 /* As of the last change taken off the queue, which is what a wait wants: it
  * considers each change where that change happened */

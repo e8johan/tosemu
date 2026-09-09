@@ -70,6 +70,19 @@ static const struct {
     { "TOSEMU_KEYS",        "input",   "keys",        0 },
     { "TOSEMU_CLICKS",      "input",   "clicks",      0 },
 
+    /*
+     * Where a program's console output goes and where it reads keys back
+     * from: `screen` for a window of its own with the machine's own font in
+     * it, `terminal` for the one the emulator was started from.
+     *
+     * Unsaid, it is the screen where there is a compositor to show one and the
+     * terminal where there is not, which is right nearly always. Saying it is
+     * for the two cases where it is not: redirecting an assembler's output
+     * into a file on a desktop, and looking at what a console program drew
+     * without a desktop to look at it on.
+     */
+    { "TOSEMU_CONSOLE",     "console", "output",      0 },
+
     { "TOS_BASE_PATH",      "files",   "base",        0 },
 
     /*

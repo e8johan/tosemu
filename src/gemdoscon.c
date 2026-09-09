@@ -1,7 +1,8 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
- * 
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -22,9 +23,8 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
+#include "console.h"
 #include "cpu.h"
 #include "utils.h"
 #include "m68k.h"
@@ -33,19 +33,46 @@
 
 /* Console I/O functions *****************************************************/
 
+/*
+ * All of these go through console.c, which decides whether the console is a
+ * window on the desktop or the terminal the emulator was started from. What is
+ * left here is the shape GEMDOS gives each of them - which of them waits,
+ * which echoes, and what the answer looks like - because that is the part an
+ * application depends on and it is the part that used to be wrong.
+ *
+ * The three that wait are Cconin, Cnecin and Crawcin. That is what an
+ * application expects of them: a program asking for a key with nothing to read
+ * is a program that has stopped until somebody presses one. They used to
+ * answer nought straight away, which is a key that was never pressed.
+ *
+ * The one that does not wait is Crawio with 0xff, which is the whole point of
+ * that call: it asks whether a key is there and answers nought when none is.
+ * A program polling it goes round its loop until one arrives - GenST does
+ * exactly this to wait for the keypress that dismisses its assembler output -
+ * and the loop only ends because something else eventually puts a key in.
+ */
+
 uint32_t GEMDOS_Cconin()
-{   
+{
+    uint32_t key;
+
     FUNC_TRACE_ENTER
-    
-    return getchar() & 0xff; /* TODO no shift key status, scancode */
+
+    key = console_key(1);
+
+    /* Cconin echoes what was typed and Cnecin does not, which is the whole
+     * difference between the two */
+    if (key & 0xff)
+        console_out(key & 0xff);
+
+    return key;
 }
 
 uint32_t GEMDOS_Cnecin()
-{   
+{
     FUNC_TRACE_ENTER
-    
-    /* TODO: turn off not echo. */
-    return getchar() & 0xff; /* TODO no shift key status, scancode */
+
+    return console_key(1);
 }
 
 uint32_t GEMDOS_Cconout()
@@ -54,7 +81,7 @@ uint32_t GEMDOS_Cconout()
         printf("    0x%x '%c'\n", peek_u16(2), peek_u16(2)&0xff);
     }
 
-    putchar(peek_u16(2)&0xff);
+    console_out(peek_u16(2)&0xff);
     return 0;
 }
 
@@ -62,7 +89,7 @@ uint32_t GEMDOS_Cconis()
 {
     FUNC_TRACE_ENTER
 
-    if (console_input_available())
+    if (console_ready())
         return -1;
     else
         return 0;
@@ -84,19 +111,19 @@ uint32_t GEMDOS_Cconws()
     FUNC_TRACE_ENTER_ARGS {
         printf("    0x%x\n", adr);
     }
-    
+
     while((ch=m68k_read_disassembler_8(adr++)))
     {
-        putchar(ch);
+        console_out(ch);
         res++;
     }
-    
+
     return res;
 }
 
 uint32_t GEMDOS_Cconrs()
 {
-    char buf[257]; /* Max len on ST side is 256 */
+    char buf[255]; /* Max len on ST side is 255 */
 
     /* This is a pointer to a LINE struct, i.e.
      *
@@ -109,33 +136,19 @@ uint32_t GEMDOS_Cconrs()
      */
     uint32_t lineptr = peek_u32(2);
 
-    uint8_t maxlen = m68k_read_memory_8(lineptr);
+    int maxlen = m68k_read_memory_8(lineptr);
+    int len;
+    int i;
 
-    fgets(buf, maxlen, stdin);
-    int len = strlen(buf);
-    if (len > 0 && buf[len-1] == '\n')
-    {
-        /* Remove final \n */
-        buf[len-1] = '\0';
-        len --;
-    }
+    if (maxlen > (int)sizeof buf)
+        maxlen = (int)sizeof buf;
 
-    if (len > maxlen)
-    {
-        /* Truncate buffer string if necessary */
-        len = maxlen;
-        buf[len] = '\0';
-    }
+    len = console_line(buf, maxlen);
 
     m68k_write_memory_8(lineptr+1, len);
-    char *ptr = buf;
-    lineptr += 2;
-    do
-    {
-        m68k_write_memory_8(lineptr, *ptr);
-        ptr ++;
-        lineptr ++;
-    } while (*ptr != '\0');
+
+    for (i = 0; i < len; i++)
+        m68k_write_memory_8(lineptr + 2 + i, (uint8_t)buf[i]);
 
     return 0;
 }
@@ -149,34 +162,10 @@ uint32_t GEMDOS_Crawio()
     }
 
     if (w == 0xff)
-    {
-        if (console_input_available())
-        {
-            struct termios t;
-            tcflag_t temp;
+        return console_key(0);
 
-            /* Disable buffering */
-            tcgetattr(STDIN_FILENO, &t);
-            temp = t.c_lflag;
-            t.c_lflag &= ~ICANON;;
-            tcsetattr(STDIN_FILENO, TCSANOW, &t);
-
-            uint32_t res = getchar() & 0xff; /* TODO no shift key status, scancode */
-
-            /* Restore echoing */
-            t.c_lflag = temp ;
-            tcsetattr(STDIN_FILENO, TCSANOW, &t);
-
-            return res;
-        }
-        else
-            return 0;
-    }
-    else
-    {
-        /* Write character to stdout */
-        putchar(w&0xff);
-    }
+    /* Anything else is a character to write */
+    console_out(w & 0xff);
 
     return 0;
 }
@@ -185,25 +174,5 @@ uint32_t GEMDOS_Crawcin()
 {
     /*FUNC_TRACE_ENTER*/
 
-    if (console_input_available())
-    {
-        struct termios t;
-        tcflag_t temp;
-
-        /* Disable buffering and echoing */
-        tcgetattr(STDIN_FILENO, &t);
-        temp = t.c_lflag;
-        t.c_lflag &= ~( ICANON | ECHO );;
-        tcsetattr(STDIN_FILENO, TCSANOW, &t);
-
-        uint32_t res = getchar() & 0xff; /* TODO no shift key status, scancode */
-
-        /* Restore echoing */
-        t.c_lflag = temp;
-        tcsetattr(STDIN_FILENO, TCSANOW, &t);
-
-        return res;
-    }
-    else
-        return 0;
+    return console_key(1);
 }

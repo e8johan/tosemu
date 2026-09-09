@@ -78,6 +78,17 @@ void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes);
 
 int gem_start();
 
+/*
+ * Whether GEM has been started here or in the process that forked this one,
+ * which outlives gem_forget where gem_start's own answer does not.
+ *
+ * It says what kind of program this is rather than what state GEM is in: one a
+ * person ran from a shell, or one that came out of a GEM application. The
+ * console is what asks - a program of the first kind writes to the shell and
+ * one of the second writes on the screen.
+ */
+int gem_ever_started(void);
+
 /* Lets go of everything a child of fork inherited and should not use: the
  * compositor's connection, the daemon's socket, and the parent's screen */
 void gem_forget(void);

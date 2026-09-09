@@ -23,6 +23,13 @@ The drawing files, compiled as they stand, about ten thousand lines:
 
 and the Atari ST system fonts, bios/fnt_st_*.c with their offset tables.
 
+bios/vt52.c comes across as well, which is the console rather than the VDI: the
+state machine that reads a byte and decides whether it is a character, a control
+code or part of an escape sequence, and where the cursor goes for each. It calls
+down to six routines in bios/conout.c, and those are written here - see
+conout.c below. See also src/console.h, which is what the rest of tosemu talks
+to.
+
 Not used, because they are the parts a hosted VDI has to answer for itself:
 
     vdi_main.c                 nothing: it is the freestanding boot, but the
@@ -111,6 +118,8 @@ What is here
                  machine sold in a given country should have
     textblit.c   normal_blit, the one part of the VDI written here rather than
                  adapted - see below
+    conout.c     putting a character in a cell, which is the console's half of
+                 the same problem - see below
     vditest.c    draws into a surface and prints it, so that the port is
                  checked by looking at pixels rather than at whether it built
 
@@ -118,7 +127,8 @@ What is here
 normal_blit
 -----------
 
-This is the only file here that replaces EmuTOS code rather than adapting it.
+This is one of the two files here that replace EmuTOS code rather than adapting
+it, and conout.c below is the other.
 vdi_textblit.c calls normal_blit to put a character on the screen, and EmuTOS
 has it in vdi_tblit.S and a ColdFire variant of that, with no C behind either.
 The other three routines the same comment calls assembler - outline, rotate and
@@ -140,6 +150,43 @@ Reads have to be clamped to the glyph. A font is a strip, so the bits either
 side of a character are its neighbours rather than blank, and skew reads to the
 left of the glyph. Without the clamp the lean is drawn out of whichever
 character happens to precede it, which is what the fringe masks were for.
+
+
+conout
+------
+
+The other replaced file, and the same reason as textblit.c: the byte-in-word
+order.
+
+bios/vt52.c above is the console proper - the escape sequences, the cursor, the
+scrolling - and it is taken as it stands, because none of it touches memory. It
+calls six routines to do that: ascii_out, move_cursor, invert_cell, blank_out,
+scroll_up and scroll_down, all in bios/conout.c, and those are what is written
+here instead.
+
+The original addresses a character cell as a byte. A word of a plane holds
+sixteen pixels, which is two cells of an eight wide font, so an even cell is the
+first byte of the word and an odd one the second - true on a machine where the
+first byte of a word is its top half. Surfaces here are host endian, so the two
+halves are the other way round and every pair of characters comes out swapped.
+It compiles, it runs, and it prints ABCDEFGH as BADCFEHG.
+
+So this works in words and masks off the half it wants, which is right either
+way round. The rest is EmuTOS's arrangement kept unchanged, because vt52.c is
+written to it: what the four combinations of foreground and background bit do to
+a plane, the cursor drawn by inverting the cell it sits on rather than by
+remembering what was underneath, and where a scroll leaves the blank row.
+
+Two things are worth knowing before touching it. The cursor's position and the
+place the cursor is currently *shown* are not the same variable - move_cursor
+updates the coordinates and then erases the old one - which the original keeps
+in v_cur_ad, an address, and this keeps as a pair of cell coordinates. And
+font_set_default, in fonts.c, has to be run again whenever the console's surface
+is selected: it works the cell metrics out from v_lin_wr, which describes
+whichever surface was selected last.
+
+bin/vditest draws through it and is the only check there is, exactly as for
+normal_blit.
 
 
 Pointers in thirty two bit fields

@@ -222,3 +222,87 @@ v_gtext, lightened, which screens the glyph with a mask
 22 |                                                                |
 23 |                                                                |
    +----------------------------------------------------------------+
+
+the console, one character in each cell of the top row
+   +----------------------------------------------------------------+
+ 0 |   MM    MMMMM    MMMM   MMMM    MMMMMM  MMMMMM   MMMMM  MM  MM |
+ 1 |  MMMM   MM  MM  MM  MM  MM MM   MM      MM      MM      MM  MM |
+ 2 | MM  MM  MM  MM  MM      MM  MM  MM      MM      MM      MM  MM |
+ 3 | MM  MM  MMMMM   MM      MM  MM  MMMMM   MMMMM   MM MMM  MMMMMM |
+ 4 | MMMMMM  MM  MM  MM      MM  MM  MM      MM      MM  MM  MM  MM |
+ 5 | MM  MM  MM  MM  MM  MM  MM MM   MM      MM      MM  MM  MM  MM |
+ 6 | MM  MM  MMMMM    MMMM   MMMM    MMMMMM  MM       MMMMM  MM  MM |
+ 7 |                                                                |
+ 8 |                                                                |
+ 9 |                                                                |
+10 |                                                                |
+11 |                                                                |
+12 |                                                                |
+13 |                                                                |
+14 |                                                                |
+15 |                                                                |
+16 |                                                                |
+17 |                                                                |
+18 |                                                                |
+19 |                                                                |
+20 |                                                                |
+21 |                                                                |
+22 |                                                                |
+23 |                                                                |
+   +----------------------------------------------------------------+
+
+the console, ESC Y to the middle and ESC p for reverse video
+   +----------------------------------------------------------------+
+ 0 |                                                                |
+ 1 |                                                                |
+ 2 |                                                                |
+ 3 |                                                                |
+ 4 |                                                                |
+ 5 |                                                                |
+ 6 |                                                                |
+ 7 |                                                                |
+ 8 |                                MM   MM    MM        MM MMMMMMMM|
+ 9 |                                MMM MMM              MM MMMMMMMM|
+10 |                                MMMMMMM   MMM     MMMMM M  MM  M|
+11 |                                MM M MM    MM    MM  MM M  MM  M|
+12 |                                MM   MM    MM    MM  MM M  MM  M|
+13 |                                MM   MM    MM    MM  MM MM    MM|
+14 |                                MM   MM   MMMM    MMMMM MMM  MMM|
+15 |                                                        MMMMMMMM|
+16 |                                                                |
+17 |                                                                |
+18 |                                                                |
+19 |                                                                |
+20 |                                                                |
+21 |                                                                |
+22 |                                                                |
+23 |                                                                |
+   +----------------------------------------------------------------+
+
+the console, a fourth line on a screen three rows tall
+   +----------------------------------------------------------------+
+ 0 |                                                                |
+ 1 |   MM                                                           |
+ 2 | MMMMMM MM   MM   MMMM                                          |
+ 3 |   MM   MM   MM  MM  MM                                         |
+ 4 |   MM   MM M MM  MM  MM                                         |
+ 5 |   MM    MMMMM   MM  MM                                         |
+ 6 |    MMM  MM MM    MMMM                                          |
+ 7 |                                                                |
+ 8 |         MM                                                     |
+ 9 |   MM    MM                                                     |
+10 | MMMMMM  MMMMM   MMMMM    MMMM    MMMM                          |
+11 |   MM    MM  MM  MM  MM  MM  MM  MM  MM                         |
+12 |   MM    MM  MM  MM      MMMMMM  MMMMMM                         |
+13 |   MM    MM  MM  MM      MM      MM                             |
+14 |    MMM  MM  MM  MM       MMMM    MMMM                          |
+15 |                                                                |
+16 |   MMM                                                          |
+17 |  MM                                                            |
+18 | MMMMM    MMMM   MM  MM  MMMMM                                  |
+19 |  MM     MM  MM  MM  MM  MM  MM                                 |
+20 |  MM     MM  MM  MM  MM  MM                                     |
+21 |  MM     MM  MM  MM  MM  MM                                     |
+22 |  MM      MMMM    MMMMM  MM                                     |
+23 |                                                                |
+   +----------------------------------------------------------------+

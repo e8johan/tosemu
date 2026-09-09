@@ -16,7 +16,7 @@ GEN   = $(BUILD)/gen
 BIN   = bin
 
 # Source files for TOS emulator, named as they are found under $(SRC)
-SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c gemdosfile.c gemdosdrive.c gemdosproc.c \
+SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gemdosdrive.c gemdosproc.c \
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
@@ -45,6 +45,7 @@ EMUTOSFILES = $(EMUTOS)/vdi/vdi_main.c $(EMUTOS)/vdi/vdi_control.c \
               $(EMUTOS)/vdi/vdi_marker.c $(EMUTOS)/vdi/vdi_misc.c \
               $(EMUTOS)/vdi/vdi_text.c $(EMUTOS)/vdi/vdi_textblit.c \
               $(EMUTOS)/vdi/vdi_esc.c $(EMUTOS)/vdi/vdi_input.c \
+              $(EMUTOS)/bios/vt52.c \
               $(EMUTOS)/bios/fnt_st_6x6.c $(EMUTOS)/bios/fnt_st_8x8.c \
               $(EMUTOS)/bios/fnt_st_8x16.c \
               $(EMUTOS)/bios/fnt_off_6x6.c $(EMUTOS)/bios/fnt_off_8x8.c \
@@ -104,7 +105,7 @@ WAYLANDLIBS =
 WAYLANDONLYLIBS =
 endif
 
-EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/prndev.c emuvdi/textblit.c emuvdi/bridge.c \
+EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/prndev.c emuvdi/textblit.c emuvdi/conout.c emuvdi/bridge.c \
               emuvdi/gsx2.c emuvdi/gemoblib.c emuvdi/gemobjop.c emuvdi/gemfmalt.c emuvdi/gemmnlib.c emuvdi/vdi_raster.c emuvdi/aeskernel.c \
               emuvdi/strings.c
 

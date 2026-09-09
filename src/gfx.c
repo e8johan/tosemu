@@ -322,14 +322,16 @@ struct window {
 /*
  * Slot 0 is the dialog, because there is one of those at a time. Then the GEM
  * windows, which the AES allows eight of and numbers from one, so their handle
- * is their slot. The menu bar and whichever menu is down get slots of their
- * own after those: the AES does not give them handles, and taking one of the
- * eight would be taking a window an application is entitled to.
+ * is their slot. The menu bar, whichever menu is down and the console get
+ * slots of their own after those: the AES does not give them handles, and
+ * taking one of the eight would be taking a window an application is entitled
+ * to.
  */
 #define DIALOG   (0)
 #define MENUBAR  (9)
 #define MENU     (10)
-#define WINDOWS  (11)
+#define CONSOLE  (11)
+#define WINDOWS  (12)
 
 #endif /* NO_WAYLAND */
 
@@ -598,6 +600,13 @@ static void keys_from_environment(void)
 }
 
 static void clicks_from_environment(void);
+
+int gfx_key_ready(void)
+{
+    keys_from_environment();
+
+    return w.key_count > 0;
+}
 
 int gfx_key_take(uint16_t *key)
 {
@@ -3113,6 +3122,21 @@ static void say_why_there_is_no_window(void)
                "memory\n");
 }
 
+int gfx_possible(void)
+{
+    /*
+     * Not the same question as whether a connection would succeed, and it
+     * cannot be: finding that out means connecting. What it rules out is the
+     * two ways of knowing there is no point - having been told not to, and
+     * there being no session to connect to - which between them are every case
+     * a test or a machine with nobody logged in falls into.
+     */
+    if (setting_flag("TOSEMU_NO_WINDOW"))
+        return 0;
+
+    return getenv("WAYLAND_DISPLAY") != 0;
+}
+
 int gfx_open(struct surface *screen)
 {
     memset(&w, 0, sizeof w);
@@ -3214,7 +3238,14 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
 {
     struct window *win;
 
-    if (!gfx_showing() || handle < 1 || handle >= WINDOWS)
+    /*
+     * Up to and including the bar, which opens its window this way as well -
+     * see aesmenu.c, which passes MENUBAR as the handle. The two slots after
+     * it are not opened from here at all: a menu that has dropped down and the
+     * console each have a call of their own, and a handle that reached either
+     * would be a GEM window put where one of those belongs.
+     */
+    if (!gfx_showing() || handle < 1 || handle > MENUBAR)
         return;
 
     if (sw <= 0 || sh <= 0)
@@ -3739,6 +3770,39 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
 void gfx_dialog_close()
 {
     window_destroy(&w.windows[DIALOG]);
+}
+
+/*
+ * The console, which is a window in its own right rather than a dialog of
+ * anybody's.
+ *
+ * It has no parent on purpose. A dialog belongs to the window it interrupts
+ * and is kept above it; a console interrupts nothing - the program that put it
+ * up has stopped being a GEM program for as long as it is there - and the one
+ * thing a person does with it is read it and press a key. So it takes the
+ * desktop's frame, appears in the window list under its own name, and can be
+ * put wherever it suits.
+ *
+ * Opening one that is already open does nothing, because the console asks
+ * whenever it has something to show and a window taken down and put up again
+ * would move on every line of output.
+ */
+void gfx_console_open(struct surface *shows, int16_t sw, int16_t sh)
+{
+    if (!gfx_showing() || !shows || sw <= 0 || sh <= 0)
+        return;
+
+    if (w.windows[CONSOLE].used)
+        return;
+
+    if (!window_create(&w.windows[CONSOLE], "Console", shows, 0, 0, sw, sh,
+                       0, 0))
+        window_destroy(&w.windows[CONSOLE]);
+}
+
+void gfx_console_close(void)
+{
+    window_destroy(&w.windows[CONSOLE]);
 }
 
 int gfx_fd()
@@ -4288,6 +4352,11 @@ void gfx_present()
  * an application can observe.
  */
 
+int gfx_possible(void)
+{
+    return 0;
+}
+
 int gfx_open(struct surface *screen)
 {
     (void)screen;
@@ -4392,6 +4461,15 @@ void gfx_dialog_open(struct surface *shows, int16_t x, int16_t y,
 }
 
 void gfx_dialog_close()
+{
+}
+
+void gfx_console_open(struct surface *shows, int16_t sw, int16_t sh)
+{
+    (void)shows; (void)sw; (void)sh;
+}
+
+void gfx_console_close(void)
 {
 }
 

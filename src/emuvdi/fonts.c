@@ -35,6 +35,7 @@
 #include "tosvars.h"
 #include "vdi_defs.h"
 #include "lineavars.h"
+#include "font.h"
 
 /* The fonts themselves, compiled from the submodule */
 extern const Fonthead fnt_st_6x6;
@@ -84,4 +85,34 @@ void host_font_init(void)
 
     /* Builds font_ring and def_font out of the above */
     text_init();
+}
+
+/*
+ * The font the console writes in, and the shape of the grid it writes on.
+ *
+ * EmuTOS has this in bios/font.c, which is not built here - the rest of that
+ * file asks country.c which fonts a machine sold in a given country should
+ * have, and the answer here is always the Atari ST ones. What it does is
+ * arithmetic on the header of whichever font was chosen, so it is the same
+ * arithmetic.
+ *
+ * Which font is chosen is a question about how many rows will fit: the 8x16
+ * on a screen four hundred lines tall, where twenty five rows is what a GEM
+ * program expects, and the 8x8 on anything shorter, where sixteen pixels a
+ * row would leave twelve.
+ */
+void font_set_default(void)
+{
+    Fonthead *font = (V_REZ_VT < 400) ? &fon8x8 : &fon8x16;
+
+    v_cel_ht = font->form_height;
+    v_cel_wr = v_lin_wr * font->form_height;
+    v_cel_mx = (V_REZ_HZ / font->max_cell_width) - 1;
+    v_cel_my = (V_REZ_VT / font->form_height) - 1;
+
+    v_fnt_wr = font->form_width;
+    v_fnt_st = font->first_ade;
+    v_fnt_nd = font->last_ade;
+    v_fnt_ad = font->dat_table;
+    v_off_ad = font->off_table;
 }
