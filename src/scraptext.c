@@ -131,6 +131,23 @@ static int atari_for(unsigned cp)
     return -1;
 }
 
+/*
+ * The same lookup, for a keypress rather than for text.
+ *
+ * The difference is the bytes below 0x20, and 0x7F. The table has nothing
+ * there, because in a file they are control codes and not the pictures the ST
+ * font draws for them - but a key is where those control codes come from.
+ * Return is 0x0D and Control-C is 0x03 whichever machine is asked, so they
+ * pass through rather than being looked up and lost.
+ */
+int scrap_text_key(unsigned cp)
+{
+    if (cp < 0x80)
+        return (int)cp;
+
+    return atari_for(cp);
+}
+
 /* How many bytes UTF-8 spends on a character */
 static int utf8_length(unsigned cp)
 {

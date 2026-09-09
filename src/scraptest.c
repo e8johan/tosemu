@@ -365,6 +365,32 @@ int main(int argc, char **argv)
     check(scrap_text_codepoint(0x00), 0, "and nothing below a space is a character");
 
     /*
+     * The keyboard, which asks the same table the other way round.
+     *
+     * A host layout says what a key means in Unicode, and every letter a
+     * Nordic keyboard has beyond ASCII needs a byte the ST knows. These are
+     * the six that made this worth fixing, and the checks after them are the
+     * ones a conversion breaks while getting the letters right: a keypress is
+     * where the control codes come from, so Return has to stay a Return.
+     */
+    check(scrap_text_key(0x00E5), 0x86, "a Swedish keyboard types an a with a ring");
+    check(scrap_text_key(0x00E4), 0x84, "and an a with two dots");
+    check(scrap_text_key(0x00F6), 0x94, "and an o with two dots");
+    check(scrap_text_key(0x00C5), 0x8F, "and the capitals of all three");
+    check(scrap_text_key(0x00C4), 0x8E, "the second one");
+    check(scrap_text_key(0x00D6), 0x99, "and the third");
+
+    check(scrap_text_key('a'), 'a', "a letter in ASCII is itself");
+    check(scrap_text_key('\r'), '\r', "Return is a Return");
+    check(scrap_text_key('\b'), '\b', "Backspace is a Backspace");
+    check(scrap_text_key(0x03), 0x03, "and Control and a letter is what it was");
+    check(scrap_text_key(0x7F), 0x7F, "Delete is a Delete rather than a delta");
+
+    /* Held down on a keyboard nobody planned for, which types nothing rather
+     * than typing the wrong thing */
+    check(scrap_text_key(0x4E2D), -1, "a character the ST has no byte for types nothing");
+
+    /*
      * Pictures, over the reference file at the top of this file.
      */
     {
