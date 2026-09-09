@@ -170,6 +170,18 @@ static void workstation_init(void)
     LN_MASK = LINE_STYLE[vwk.line_index];
 }
 
+/* The console: bios/vt52.c out of the submodule, drawing through conout.c */
+void vt52_init(void);
+void cputc(WORD ch);
+
+static void cputs(const char *text)
+{
+    int i;
+
+    for (i = 0; text[i]; i++)
+        cputc((unsigned char)text[i]);
+}
+
 /* v_gtext as an application makes it: the string in intin, the position in
  * ptsin, and how many characters there are in the control array */
 static void gtext(WORD x, WORD y, const char *text)
@@ -307,6 +319,35 @@ int main(void)
     gtext(2, 14, "Lightened");
     vwk.style = 0;
     show("v_gtext, lightened, which screens the glyph with a mask");
+
+    /*
+     * The console, which is EmuTOS's VT52 drawing through the conout.c here.
+     *
+     * This is the only check there is on that file, and it is the same kind of
+     * check normal_blit gets above and for the same reason: the original works
+     * in bytes and puts an even cell in the first byte of a word, which is its
+     * top half on a 68000 and its bottom half here. Every pair of characters
+     * would come out swapped, which is exactly the sort of thing that compiles
+     * and runs.
+     *
+     * Eight cells across and three down, the 8x8 font being what a screen this
+     * short gets. The cursor stays off throughout: vt52_init leaves it
+     * disabled, and a block that blinks is not something a printout can show.
+     */
+    memset(surface, 0, sizeof surface);
+    vt52_init();
+    cputs("ABCDEFGH");
+    show("the console, one character in each cell of the top row");
+
+    memset(surface, 0, sizeof surface);
+    vt52_init();
+    cputs("\033Y!$Mid\033pRev");
+    show("the console, ESC Y to the middle and ESC p for reverse video");
+
+    memset(surface, 0, sizeof surface);
+    vt52_init();
+    cputs("one\r\ntwo\r\nthree\r\nfour");
+    show("the console, a fourth line on a screen three rows tall");
 
     return 0;
 }

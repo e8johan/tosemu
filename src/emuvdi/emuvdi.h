@@ -45,6 +45,31 @@ void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
                            uint16_t planes);
 
 /*
+ * The console, which is the VT52 in EmuTOS's BIOS drawing into a surface.
+ *
+ * It is here rather than beside the VDI because it is the same seam and the
+ * same three levers: EmuTOS's code, built for the host, reached without a WORD
+ * crossing over. What is on the other side is bios/vt52.c unedited and
+ * emuvdi/conout.c, which puts the characters in their cells.
+ *
+ * Readying it takes the shape of the grid from whichever surface is selected,
+ * and so does writing to it - so both want the console's surface selected
+ * first. See console.c, which owns that surface and is the only caller.
+ */
+void emuvdi_console_init(void);
+void emuvdi_console_out(int ch);
+
+/* Cursconf, XBIOS 21: whether the cursor shows, whether it blinks and how
+ * fast */
+int16_t emuvdi_console_cursor(int16_t function, int16_t operand);
+
+/*
+ * How many characters have appeared on it, which is how a console with
+ * something to show is told from one that has only been configured.
+ */
+unsigned long emuvdi_console_written(void);
+
+/*
  * Serves one VDI call.
  *
  * The five arrays are the ones the caller passed, already copied out of the

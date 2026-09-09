@@ -145,10 +145,13 @@ int main(int argc, char **argv)
     check(VsetMode(-1), VERTFLAG, "VsetMode reports the mode that was set");
     VsetMode(previous);
 
-    check(Cursconf(5, 0), 10, "Cursconf reports the default blink rate");
+    /* Thirty vertical blanks between one state and the next, which at sixty
+     * of them a second is the half second TOS blinked at. It is what EmuTOS's
+     * vt52_init sets, and the console here is EmuTOS's. */
+    check(Cursconf(5, 0), 30, "Cursconf reports the default blink rate");
     Cursconf(4, 25);
     check(Cursconf(5, 0), 25, "Cursconf remembers a new blink rate");
-    Cursconf(4, 10);
+    Cursconf(4, 30);
 
     check(Blitmode(-1), 0, "Blitmode reports no blitter");
     check(EgetShift(), 0, "EgetShift reports 0");

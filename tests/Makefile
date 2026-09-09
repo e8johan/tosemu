@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -174,6 +174,26 @@ check: all
 	# about: an application says something to whoever is debugging it, and
 	# tosemu is what there is.
 	grep -q 'Dbmsg: a message for the debugger' out
+	# Reading the console, with somebody typing at it - which is what the
+	# sleeps and the printfs are. Three of these calls have to be able to
+	# wait and three have to be able not to, and getting either wrong is
+	# invisible until a program that polls for a keypress never comes back.
+	#
+	# The keys arrive a few at a time on purpose. Fed in all at once there
+	# is never anything to wait for, so a call that answered straight away
+	# would answer correctly and the test would pass either way.
+	#
+	# Under a timeout, because the failure this is about is a run that does
+	# not end: a polling call that waited would sit here for ever, and so
+	# would a waiting one with nothing left to arrive.
+	( sleep 0.4; printf 'a'; sleep 0.3; printf 'b'; \
+	  sleep 0.3; printf 'c\rhi\b\bxy\r' ) \
+	  | $(NO_DAEMON) $(NO_PRINTER) $(TOSEMU_FOR_A_WHILE) test-c-console > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.13' out
+	# There is no window here, so that was the console on a terminal. What
+	# it draws when it is on a screen instead is bin/vditest's to check: the
+	# surface is not something a program inside the emulator can read back.
 	# Supervisor mode, which is mostly a question about the stack: a 68000
 	# swaps stack pointers when the S bit moves, and a caller that came back
 	# from Super standing somewhere else has lost everything it had put on

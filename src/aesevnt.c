@@ -46,6 +46,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "console.h"
 #include "gem_p.h"
 #include "aesclient.h"
 #include "gfx.h"
@@ -196,6 +197,17 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
      * picture is finished as far as anyone watching is concerned.
      */
     gem_present();
+
+    /*
+     * And whatever console the application dropped to goes now.
+     *
+     * Waiting for a GEM event is what says it has finished with the console
+     * and gone back to being a GEM program - the two do not happen at once,
+     * because a program reading the console is inside that read. On an ST this
+     * is where its own redraw covered the console text over; here the text has
+     * a window of its own, and what happens instead is that the window goes.
+     */
+    console_settle();
 
     /*
      * The state that answered the last question is stale once something else

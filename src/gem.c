@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "console.h"
 #include "gem_p.h"
 #include "tossystem.h"
 #include "surface.h"
@@ -89,6 +90,28 @@ static struct surface *dialog;
 static struct surface *menu;
 
 static int started;
+
+/*
+ * Whether GEM has ever been started in this process or in the one that forked
+ * it, which is not the same question as whether it is up now.
+ *
+ * gem_forget clears `started`, because a child of Pexec is a program of its own
+ * and has to introduce itself to GEM again - but it is still a program a GEM
+ * application ran, and that is what this remembers. GenST's assembler is the
+ * case: it never calls GEM in its life, and it is run from inside a GEM editor
+ * that has taken the screen over.
+ *
+ * What it decides is where the console goes. A program a person started from a
+ * shell writes to that shell; one that came out of a GEM application writes on
+ * the screen, which is where an ST would have put it and where the person is
+ * looking. See console.c.
+ */
+static int ever_started;
+
+int gem_ever_started(void)
+{
+    return ever_started;
+}
 
 /* The screen this session was asked for, for when there is no daemon to say */
 void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
@@ -152,6 +175,7 @@ int gem_start()
     gfx_open(screen);
 
     started = 1;
+    ever_started = 1;
 
     return 1;
 }
@@ -337,6 +361,11 @@ void gem_forget(void)
     gfx_forget();
     aes_client_forget();
 
+    /* And the console, which has a surface of its own and possibly a window on
+     * the connection that has just been let go of. Here rather than before
+     * gfx_forget so that closing the window is the nothing it should be. */
+    console_forget();
+
     /* And the printer, which is the same argument again: a half drawn page and
      * a half written job belong to the parent, and finishing either would put
      * a second copy of somebody else's document in the queue */
@@ -375,8 +404,13 @@ void gem_present()
     {
         /* Whichever is being drawn into. A dialog's surface starts as a copy
          * of the screen and a menu's as a copy of that, so whichever of them
-         * is on top is the whole picture rather than half of it. */
-        surface_write_ppm(menu ? menu : dialog ? dialog : screen, shot);
+         * is on top is the whole picture rather than half of it - and a
+         * console the program has dropped to is above all three, being what
+         * has taken the screen over for as long as it is there. */
+        struct surface *console = console_showing();
+
+        surface_write_ppm(console ? console
+                          : menu ? menu : dialog ? dialog : screen, shot);
     }
 
     gfx_present();
@@ -425,6 +459,7 @@ void gem_reset()
 
     gem_menu_end();
     gem_dialog_end();
+    console_close();
     gfx_close();
 
     surface_free(screen);

@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include "tossystem.h"
+#include "console.h"
 #include "cpu.h"
 #include "m68k.h"
 #include "utils.h"
@@ -90,8 +91,10 @@ uint32_t BIOS_Bconin()
         printf("    dev: 0x%x\n", dev);
     }
 
-    if (is_console(dev) && console_input_available())
-        return getchar() & 0xff;
+    /* Waits, the way the console's own read does and for the same reason: a
+     * program asking the keyboard for a key has stopped until it gets one */
+    if (is_console(dev))
+        return console_key(1);
 
     /* Nothing arrives from a device that is not there */
     return 0;
@@ -107,7 +110,7 @@ uint32_t BIOS_Bconout()
     }
 
     if (is_console(dev))
-        putchar(c);
+        console_out(c);
 
     /* Bytes for the printer, the serial port, MIDI and the keyboard
      * controller have nowhere to go */
@@ -123,7 +126,7 @@ uint32_t BIOS_Bconstat()
         printf("    dev: 0x%x\n", dev);
     }
 
-    if (is_console(dev) && console_input_available())
+    if (is_console(dev) && console_ready())
         return -1;
 
     return 0;

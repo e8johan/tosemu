@@ -43,6 +43,7 @@
 #include <string.h>
 
 #include "tossystem.h"
+#include "console.h"
 #include "cpu.h"
 #include "m68k.h"
 
@@ -59,7 +60,6 @@ static uint16_t palette[PALETTE_ENTRIES];
 static uint32_t palette_rgb[PALETTE_ENTRIES];
 
 static uint32_t video_mode;
-static uint32_t cursor_rate = 10; /* Blinks per second, the TOS default */
 
 void xbios_screen_reset()
 {
@@ -304,16 +304,11 @@ uint32_t XBIOS_Cursconf()
         printf("    rate: %d, attr: %d\n", rate, attr);
     }
 
-    /* There is no cursor to show, hide or blink, but the blink rate can be
-     * asked for as well as set, http://toshyp.atari.org/en/00400a.html */
-    switch (rate)
-    {
-    case 4: /* Set the blink rate */
-        cursor_rate = attr;
-        return XBIOS_E_OK;
-    case 5: /* Report the blink rate */
-        return cursor_rate;
-    default:
-        return XBIOS_E_OK;
-    }
+    /*
+     * This is the console's cursor rather than the screen's, so the console
+     * answers it, http://toshyp.atari.org/en/00400a.html. There is one to show,
+     * hide and blink now: it is the block on the console window, drawn by
+     * inverting the cell it sits on.
+     */
+    return (uint32_t)(uint16_t)console_cursor((int16_t)rate, (int16_t)attr);
 }

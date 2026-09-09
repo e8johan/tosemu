@@ -78,6 +78,18 @@ void emuvdi_init()
     host_font_init();
 
     /*
+     * The palette, which is the machine's rather than any workstation's.
+     *
+     * EmuTOS sets it up in v_opnwk, because on an ST nothing could draw before
+     * a workstation was open. Here the console can: a program that has never
+     * called GEM in its life still writes on a screen, and with every register
+     * still nought that screen is black text on black. So the machine has the
+     * colours an ST powered up with before anybody asks for a workstation, and
+     * v_opnwk sets them again when one is opened, which is the same values.
+     */
+    init_colors();
+
+    /*
      * And the fonts on the disk, which are GDOS's half of it.
      *
      * The device number is the one the AES is about to open the physical
@@ -116,6 +128,54 @@ void emuvdi_surface_select(void *base, uint16_t width, uint16_t height,
                            uint16_t planes)
 {
     host_surface_select(base, width, height, planes);
+}
+
+/* The console: EmuTOS's VT52 in bios/vt52.c, drawing through conout.c */
+void vt52_init(void);
+void cputc(WORD ch);
+WORD cursconf(WORD function, WORD operand);
+
+/* Which font it writes in and how large a grid that makes, in fonts.c */
+void font_set_default(void);
+
+/* And what it has actually put on the surface, in conout.c */
+extern ULONG host_console_written;
+
+/*
+ * Readies the console against whatever surface is selected.
+ *
+ * The grid is worked out from the surface, so this has to happen after one is
+ * selected and again if a different one ever becomes the console's. It clears
+ * the surface as its last act, which is what an ST's console did when the
+ * machine started.
+ */
+void emuvdi_console_init(void)
+{
+    vt52_init();
+}
+
+/*
+ * One byte to the console.
+ *
+ * The cell metrics are worked out again first because they are derived from
+ * v_lin_wr, which describes whichever surface was selected last - and between
+ * one character and the next the VDI may well have drawn somewhere else.
+ */
+void emuvdi_console_out(int ch)
+{
+    font_set_default();
+
+    cputc((WORD)ch);
+}
+
+int16_t emuvdi_console_cursor(int16_t function, int16_t operand)
+{
+    return cursconf(function, operand);
+}
+
+unsigned long emuvdi_console_written(void)
+{
+    return (unsigned long)host_console_written;
 }
 
 /* The AES's own resource, aes/gem_rsc.c */
