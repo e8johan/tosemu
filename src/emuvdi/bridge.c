@@ -138,8 +138,13 @@ WORD cursconf(WORD function, WORD operand);
 /* Which font it writes in and how large a grid that makes, in fonts.c */
 void font_set_default(void);
 
-/* And what it has actually put on the surface, in conout.c */
+/* And what it has actually put on the surface, in conout.c, along with what it
+ * says and where the cells are */
 extern ULONG host_console_written;
+
+void host_console_cells(int *cols, int *rows, int *width, int *height);
+int host_console_text(int ax, int ay, int bx, int by, char *out, int size);
+void invert_cell(int x, int y);
 
 /*
  * Readies the console against whatever surface is selected.
@@ -176,6 +181,36 @@ int16_t emuvdi_console_cursor(int16_t function, int16_t operand)
 unsigned long emuvdi_console_written(void)
 {
     return (unsigned long)host_console_written;
+}
+
+void emuvdi_console_cells(int16_t *cols, int16_t *rows,
+                          int16_t *width, int16_t *height)
+{
+    int c, r, w, h;
+
+    font_set_default();
+
+    host_console_cells(&c, &r, &w, &h);
+
+    *cols = (int16_t)c;
+    *rows = (int16_t)r;
+    *width = (int16_t)w;
+    *height = (int16_t)h;
+}
+
+int emuvdi_console_text(int16_t ax, int16_t ay, int16_t bx, int16_t by,
+                        char *out, int size)
+{
+    font_set_default();
+
+    return host_console_text(ax, ay, bx, by, out, size);
+}
+
+void emuvdi_console_invert(int16_t cx, int16_t cy)
+{
+    font_set_default();
+
+    invert_cell(cx, cy);
 }
 
 /* The AES's own resource, aes/gem_rsc.c */

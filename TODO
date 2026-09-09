@@ -409,3 +409,19 @@
   it, so a program that mixes the two can have a byte taken by the console that
   it meant to read as a file. It is the same seam as the handle 1 item above
   and closes with it.
+
+- Nothing in make check reaches the pointer half of selecting text on the
+  console: the drag that makes a selection, the release that copies it and the
+  middle button that pastes. The suite runs with no window, so there is no
+  console window for a pointer to be in, and injected input goes to the queue
+  the AES reads rather than to the console - which is right, a console window
+  being a window GEM knows nothing about.
+
+  What is checked is everything underneath, in bin/vditest: the copy of the
+  characters conout.c keeps beside the pixels, that it scrolls when they do,
+  what comes back for a range and for one named backwards, and the blanks a
+  line was padded out with being dropped. What is not is the forty lines that
+  turn a place the pointer was into two cells, and those have not been watched
+  working either - unlike the window frame's gadgets, which are in the same
+  position and were at least driven by hand against kwin. This wants somebody
+  dragging across a console window and pasting into one before it is believed.

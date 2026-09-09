@@ -110,6 +110,25 @@ void host_window_resized(int16_t handle, int16_t w, int16_t h);
 void host_window_activated(int16_t handle, int16_t active);
 
 /*
+ * The pointer in the console's window, which GEM is told nothing about.
+ *
+ * A console window is not a GEM window: no application asked for it, none knows
+ * it is there, and the one thing a person does with it besides read it is
+ * select some of it to copy. So the pointer there is answered by console.c and
+ * never reaches the queue the AES takes its clicks off - which it must not,
+ * because that queue is in the screen's coordinates and this is somewhere else
+ * entirely.
+ *
+ * The place is in the console surface's own pixels, and it arrives with the
+ * move rather than with the press - the pointer is always somewhere before it
+ * is pressed, and an enter is a move as much as a motion is. button is 1 for
+ * the left one, 2 for the right and 3 for the middle, which GEM has no use for
+ * and a console does.
+ */
+void host_console_button(int16_t button, int down);
+void host_console_motion(int16_t x, int16_t y);
+
+/*
  * A title bar drawn into a surface of a window's own, for a window that has
  * none of GEM's and is on a desktop that draws none of its own either.
  *
@@ -1197,6 +1216,20 @@ static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
     if (w.on_frame)
         return;
 
+    /*
+     * The console's window is somewhere else, and saying where the pointer is
+     * in it would be saying it about the screen. The two surfaces are the same
+     * size and both start at nought, so the numbers would look perfectly
+     * reasonable and land wherever the application happened to have something
+     * clickable.
+     */
+    if (win == &w.windows[CONSOLE])
+    {
+        host_console_motion((int16_t)(w.frame_x / win->scale),
+                            (int16_t)((w.frame_y - top) / win->scale));
+        return;
+    }
+
     w.mouse_x = (int16_t)(win->sx + w.frame_x / win->scale);
     w.mouse_y = (int16_t)(win->sy + (w.frame_y - top) / win->scale);
     w.mouse_known = 1;
@@ -1268,11 +1301,13 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
     if (state == WL_POINTER_BUTTON_STATE_PRESSED)
         w.press_serial = serial;
 
-    /* GEM numbers them from the left, and has two */
+    /* GEM numbers them from the left, and has two. The third is here for the
+     * console, which pastes with it the way a terminal does. */
     switch (button)
     {
         case 0x110: bit = 1; break;     /* BTN_LEFT */
         case 0x111: bit = 2; break;     /* BTN_RIGHT */
+        case 0x112: bit = 3; break;     /* BTN_MIDDLE */
         default: return;
     }
 
@@ -1289,11 +1324,23 @@ static void pt_button(void *data, struct wl_pointer *p, uint32_t serial,
      */
     if (w.on_frame && w.pointer_in)
     {
-        if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+        if (state == WL_POINTER_BUTTON_STATE_PRESSED && bit <= 2)
             frame_press(w.pointer_in, bit);
 
         return;
     }
+
+    /* The console's window, which is not a GEM window and whose clicks the
+     * application is told nothing about */
+    if (w.pointer_in == &w.windows[CONSOLE])
+    {
+        host_console_button(bit, state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+
+    /* And GEM has no third button to be told about */
+    if (bit > 2)
+        return;
 
     /*
      * Queued, and not written into the state as well.

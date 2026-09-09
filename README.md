@@ -437,6 +437,34 @@ A program waiting for a key with no way for one to arrive is stopped and told
 so, rather than left waiting: no window and no keyboard, or standard input that
 has ended. That is the same answer `evnt_multi` gives for the same dead end.
 
+Copy and paste
+--------------
+
+The text in a console window can be selected and copied, which is the one thing
+a terminal does that the screen console would otherwise not.
+
+Drag across it with the left button and the cells turn inside out to show what
+is selected; letting go puts the text on the desktop's clipboard. A click that
+went nowhere selects nothing rather than copying the character under it, and the
+right button takes a selection away. The middle button pastes, the way it does
+in a terminal: what the desktop is offering arrives as keys, so a program gets
+it through whatever it is already using to read the keyboard.
+
+Letting go is what copies, rather than a key combination, because every key
+belongs to the program - it is sitting in a console read waiting for one, and
+any this took would be one it never saw. A terminal can afford Ctrl-Shift-C
+because the shell underneath it is not listening for Ctrl-Shift-C.
+
+What is copied is the characters, not the pixels. A cell holding an A is eight
+by sixteen bits that happen to look like one, so the characters are kept beside
+them as they are drawn - which is also why the text a line was padded out with
+does not come along, and why a selection three lines tall is three lines rather
+than a hundred and fifty spaces.
+
+None of it is a GEM cut. No application made the selection and none knows it
+happened, so nothing is written to the scrap directory and no other GEM program
+can paste it; it goes straight to the desktop, where a person put it.
+
 
 Fonts
 =====

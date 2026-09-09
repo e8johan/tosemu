@@ -129,6 +129,7 @@ normal_blit
 
 This is one of the two files here that replace EmuTOS code rather than adapting
 it, and conout.c below is the other.
+
 vdi_textblit.c calls normal_blit to put a character on the screen, and EmuTOS
 has it in vdi_tblit.S and a ColdFire variant of that, with no C behind either.
 The other three routines the same comment calls assembler - outline, rotate and
@@ -185,8 +186,15 @@ font_set_default, in fonts.c, has to be run again whenever the console's surface
 is selected: it works the cell metrics out from v_lin_wr, which describes
 whichever surface was selected last.
 
+It also keeps a copy of the characters beside the pixels, a byte to a cell.
+Nothing here reads that back to decide anything - it is what makes the text in a
+console window selectable, and there is no other way to know what a cell says.
+It has to follow every write, every blanking and every scroll, or what is copied
+off the console is the text as it stood before the screen last moved.
+
 bin/vditest draws through it and is the only check there is, exactly as for
-normal_blit.
+normal_blit. It prints the text read back beside the picture of the same screen,
+so that the two disagreeing is what a mistake in either looks like.
 
 
 Pointers in thirty two bit fields
