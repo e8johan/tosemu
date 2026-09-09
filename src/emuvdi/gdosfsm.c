@@ -51,6 +51,7 @@
 
 #include "emutos.h"
 #include "asm.h"
+#include "biosext.h"
 #include "intmath.h"
 #include "tosvars.h"
 #include "vdi_defs.h"
@@ -193,12 +194,11 @@ static LONG size_from_height(WORD height)
 /* Where the device is, in dots to the inch ***********************************/
 
 /*
- * An ST high screen is 640 by 400 in the space a monitor showed at about
- * seventy two dots to the inch each way, which is why a ten point .FNT for it
- * is thirteen scan lines tall. The medium screen is the same width and half
- * the height, so a character has to be half as tall in pixels to be the same
- * height on the glass - which is exactly what Atari shipped the second set of
- * font files for. Here it is arithmetic instead.
+ * The one a device that says nothing about itself is taken to have.
+ *
+ * Nothing here should reach it: the screen says how large its pixels are
+ * before a workstation is open, and the printer says so as well. It is what
+ * keeps a division from being by nought.
  */
 #define FSM_BASE_DPI (72)
 
@@ -206,31 +206,60 @@ static LONG size_from_height(WORD height)
  * And when what is being drawn on is not the screen at all, what that has
  * instead. Nought while it is the screen, which is nearly always.
  *
- * It exists for the printer. A screen's resolution can be worked out from its
- * shape because there were only ever a handful of shapes and they were all
- * about the same size of glass; a page has the same shape at three hundred
- * dots to the inch as at six hundred, so nothing about the bitmap says how
- * large a point is on it and the device has to say.
+ * It exists for the printer. The page is a bitmap the emulator made, and it
+ * knows exactly how many dots to the inch it made it at - which is a better
+ * number than the one below can recover, a dot of a three hundred dot page
+ * being 84.6 thousandths of a millimetre and a word only able to hold 84.
  */
 static int elsewhere_x, elsewhere_y;
 
+/*
+ * How large a point is, from how large the device says its dots are.
+ *
+ * This is the same number the application works in. A program that lays a
+ * page out in millimetres or in inches - which is every word processor - turns
+ * them into pixels by the dot size the VDI reports for the device, so a
+ * typeface rendered at any other resolution is a typeface whose size does not
+ * mean what the program's own arithmetic says it means. Atari Works draws its
+ * ruler from this exact number, and its lines are as long as the ruler says.
+ *
+ * The values are Atari's own - 278 thousandths of a millimetre for a screen
+ * larger than an ST's, 372 for ST high - and they are what the .FNT files of
+ * the period were drawn against: Atari's ten point screen font is thirteen
+ * scan lines tall, which is ten points at about ninety dots to the inch, not
+ * at seventy two. So the bitmap faces, the device tables and the outlines all
+ * come to the same size when they come from here.
+ */
+static int dpi_of(WORD microns)
+{
+    if (microns <= 0)
+        return FSM_BASE_DPI;
+
+    return (int)((25400 + microns / 2) / microns);
+}
+
 static int device_ydpi(void)
 {
+    WORD width, height;
+
     if (elsewhere_y > 0)
         return elsewhere_y;
 
-    /* Two hundred lines where a high resolution screen has four hundred, in
-     * the same physical space */
-    return (V_REZ_VT < 300) ? FSM_BASE_DPI / 2 : FSM_BASE_DPI;
+    get_pixel_size(&width, &height);
+
+    return dpi_of(height);
 }
 
 static int device_xdpi(void)
 {
+    WORD width, height;
+
     if (elsewhere_x > 0)
         return elsewhere_x;
 
-    /* And three hundred and twenty columns where it has six hundred and forty */
-    return (V_REZ_HZ < 400) ? FSM_BASE_DPI / 2 : FSM_BASE_DPI;
+    get_pixel_size(&width, &height);
+
+    return dpi_of(width);
 }
 
 void gdos_fsm_device_dpi(int xdpi, int ydpi)
