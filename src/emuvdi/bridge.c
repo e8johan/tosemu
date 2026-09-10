@@ -591,12 +591,33 @@ void emuvdi_menu_active(int16_t *x, int16_t *y, int16_t *w, int16_t *h)
     *h = gl_ctwait.m_gr.g_h;
 }
 
-/* EmuTOS's form library, aes/gemfmlib.c */
+/* EmuTOS's form library, aes/gemfmlib.c, and the count it keeps of the forms
+ * that own the screen */
 WORD fm_do(OBJECT *tree, WORD start);
+extern WORD ml_ocnt;
 
 int16_t emuvdi_form_do(void *tree, int16_t start)
 {
     return fm_do(tree, start);
+}
+
+/*
+ * Whether a dialog is up, which is that count being anything but nought.
+ *
+ * EmuTOS answers the same question with the same word and does the same thing
+ * with the answer: fm_own takes the menu tree away from the control manager
+ * while a form owns the screen and gives it back afterwards, so that no menu
+ * can be opened over a dialog. There the bar is watched by a process of the
+ * AES's own and a tree it has not got is the whole of the lock; here it is
+ * watched by the wait, so the question has to be asked out loud.
+ *
+ * A form_do inside a form_do counts once, which is why this is a count and not
+ * a flag - the file selector puts an alert up when it cannot read a directory,
+ * and the selector is still there behind it.
+ */
+int16_t emuvdi_form_showing(void)
+{
+    return ml_ocnt > 0;
 }
 
 /* EmuTOS's object library, aes/gemoblib.c */

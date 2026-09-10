@@ -290,6 +290,16 @@ void emuvdi_iconblk_set(void *blk, void *mask, void *data, char *text,
 int16_t emuvdi_form_do(void *tree, int16_t start);
 
 /*
+ * Whether a dialog has the screen, which is the AES's own count of how many
+ * forms are being run: form_do puts it up on the way in and takes it down on
+ * the way out, and an alert and the file selector are both a form_do.
+ *
+ * It is what says a modal dialog is up, and the AES uses it for that itself -
+ * see the note above aes_menu_arrived, which is the one thing here that asks.
+ */
+int16_t emuvdi_form_showing(void);
+
+/*
  * Puts a menu bar up along the top of the screen, or takes it away. The tree
  * is one aes_tree_in built, and its first two entries are the bar itself and
  * the row of titles along it.
