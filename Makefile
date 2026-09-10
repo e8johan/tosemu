@@ -82,7 +82,14 @@ WINDOWICON = $(GEN)/rsc/window-icon.h
 # large the display is amounts to. The daemon wants this and not the rest: it
 # has no windows and no keyboard, and a keymap library it never calls is a
 # dependency it should not have.
+#
+# xdg-shell is in it because one of the two questions screen.c asks is how
+# large a maximised window would be, and maximising is a shell's word rather
+# than a display's. Nothing is shown either way - see ask_for_maximized - so
+# this is still the part of Wayland that has no windows in it.
 WAYLANDONLYLIBS = $(shell pkg-config --libs wayland-client)
+WAYLANDONLYHEADERS = $(GEN)/xdg-shell-client-protocol.h
+WAYLANDONLYOBJECTS = $(OBJ)/gen/xdg-shell-protocol.o
 
 # Building on a machine that has no Wayland to build against.
 #
@@ -104,6 +111,8 @@ WINDOWICON =
 WAYLANDFLAGS = -DNO_WAYLAND
 WAYLANDLIBS =
 WAYLANDONLYLIBS =
+WAYLANDONLYHEADERS =
+WAYLANDONLYOBJECTS =
 endif
 
 EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/keytables.c emuvdi/gdosfnt.c emuvdi/gdosfsm.c emuvdi/prndev.c emuvdi/textblit.c emuvdi/conout.c emuvdi/bridge.c \
@@ -397,7 +406,8 @@ $(GEN)/rsc/window-icon.h: $(EMUTOS)/extras/emuicon1.rsc $(SRC)/rsc/emuicon-to-c.
 	@mkdir -p $(dir $@)
 	python3 $(SRC)/rsc/emuicon-to-c.py $< 6 $@
 
-$(BIN)/tosaesd: $(DAEMONOBJECTS) $(OBJ)/screen.o $(OBJ)/settings.o
+$(BIN)/tosaesd: $(DAEMONOBJECTS) $(OBJ)/screen.o $(OBJ)/settings.o \
+                $(WAYLANDONLYOBJECTS)
 	@mkdir -p $(BIN)
 	$(LD) $(LDFLAGS) $^ $(DBUSLIBS) $(WAYLANDONLYLIBS) -o $@
 
@@ -406,7 +416,8 @@ $(BIN)/tosaesd: $(DAEMONOBJECTS) $(OBJ)/screen.o $(OBJ)/settings.o
 # is: what is being checked is not something an application can reach. A
 # compositor's answer cannot be arranged by a test, so the asking is checked by
 # using it and the arithmetic is checked here.
-$(BIN)/screentest: $(SRC)/screentest.c $(OBJ)/screen.o $(OBJ)/settings.o
+$(BIN)/screentest: $(SRC)/screentest.c $(OBJ)/screen.o $(OBJ)/settings.o \
+                   $(WAYLANDONLYOBJECTS)
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(WAYLANDONLYLIBS) -o $@
 
@@ -541,6 +552,12 @@ $(GEN)/xdg-toplevel-icon-v1-client-protocol.h:
 	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml $@
 
 $(OBJ)/gfx.o: $(WAYLANDHEADERS) $(WINDOWICON)
+
+# And screen.o the one of them that says how large a maximised window is. It
+# is here rather than left to the .d files for the same reason the line above
+# is: on a first build there is no .d yet, and the header has to exist before
+# the compiler goes looking for it.
+$(OBJ)/screen.o: $(WAYLANDONLYHEADERS)
 
 # Every object needs the generated m68kops.h, so none of them may be compiled
 # before m64kmake has run

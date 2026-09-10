@@ -33,6 +33,11 @@
  * them they cover the things that are easy to get wrong: a scale the
  * compositor applies as well as the one the emulator does, and a width that
  * does not divide into sixteen.
+ *
+ * The same desk answers the other half of this, which is how much of a
+ * display a panel or a dock keeps - see insets below. That is worked out
+ * backwards from how large a maximised window came out, so what a test has to
+ * arrange is a size, and a size is the one thing it can.
  */
 
 #include "screen.h"
@@ -80,6 +85,69 @@ static void both(int scale, int32_t pw, int32_t ph, int32_t out_scale,
     check(w, want_w, name);
     snprintf(name, sizeof name, "%s is %d down", what, want_h);
     check(h, want_h, name);
+}
+
+/* The two displays above, described the way the compositor describes them */
+static const struct screen_display desk[] = {
+    { 3456, 2160, 2 },      /* 1728x1080 to lay a window out in */
+    { 3440, 1440, 1 },
+};
+
+/*
+ * How much of a display the desktop kept, worked out from how large a
+ * maximised window came out.
+ *
+ * Which display the window went to is not said, so the answer has to be found
+ * by fitting: it is the one the maximised size fits inside with the least
+ * left over. That is exact when there is one display and a guess when there
+ * are two the same, and a guess is what the whole business is - a panel is on
+ * every display of a desk that has one.
+ */
+static void insets(void)
+{
+    int32_t iw, ih;
+
+    /* The one in front of you, with a panel forty tall along the bottom */
+    screen_inset(desk, 2, 1728, 1040, &iw, &ih);
+    check(iw, 0, "a panel along the bottom takes nothing across");
+    check(ih, 40, "and forty down");
+
+    /* And a dock down the side of the other one as well */
+    screen_inset(desk, 2, 3372, 1400, &iw, &ih);
+    check(iw, 68, "a dock down the side takes its width across");
+    check(ih, 40, "and the panel is still there");
+
+    /* A desktop that keeps nothing, which is a window as large as the display
+     * and an inset of nothing */
+    screen_inset(desk, 2, 1728, 1080, &iw, &ih);
+    check(iw, 0, "a bare desktop keeps nothing across");
+    check(ih, 0, "and nothing down");
+
+    /* One display, which is the ordinary case and the one that is not a
+     * guess: there is nowhere else the window can have gone */
+    screen_inset(desk, 1, 1700, 1000, &iw, &ih);
+    check(iw, 28, "with one display the answer is arithmetic");
+    check(ih, 80, "in both directions");
+
+    /*
+     * A maximised size that fits inside neither, which is what a compositor
+     * scaling by something other than a whole number reports: wl_output says
+     * twice the pixels for a display shown at one and a half, so the display
+     * looks smaller than the window it just offered. Nothing is taken off,
+     * and the screen is the display as it was before any of this.
+     */
+    screen_inset(desk, 1, 2304, 1400, &iw, &ih);
+    check(iw, 0, "a window larger than every display leaves the display alone");
+    check(ih, 0, "in both directions");
+
+    /* And the answers that are not answers */
+    screen_inset(desk, 2, 0, 0, &iw, &ih);
+    check(iw, 0, "a maximised size of nothing is not an answer");
+    check(ih, 0, "in both directions");
+
+    screen_inset(desk, 0, 1728, 1040, &iw, &ih);
+    check(iw, 0, "and neither is a maximised size with no display to fit it");
+    check(ih, 0, "in both directions");
 }
 
 int main(void)
@@ -139,6 +207,8 @@ int main(void)
     check(w <= 32767 && w > 0, 1, "an enormous display is cut to a word");
     check(h <= 32767 && h > 0, 1, "in both directions");
     check(w % 16, 0, "and is still a whole number of words across");
+
+    insets();
 
     printf("1..%d\n", n);
 
