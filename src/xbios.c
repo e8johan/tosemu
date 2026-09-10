@@ -23,9 +23,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "tossystem.h"
 #include "memory.h"
+#include "gfx.h"
+#include "emuvdi/emuvdi.h"
 #include "cpu.h"
 #include "m68k.h"
 
@@ -81,41 +84,158 @@ uint32_t XBIOS_Dsp_Available()
 
 /* Keyboard table functions **************************************************/
 
+/*
+ * The keyboard table, which is how an application asks what a key means.
+ *
+ * A KEYTAB is three addresses, and each of them is a hundred and twenty eight
+ * bytes saying what a key of the machine types: unshifted, shifted, and with
+ * caps lock down. Nothing here reads it - what a key types is answered by the
+ * desktop, in keyboard.c - and it exists because an application reads it, for
+ * the question the other way round: which letter is on the key that arrived.
+ *
+ * That is the only way to answer it. A menu shortcut on Alternate and a letter
+ * arrives as a scan code with nothing typed, deliberately, so an application
+ * with a menu of letters looks each one up here. GenST2 does, and it takes the
+ * third table to do it, caps lock being the one that answers with capitals -
+ * so an emulator with no table to hand out is an emulator where no shortcut in
+ * it works, and reading a pointer out of an answer of nought sends it walking
+ * through the exception vectors.
+ *
+ * It has to live in the machine's memory, being an address an application
+ * follows, so it comes out of the RAM the system reserves for the structures
+ * it hands pointers to.
+ */
+#define KEYTAB_TABLES (3)
+#define KEYTAB_KEYS   (128)
+
+/* Where it is in the machine, and where the three tables of tosemu's own are.
+ * A new application gets a new reservation, so both go with the old one - see
+ * the note at the top of xbios_p.h. */
+static uint32_t keytab;
+static uint32_t keytab_own;
+
+static void xbios_keyboard_reset(void)
+{
+    keytab = 0;
+    keytab_own = 0;
+}
+
+/*
+ * Puts the three tables back to the ones this machine came with, which is what
+ * Bioskeys does and what the first call has to do before anything else.
+ */
+static void keytab_defaults(void)
+{
+    if (!keytab)
+        return;
+
+    m68k_write_memory_32(keytab, keytab_own);
+    m68k_write_memory_32(keytab + 4, keytab_own + KEYTAB_KEYS);
+    m68k_write_memory_32(keytab + 8, keytab_own + 2 * KEYTAB_KEYS);
+}
+
+/*
+ * The KEYTAB, made the first time anything asks for one.
+ *
+ * The tables are the machine's own to begin with and then whatever the desktop
+ * can say about the keyboard in front of the person is written over the top,
+ * so that the letter on the key is the letter an application is told about.
+ * Where there is no desktop to ask - a test, a terminal - what is left is the
+ * machine's, which is a table rather than nothing.
+ */
+static uint32_t keytab_build(void)
+{
+    const uint8_t *from[KEYTAB_TABLES];
+    uint8_t built[KEYTAB_TABLES][KEYTAB_KEYS];
+    int asked;
+    int i, j;
+
+    if (keytab)
+        return keytab;
+
+    keytab = bios_static_alloc(KEYTAB_TABLES * 4
+                               + KEYTAB_TABLES * KEYTAB_KEYS);
+    if (!keytab)
+        return 0;
+
+    keytab_own = keytab + KEYTAB_TABLES * 4;
+
+    emuvdi_keyboard_tables(&from[0], &from[1], &from[2]);
+
+    for (i = 0; i < KEYTAB_TABLES; i++)
+        memcpy(built[i], from[i], KEYTAB_KEYS);
+
+    asked = gfx_keyboard_table(built[0], built[1], built[2]);
+
+    /*
+     * Which is worth saying, because it decides what an application makes of
+     * every shortcut it has: the letter on the key somebody pressed, or the
+     * letter that would have been on it on the machine this pretends to be.
+     */
+    if (verbose >= VERBOSE_CONFIG)
+    {
+        printf("tosemu: the keyboard table is %s\n",
+               asked ? "the layout on the desktop"
+                     : "the machine's own, there being no desktop to ask");
+        fflush(stdout);
+    }
+
+    for (i = 0; i < KEYTAB_TABLES; i++)
+        for (j = 0; j < KEYTAB_KEYS; j++)
+            m68k_write_memory_8(keytab_own + i * KEYTAB_KEYS + j, built[i][j]);
+
+    keytab_defaults();
+
+    return keytab;
+}
+
 uint32_t XBIOS_Keytbl()
 {
-    uint32_t unshift = peek_u32(2);
-    uint32_t shift = peek_u32(6);
-    uint32_t capslock = peek_u32(10);
+    uint32_t given[KEYTAB_TABLES];
+    uint32_t block;
+    int i;
+
+    given[0] = peek_u32(2);
+    given[1] = peek_u32(6);
+    given[2] = peek_u32(10);
 
     FUNC_TRACE_ENTER_ARGS {
-        printf("    unshift : 0x%x\n    shift   : 0x%x\n    capslock: 0x%x\n", unshift, shift, capslock);
+        printf("    unshift : 0x%x\n    shift   : 0x%x\n    capslock: 0x%x\n",
+               given[0], given[1], given[2]);
     }
 
-    /* TODO to support writing to these tables, the keyboard mapping needs to
-     * be supported in general. At the moment, the system relies on the mapping
-     * of the host system.
+    block = keytab_build();
+    if (!block)
+        return 0;
+
+    /*
+     * A table of the application's own, for each of the three it named. -1 is
+     * how it says to leave one alone, which is what every application asking
+     * where the tables are says for all three.
+     *
+     * What it hands over is an address in its own memory and it stays there:
+     * the table is not copied, because the application is entitled to write to
+     * it afterwards and expect the change to be seen. Nothing here reads these
+     * anyway - a key is turned into a character by the desktop - so what this
+     * is keeping is the answer to the next application that asks.
      */
-    if (unshift != 0xffffffff)
-    {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (unshift)\n"); /* TODO */
-        halt_execution();
-    }
-    if (shift != 0xffffffff)
-    {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (shift)\n"); /* TODO */
-        halt_execution();
-    }
-    if (capslock != 0xffffffff)
-    {
-        printf("XBIOS Keytbl: Altering the keyboard table is not supported (capslock)\n"); /* TODO */
-        halt_execution();
-    }
+    for (i = 0; i < KEYTAB_TABLES; i++)
+        if (given[i] != 0xffffffff)
+            m68k_write_memory_32(block + i * 4, given[i]);
 
-    return 0; /* TODO return a pointer to the table in some pre-allocated place in ST RAM */
+    return block;
 }
+
 uint32_t XBIOS_Bioskeys()
 {
-    /* TODO this is a nop, as we do not use the keyboard tables at the moment */
+    FUNC_TRACE_ENTER
+
+    /* Which is only worth doing if somebody has asked for the tables at all:
+     * putting them back means having them, and having them means a reservation
+     * this need not make on its own account. */
+    if (keytab_build())
+        keytab_defaults();
+
     return 0;
 }
 
@@ -327,6 +447,7 @@ void xbios_reset()
 {
     xbios_screen_reset();
     xbios_dev_reset();
+    xbios_keyboard_reset();
 }
 
 void xbios_trap()

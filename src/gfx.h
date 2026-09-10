@@ -309,6 +309,24 @@ void gfx_mouse_now(int16_t *x, int16_t *y, int16_t *buttons);
  * it has: nought,nought is a real place, and things happen there. */
 int gfx_mouse_known(void);
 uint16_t gfx_kstate();
+
+/*
+ * The keyboard table as the keyboard somebody is typing on, which is three
+ * arrays of a hundred and twenty eight bytes: what each key of the machine
+ * types unshifted, shifted, and with caps lock down.
+ *
+ * An application reads it through XBIOS Keytbl to ask which letter is on the
+ * key that arrived, a menu shortcut being a key rather than a character - so
+ * the answer has to come from the layout in front of the person. Only the keys
+ * where a scan code and a Linux key number are the same number are filled in,
+ * and only where the desktop says the key types something: everything else is
+ * left as the caller had it, which is the table the machine came with.
+ *
+ * Answers whether there was anybody to ask. A run with no window is not, and
+ * the caller then has what it started with.
+ */
+int gfx_keyboard_table(uint8_t *norm, uint8_t *shift, uint8_t *caps);
+
 /*
  * The next time the buttons changed, with where the pointer was when they did,
  * or 0 if they have not changed since this was last asked.

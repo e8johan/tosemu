@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -449,6 +449,17 @@ check: all
 	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27 120,152 120,152' \
 	  $(TOSEMU) test-c-modal > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# The keyboard table, which is how a key becomes a letter again: a menu
+	# shortcut on Alternate and a letter arrives as a scan code with nothing
+	# typed, so an application turns it back into a letter through this. The
+	# letters expected are the ones the machine came with, which is what
+	# there is to hand over with no desktop to ask about the keyboard
+	# somebody is really typing on - and this runs with no window. The count
+	# is pinned because the first check is the one that decides whether the
+	# rest can safely run at all: an application cannot follow a table that
+	# is not there, and neither can this.
+	$(TOSEMU) test-c-keytbl > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.17' out
 	# Asking where the mouse is rather than waiting for it, which is what an
 	# application tracking a slider does. The pointer is moved twice and
 	# then pressed and not let go of, and none of it is waited for.
