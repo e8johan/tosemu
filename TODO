@@ -85,6 +85,30 @@
   and have to be composed from a single surface rather than shown side by
   side - which is the same piece of work as the surface router, and neither is
   needed until then.
+- A keyboard table an application installs through Keytbl changes what the next
+  application to ask is told and nothing else, because nothing in tosemu reads
+  the tables: what a key types is what the desktop says it types. Handing out a
+  table is what applications actually want it for - a menu shortcut on
+  Alternate and a letter arrives as a key with no character, and the table is
+  how the letter is got back - so the half that matters works. What does not is
+  a program that installs a layout of its own and expects to type with it,
+  which was how a person changed keyboard on an ST. Closing it means keyboard.c
+  reading the installed table rather than the codepoint, and then the layout on
+  the desktop stops deciding what gets typed, which is a decision rather than a
+  detail.
+- The keypad an ST had is unreachable, and the cursor keys are the reason. An
+  ST puts its cursor block where a PC keyboard puts its keypad, and it is the
+  cursor keys a GEM application waits for, so a PC's keypad is read as the
+  cursor block and the ST's own keypad - scan codes 0x67 to 0x72, which some
+  applications use for numbers - has nothing pointing at it. What would close
+  it is a setting: one keyboard cannot be both, and which of the two somebody
+  wants depends on the application in front of them.
+- The alternate translation tables in a KEYTAB are not handed out, only the
+  three TOS 1.0 had. They arrived with the _AKP cookie, which tosemu has no
+  cookie jar to declare, so an application has no way to look for them and no
+  reason to read past the three - but the structure it is given is three
+  pointers long, and an application that reads a fourth reads whatever is
+  reserved after it.
 - A GEM application is told what the desktop has on its clipboard only while
   one of its windows has the keyboard, which is Wayland's rule rather than
   anything tosemu chooses: a client with no focused surface is sent no
