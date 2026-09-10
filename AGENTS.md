@@ -255,11 +255,22 @@ one of the two, and `.gitignore` covers them. Do not commit changes inside
 ## Screens
 
 `TOSEMU_SCREEN` picks one, and `screen.c` holds the table. The ST's `low`,
-`medium` and `high`; the TT's `tt-medium` and `tt-high`; and `native-mono` and
-`native-color`, which are as large as the display will hold. `high` is the
-default because it is what GEM applications were written for — 640x400, eighty
+`medium` and `high`; the TT's `tt-medium` and `tt-high`; `native-mono` and
+`native-color`, which are as large as a window may be; and `display-mono` and
+`display-color`, which are as large as the display is. `high` is the default
+because it is what GEM applications were written for — 640x400, eighty
 characters across. A dialog out of a resource is measured in characters, so how
 many fit is what decides whether it fits at all.
+
+The difference between the last two pairs is the desktop's panel, and finding
+it is the one thing in `screen.c` that is not arithmetic: Wayland has no work
+area, so the size a maximised window would be given is asked for and that is
+the panel subtracted by the compositor. It is asked on a surface that is
+committed with no buffer and destroyed again, so nothing appears — see
+`ask_for_maximized`, and `wait_for` beside it for why the wait has a clock on
+it. `NO_WAYLAND=1` takes all of it out, and with nothing to ask all four fall
+back to 640x400, which is what the test suite pins with `WAYLAND_DISPLAY`
+pointed at nothing.
 
 The daemon decides when there is one, including for the accessories it starts,
 so `TOSEMU_SCREEN`, `TOSEMU_SCALE` and `TOSEMU_OUTPUT` — or the `[screen]`

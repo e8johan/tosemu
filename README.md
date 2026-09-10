@@ -153,18 +153,29 @@ characters of the same size, so an application gets more room rather than a
 bigger picture. `tt-high` is 1280x960, which at the default scale would be a
 window larger than most displays - set `TOSEMU_SCALE=1` with it.
 
-Two more are a rule rather than a size: `native-mono` and `native-color` are as
-large as the display will hold, in one plane and in four. They are not Atari
-screens and are not pretending to be. What they are for is a GEM application
-having the room a modern display has, which is the one thing the machine could
-not give it - and the rest of GEM does not mind, because a resource is measured
-in characters and more of them across is simply more room.
+Four more are a rule rather than a size: `native-mono` and `native-color` are
+as large as a window may be, in one plane and in four, and `display-mono` and
+`display-color` are as large as the display is. They are not Atari screens and
+are not pretending to be. What they are for is a GEM application having the
+room a modern display has, which is the one thing the machine could not give it
+- and the rest of GEM does not mind, because a resource is measured in
+characters and more of them across is simply more room.
 
-How large that is comes out of two divisions. The compositor's own scaling is
-one - a display reporting 3456x2160 at a scale of two shows a window in half of
-those - and `TOSEMU_SCALE` is the other, being how many of those an ST pixel
-becomes. So a 3456x2160 display at scale two gives a 576x360 screen at the
-default `TOSEMU_SCALE=3`, and that screen magnified by three is 1728x1080,
+The difference between the two pairs is the panel. A desktop keeps some of its
+display for itself - a bar across the bottom, a dock down one side - and a
+screen worked out from the whole display is a screen whose bottom right corner
+is behind that bar, which is exactly where a GEM window keeps its size box. So
+`native-mono` and `native-color` ask the compositor how large a window it is
+willing to give, which is what maximising one answers and is the panel
+subtracted by the only party that knows about it. `display-mono` and
+`display-color` measure the display itself, panel or no panel, which is what
+the first pair meant before there was any way to tell the difference.
+
+How large either of them is comes out of two divisions. The compositor's own
+scaling is one - a display reporting 3456x2160 at a scale of two shows a window
+in half of those - and `TOSEMU_SCALE` is the other, being how many of those an
+ST pixel becomes. So a 3456x2160 display at scale two gives a 576x360 screen at
+the default `TOSEMU_SCALE=3`, and that screen magnified by three is 1728x1080,
 which is the display. They are one setting rather than two for exactly that
 reason. The width is rounded down to a multiple of sixteen, because a row of a
 surface is a whole number of words, so the window can come out a little short of
@@ -172,16 +183,31 @@ the display's width and never over it.
 
 `TOSEMU_OUTPUT` says which display to measure, by the name the compositor gives
 it - `eDP-1`, `DP-1` and so on, which `wayland-info` will list. Without it, the
-first one the compositor mentions. With no compositor to ask at all the size
-falls back to 640x400 and the planes stay as asked, which is what happens on a
-machine with no desktop and in the test suite. A display named and not there -
-a monitor since unplugged, most likely - falls back the same way and says which
-displays it did find, rather than quietly measuring a different one.
+first one the compositor mentions, and for the two that maximise, whichever
+display the compositor puts a new window on - which is not always the same one,
+and is the display the emulator's own windows are about to appear on either
+way. A maximised window cannot be asked for on a display of one's choosing:
+xdg-shell has that for fullscreen and nothing of the kind for maximising. So
+when a display is named, what carries across is how much room the desktop took
+rather than the size it left - the same panel is on every display of a desk
+that has one - and that is taken off the display that was asked for.
 
-Asking costs one round trip at the moment the machine is decided, and no window:
-`wl_output` is a global like any other and says how large it is without anything
-being shown. When `tosaesd` is running it is the one that asks, because it is
-the one that decides - so set these on the daemon, not on each application.
+With no compositor to ask at all the size falls back to 640x400 and the planes
+stay as asked, which is what happens on a machine with no desktop and in the
+test suite. A display named and not there - a monitor since unplugged, most
+likely - falls back the same way and says which displays it did find, rather
+than quietly measuring a different one. So does a compositor that does not
+answer the second question within a quarter of a second, or has no xdg-shell to
+answer it with: `native-*` is then `display-*`, which is a panel in the way and
+not a screen that failed to appear.
+
+Asking costs two round trips at the moment the machine is decided, and no
+window. `wl_output` is a global like any other and says how large it is without
+anything being shown; the maximised size needs a surface, but that surface is
+committed with nothing attached to it, which is a question rather than a
+window, and it is destroyed as soon as the answer arrives. When `tosaesd` is
+running it is the one that asks, because it is the one that decides - so set
+these on the daemon, not on each application.
 
 When `tosaesd` is running it is what decides, and the variable is read from its
 environment rather than from each application's. The screen has to be one
@@ -586,9 +612,9 @@ AES opens the physical workstation with:
 
 | `TOSEMU_SCREEN`             | planes | section |
 | --------------------------- | ------ | ------- |
-| `high`, `tt-high`, `native-mono` | 1 | 4 |
+| `high`, `tt-high`, `native-mono`, `display-mono` | 1 | 4 |
 | `medium`                    | 2      | 3       |
-| `low`, `tt-medium`, `native-color` | 4 | 2 |
+| `low`, `tt-medium`, `native-color`, `display-color` | 4 | 2 |
 
 It matters because the sections usually hold different fonts. A medium
 resolution screen puts two hundred lines where a high resolution one puts four

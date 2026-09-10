@@ -346,13 +346,20 @@ check: all
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
-	# The two whose size is a rule rather than a number, with nothing to
+	# The four whose size is a rule rather than a number, with nothing to
 	# ask. A compositor is not something a test can arrange - this machine
 	# may have two displays and a build server none - so what is checked
 	# here is what they come to when there is none, and the arithmetic for
 	# when there is one is bin/screentest's to check. The planes are the
 	# half that holds either way, and they are what differs below.
-	for s in native-mono native-color; do \
+	#
+	# WAYLAND_DISPLAY is pointed at nothing for all four rather than left
+	# alone, because this is the one thing in the suite whose answer would
+	# otherwise be the display of whoever is running it. native-mono and
+	# native-color go further than the other two and ask how large a
+	# maximised window would be, so with a desktop in reach they would be
+	# that desktop's panel as well.
+	for s in native-mono native-color display-mono display-color; do \
 	  TOSEMU_SCREEN=$$s $(NO_DISPLAY) $(TOSEMU) test-c-screen $$s > out \
 	    || exit 1; \
 	  ! grep -q '^not ok' out || exit 1; \

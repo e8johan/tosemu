@@ -91,17 +91,22 @@ static const struct {
     { "tt-high",   1280, 960,   2, 8, 16, 278, 278, 19, 19 },
 
     /*
-     * And the two whose size is a rule rather than a number, as they come out
+     * And the four whose size is a rule rather than a number, as they come out
      * with no compositor to ask - which is every test run, and is why they can
      * be checked here at all. The size falls back to the one GEM applications
      * were written for; the planes are what was asked for either way, being
-     * the half of those two that does not depend on there being a display.
+     * the half of those four that does not depend on there being a display.
      *
-     * How large they are when there is one is arithmetic rather than a
-     * workstation, and bin/screentest checks that.
+     * With no display there is no difference between the pairs either: what
+     * separates them is how much of a display a panel keeps, and nothing
+     * keeps any of a display that is not there. How large they are when there
+     * is one is arithmetic rather than a workstation, and bin/screentest
+     * checks that.
      */
-    { "native-mono",  640, 400,  2, 8, 16, 372, 372, 19, 19 },
-    { "native-color", 640, 400, 16, 8, 16, 372, 372, 19, 19 },
+    { "native-mono",   640, 400,  2, 8, 16, 372, 372, 19, 19 },
+    { "native-color",  640, 400, 16, 8, 16, 372, 372, 19, 19 },
+    { "display-mono",  640, 400,  2, 8, 16, 372, 372, 19, 19 },
+    { "display-color", 640, 400, 16, 8, 16, 372, 372, 19, 19 },
 };
 
 int main(int argc, char **argv)
