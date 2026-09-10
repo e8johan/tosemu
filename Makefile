@@ -20,6 +20,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               xbios.c xbiosscreen.c xbiossys.c xbiosdev.c bios.c \
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
+              keyboard.c \
               fontface.c printer.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
@@ -198,7 +199,7 @@ all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check gdos-check screen-check settings-check scrap-check icon-check \
-        print-check \
+        print-check keyboard-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -423,6 +424,18 @@ $(BIN)/settingstest: $(SRC)/settingstest.c $(OBJ)/settings.o
 settings-check: $(BIN)/settingstest
 	./$(BIN)/settingstest
 
+# What a modified key press becomes, checked without a keyboard to hold a
+# modifier down on. Host built for the same reason as the two above: a
+# compositor is the only thing that reports a modifier and it is not something a
+# test can arrange, so the rules are a function of their own and the words are
+# handed to it directly.
+$(BIN)/keyboardtest: $(SRC)/keyboardtest.c $(OBJ)/keyboard.o $(OBJ)/scraptext.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+keyboard-check: $(BIN)/keyboardtest
+	./$(BIN)/keyboardtest
+
 # The picture on the windows, checked without a task bar to put it in. Host
 # built for the same reason as the two above, and it checks the one half of
 # this that can be checked: which picture came out of somebody else's resource
@@ -551,7 +564,7 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
-       icon-check gdos-check print-check
+       icon-check gdos-check print-check keyboard-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu
