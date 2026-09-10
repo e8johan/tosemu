@@ -95,6 +95,7 @@
 #include "screen.h"
 #include "settings.h"
 #include "scraptext.h"
+#include "keyboard.h"
 #include "emuvdi/emuvdi.h"
 
 /* Told to the AES when a window's frame is used to close it, so that the
@@ -1049,7 +1050,7 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
 {
     xkb_keycode_t code = key + 8;   /* Wayland counts from a different place */
     xkb_keysym_t sym;
-    uint16_t scan, ch = 0;
+    uint16_t scan, word;
     uint32_t cp;
 
     (void)data; (void)kb; (void)time;
@@ -1089,32 +1090,27 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
         scan = (uint16_t)key;
 
     /*
-     * And what it types, in the ST's alphabet rather than the desktop's.
-     *
-     * The layout is the host's, so the answer is Unicode, and scrap_text_key
-     * is what knows the ST's spelling of it. Asking for the codepoint rather
-     * than for UTF-8 is the point: this used to take the character only when
-     * xkb wrote a single byte, and UTF-8 spends two on every letter outside
-     * ASCII, so a Nordic keyboard typed nothing at all and left the
-     * application to make what it could of a scan code with no character.
-     *
-     * A character the ST has no byte for types nothing, and the scan code
-     * still goes, so a shortcut on such a key keeps working.
+     * And what it types, which the desktop answers in Unicode: the layout is
+     * the host's. Asking for the codepoint rather than for UTF-8 is the point -
+     * this used to take the character only when xkb wrote a single byte, and
+     * UTF-8 spends two on every letter outside ASCII, so a Nordic keyboard
+     * typed nothing at all and left the application to make what it could of a
+     * scan code with no character.
      */
     cp = xkb_state_key_get_utf32(w.xkb_state, code);
 
-    if (cp)
-    {
-        int typed = scrap_text_key(cp);
+    /*
+     * The two halves together, which is keyboard.c's to say: what a modifier
+     * does to a keypress is not something the desktop has an opinion about, and
+     * an application is entitled to the answer TOS gave. Nought is a key GEM
+     * has no way of describing.
+     */
+    word = keyboard_word(scan, cp, gfx_kstate());
 
-        if (typed >= 0)
-            ch = (uint16_t)typed;
-    }
+    if (word == 0)
+        return;
 
-    if (scan == 0 && ch == 0)
-        return;     /* A key GEM has no way of describing */
-
-    key_post((uint16_t)((scan << 8) | ch));
+    key_post(word);
 }
 
 static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
