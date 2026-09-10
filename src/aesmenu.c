@@ -221,6 +221,16 @@ int aes_menu_shown()
  *
  * Only the arrival counts. Sitting in the bar afterwards is not a reason to
  * start the menu again.
+ *
+ * And not while a dialog is up. An application inside form_do is waiting for
+ * one of its own buttons and for nothing else, so a menu chosen over the top
+ * of a dialog is a message nobody will ever come and read - which is why the
+ * AES takes the menu tree away from the control manager for as long as a form
+ * owns the screen, in fm_own. Here it matters more than that. The bar is
+ * watched by the wait itself, and the wait a dialog is standing in is the
+ * dialog's own, so running the menu from it brings the bar's tree across on
+ * top of the dialog's - and the dialog is left holding a tree that has been
+ * handed back to the allocator. See aestree.c, which has room for one.
  */
 static int was_among_titles;
 
@@ -229,7 +239,8 @@ int aes_menu_arrived(int16_t x, int16_t y)
     int16_t rx, ry, rw, rh;
     int inside;
 
-    if (!bar_shown || bar_running || !gfx_mouse_known())
+    if (!bar_shown || bar_running || emuvdi_form_showing()
+        || !gfx_mouse_known())
     {
         was_among_titles = 0;
         return 0;

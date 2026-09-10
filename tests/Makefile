@@ -19,13 +19,13 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll \
-            c-keyboard
+            c-keyboard c-modal
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -436,6 +436,18 @@ check: all
 	# what these run on.
 	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27' $(TOSEMU) test-c-menu > out; \
 	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The menu bar while a dialog is up, which is a menu bar nobody may
+	# touch. The pointer walks into the bar and picks the first entry of the
+	# File menu while form_do has the screen - the same three moves and a
+	# press as above - and then presses the dialog's own button. Nothing may
+	# have been chosen from the menu, and the dialog has to have come out of
+	# it unharmed: a bar that answers while a dialog is up brings its own
+	# tree across on top of the dialog's, and form_do then reads memory that
+	# has been handed back. Which is a crash, so the count line matters more
+	# here than the checks before it.
+	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27 120,152 120,152' \
+	  $(TOSEMU) test-c-modal > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# Asking where the mouse is rather than waiting for it, which is what an
 	# application tracking a slider does. The pointer is moved twice and
