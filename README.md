@@ -466,6 +466,44 @@ happened, so nothing is written to the scrap directory and no other GEM program
 can paste it; it goes straight to the desktop, where a person put it.
 
 
+The keyboard
+============
+
+A keypress reaches a GEM application as one word: which key, and what it typed.
+Both halves are the machine's rather than the desktop's. The key is a place on
+an ST keyboard, which is a number a Linux keyboard happens to agree with for
+the whole main block, and the character is a byte of the Atari character set,
+which is what the desktop's Unicode is turned into.
+
+The layout is the desktop's and it decides what gets typed: a Swedish keyboard
+types the ST's byte for a with a ring, and a character the ST has no byte for
+types nothing rather than a question mark.
+
+What it does not decide is the shortcuts. A menu shortcut on Alternate and a
+letter arrives as the key with nothing typed, which is how TOS said a key had
+been pressed rather than typed, and an application gets the letter back by
+looking the key up in the keyboard table - `Keytbl`, which hands out what each
+key of the machine types unshifted, shifted and with caps lock down. So that
+table is built from the layout on the desktop, and the letter printed on the
+key somebody pressed is the letter the application matches against its own
+menu. It works on any layout for that reason rather than by accident.
+
+Where there is no desktop to ask - a test, a terminal, a machine with nobody
+logged in - the table is the American one an ST was sold with. `-v` says which
+of the two a run is using.
+
+The rest of what a modifier does is TOS's and is done as TOS did it: Shift and
+a function key is F11 to F20 rather than F1 to F10 with a shift held, Control
+and the left, right or Home key is a key of its own, Control and a character is
+that character with its top three bits taken off, and Shift and Tab is a tab -
+which is what a dialog reads to go back a field rather than on to the next one.
+
+An ST's Undo and Help have nowhere to be on a modern keyboard, so Print Screen
+and Scroll Lock stand in for them. A compositor may well want Print Screen for
+itself, in which case Undo has to be reached some other way; that is the
+compositor's to decide.
+
+
 Fonts
 =====
 
