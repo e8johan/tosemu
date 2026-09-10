@@ -806,6 +806,117 @@ uint16_t gfx_kstate()
 #endif
 }
 
+/* Where the identity between a scan code and a key number holds, which is
+ * everything below the block an ST puts its cursor keys in */
+#define KEYBOARD_FIRST_KEY (0x01)
+#define KEYBOARD_LAST_KEY  (0x46)
+
+#ifndef NO_WAYLAND
+/* Which bit a modifier is, or none at all: a keymap that has not got the
+ * modifier answers with an index that is not one, and shifting by it is not
+ * something C has an answer for */
+static xkb_mod_mask_t modifier_bit(const char *name)
+{
+    xkb_mod_index_t which = xkb_keymap_mod_get_index(w.keymap, name);
+
+    if (which == XKB_MOD_INVALID)
+        return 0;
+
+    return (xkb_mod_mask_t)1 << which;
+}
+#endif
+
+/*
+ * The keyboard table, as the keyboard the person is actually typing on.
+ *
+ * An ST kept three arrays of what each of its keys types - unshifted, shifted,
+ * and with caps lock down - and an application reads them to ask the question
+ * the other way round: which letter is on the key that arrived. A menu shortcut
+ * is a key rather than a character, so that is the only way to get the letter
+ * back, and an answer taken from some other keyboard is an answer about a key
+ * the person did not press.
+ *
+ * Which is why it is built here rather than carried. The scan code of a key and
+ * its number on a Linux keyboard are the same number for the whole main block -
+ * that is the identity kb_key already relies on the other way round - so each
+ * one can simply be asked about: what does this key type with nothing held,
+ * with shift, with caps lock. The answer is Unicode, being the desktop's, and
+ * scrap_text_key knows the ST's spelling of it.
+ *
+ * Only the block where the identity holds is asked about, which stops before
+ * the cursor keys: an ST has those where a PC has its keypad, so asking where
+ * they are would put a seven on the Home key. Anything else, including every
+ * key the desktop says types nothing, is left as the caller had it - the table
+ * that comes with the machine, which is what those entries are already right
+ * about.
+ *
+ * Answers 0 when there is nobody to ask, which is a run with no window: the
+ * caller then has the table it started with and an application still gets one.
+ */
+int gfx_keyboard_table(uint8_t *norm, uint8_t *shift, uint8_t *caps)
+{
+#ifdef NO_WAYLAND
+    (void)norm; (void)shift; (void)caps;
+
+    return 0;
+#else
+    /* The three tables, and what has to be down for each of them. Caps lock is
+     * locked rather than held, which is what makes the desktop answer with a
+     * capital. */
+    struct {
+        uint8_t *into;
+        xkb_mod_mask_t held;
+        xkb_mod_mask_t locked;
+    } table[3];
+
+    struct xkb_state *asking;
+    uint16_t code;
+    int i;
+
+    if (!w.keymap)
+        return 0;
+
+    asking = xkb_state_new(w.keymap);
+    if (!asking)
+        return 0;
+
+    table[0].into = norm;
+    table[0].held = 0;
+    table[0].locked = 0;
+    table[1].into = shift;
+    table[1].held = modifier_bit(XKB_MOD_NAME_SHIFT);
+    table[1].locked = 0;
+    table[2].into = caps;
+    table[2].held = 0;
+    table[2].locked = modifier_bit(XKB_MOD_NAME_CAPS);
+
+    for (i = 0; i < 3; i++)
+    {
+        xkb_state_update_mask(asking, table[i].held, 0, table[i].locked,
+                              0, 0, 0);
+
+        for (code = KEYBOARD_FIRST_KEY; code <= KEYBOARD_LAST_KEY; code++)
+        {
+            /* Wayland counts keys from a different place than xkb does, the
+             * same way round as in kb_key */
+            uint32_t cp = xkb_state_key_get_utf32(asking, code + 8);
+            int typed;
+
+            if (!cp)
+                continue;
+
+            typed = scrap_text_key(cp);
+            if (typed > 0)
+                table[i].into[code] = (uint8_t)typed;
+        }
+    }
+
+    xkb_state_unref(asking);
+
+    return 1;
+#endif
+}
+
 /*
  * Clicks asked for on the command line, for when nobody is going to click.
  *
@@ -3234,6 +3345,15 @@ int gfx_open(struct surface *screen)
         return 0;
     }
 
+    /*
+     * Somewhere to compile a keyboard layout, before anything is asked of the
+     * compositor rather than after. The context needs nothing from Wayland,
+     * and a layout arriving before there is one to compile it with is a layout
+     * thrown away - which used to be the ordinary case rather than a race,
+     * because this was made once the asking below had finished.
+     */
+    w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+
     w.registry = wl_display_get_registry(w.display);
     wl_registry_add_listener(w.registry, &registry_listener, 0);
     wl_display_roundtrip(w.display);
@@ -3259,12 +3379,30 @@ int gfx_open(struct surface *screen)
     if (w.icon_manager)
         wl_display_roundtrip(w.display);
 
+    /*
+     * And as many more as it takes for the keyboard, which arrives in two
+     * steps: the seat says it has one, and only then does the compositor send
+     * the layout somebody is typing on.
+     *
+     * Waiting for it here rather than letting it turn up is what makes the
+     * keyboard table right. An application asks for that table as it starts -
+     * it is where the letters of its own menu shortcuts come from, see XBIOS
+     * Keytbl - and one built before the layout arrived is the table of the
+     * machine this pretends to be rather than of the keyboard in front of the
+     * person. Bounded, because a compositor that is never going to answer must
+     * not be waited on for ever.
+     */
+    {
+        int turns;
+
+        for (turns = 0; turns < 3 && w.seat && !w.keymap; turns++)
+            wl_display_roundtrip(w.display);
+    }
+
     /* Before any window is opened, because a window is given the icon as it is
      * created and there is nothing here that would go back and fit one to a
      * window that had already appeared without it */
     icon_make();
-
-    w.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 
     /*
      * No window is opened here. There is nothing to show until GEM opens

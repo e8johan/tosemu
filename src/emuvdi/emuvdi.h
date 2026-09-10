@@ -412,4 +412,17 @@ int emuvdi_gdos_installed(void);
  */
 int emuvdi_gdos_scalable(void);
 
+/*
+ * The keyboard table an ST keyboard had: what each of its keys types
+ * unshifted, shifted, and with caps lock down, a hundred and twenty eight
+ * bytes to a table.
+ *
+ * It is what an application reads through XBIOS Keytbl, and it is EmuTOS's -
+ * see emuvdi/keytables.c, which says which set is taken and why. What is
+ * handed out is built from the layout the person is typing on where there is
+ * one to ask about; this is the answer when there is not.
+ */
+void emuvdi_keyboard_tables(const uint8_t **norm, const uint8_t **shift,
+                            const uint8_t **caps);
+
 #endif /* EMUVDI_H */
