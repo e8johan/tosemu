@@ -35,4 +35,4 @@ sudo add-apt-repository -y ppa:vriviere/ppa
 
 sudo apt-get update -ym
 sudo apt-get install -ym cross-mint-essential libpng-dev \
-  libfreetype-dev libfontconfig-dev
+  libfreetype-dev libfontconfig-dev libasound2-dev

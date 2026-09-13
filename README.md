@@ -301,6 +301,9 @@ be there rather than one that has to be.
     [files]
     base = /home/me/tos
 
+    [midi]
+    device = hw:1,0,0
+
     [session]
     socket = /run/user/1000/tosaesd
 
@@ -330,6 +333,7 @@ Which is which:
 | `[printer] resolution` | `TOSEMU_PRINTER_DPI` |
 | `[printer] file`       | `TOSEMU_PRINT_FILE`  |
 | `[printer] command`    | `TOSEMU_PRINT_COMMAND` |
+| `[midi] device`        | `TOSEMU_MIDI`        |
 | `[session] socket`     | `TOSEMU_AESD`        |
 | `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  |
 | `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` |
@@ -826,8 +830,7 @@ not answered: both are for a driver that could only hold a band of a page at a
 time, and this one holds the page.
 
 Programs that stay
-==================
-
+===========
 A TSR loads, installs itself into the machine, and stays there so that the next
 program can use it. The AUTO folder was a list of them, and anything that added
 a capability to the machine - a RAM disk, a printer spooler, a MIDI kernel -
@@ -850,6 +853,60 @@ its own, so anything it keeps is kept in that machine and goes when it ends.
 `Ptermres` from a child says so and terminates cleanly, rather than leaving the
 program that started it believing a TSR is there when it is not. What to do
 about it is to name the program with `-r` instead.
+=======
+MIDI
+====
+
+There is a MIDI port, and it goes wherever the setting says. An application
+sends the way it always did - `Bconout` on device 3 a byte at a time, or
+`Midiws` for a whole message - and the bytes reach whatever is plugged into the
+host.
+
+Nothing is set up by default. Without a word said there is no port, every byte
+written is discarded and nothing ever arrives, which is what an ST with nothing
+in the socket did.
+
+    [midi]
+    device = hw:1,0,0
+
+| in the file     | in the environment |
+| --------------- | ------------------ |
+| `[midi] device` | `TOSEMU_MIDI`      |
+
+How it is spelled picks what kind of port it is, and the prefix is not
+optional:
+
+- `hw:1,0,0` is an ALSA raw device - the interface itself. `aplaymidi -l` lists
+  them. This is the faithful one: an ST's MIDI port was a serial line and so is
+  this, so running status, active sensing and a system exclusive dump of any
+  length all pass through untouched, nothing along the way trying to understand
+  them. A raw device is one program at a time.
+- `seq:20:0`, or `seq:` and a port's name, is the ALSA sequencer. `aconnect -l`
+  lists those. It reaches software synthesisers as readily as hardware and it
+  appears in a patchbay by name. `seq:` on its own makes the port and connects
+  it to nothing, for something else to connect to afterwards.
+- `file:incoming.bin,sent.bin` is neither, and it is not a lesser port. It is
+  how the traffic is looked at without a synthesiser to look at it on - by a
+  test, on a machine with no sound hardware, or by somebody who wants to see
+  what a program actually sent. Either half may be left out.
+
+**The prefix has to be there**, because a sequencer port named rather than
+numbered has nothing in its spelling to mark it as one. Without the rule a
+mistyped `hw:` would quietly become a sequencer port connected to nothing,
+which from the outside is indistinguishable from a working port with a silent
+synthesiser on the end of it.
+
+Built without ALSA - `make NO_ALSA=1`, or on a machine that has no
+`libasound2-dev` - `file:` still works and the other two are refused with a
+line saying why. A build server has no MIDI interface and should not need one.
+
+**Nothing interrupts yet, so a sequencer will not keep time.** Sending works,
+which is what a patch editor, a librarian or a program that plays a file needs;
+what is missing is the MFP timer interrupts a sequencer clocks itself off and
+the ACIA interrupt that says a byte has arrived. tosemu has no interrupt
+subsystem at all. That is the next piece of work and it is what Cubase and
+Notator need - see `MIDI.md` on the `midi` branch, which is where the design
+and the hardware notes for it live.
 
 Road Map
 ========

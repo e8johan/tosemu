@@ -38,6 +38,7 @@
 #include <stdlib.h>
 
 #include "console.h"
+#include "midi.h"
 #include "gem_p.h"
 #include "tossystem.h"
 #include "surface.h"
@@ -370,6 +371,12 @@ void gem_forget(void)
      * a half written job belong to the parent, and finishing either would put
      * a second copy of somebody else's document in the queue */
     emuvdi_printer_forget();
+
+    /* And the MIDI port, which is the argument once more and the sharpest of
+     * the three: there is one cable to one synthesiser, and two programs
+     * writing down it would interleave their messages into something neither
+     * of them sent */
+    midi_forget();
 
     if (screen)
         surface_free(screen);

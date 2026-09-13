@@ -1,9 +1,14 @@
 # MIDI for tosemu: an ST MIDI program driving a host USB interface
 
-> **Status: parked, 2026-09-04.** Not being worked on. This document is the
-> research and the design, kept on the `midi` branch so the verified hardware
-> facts below — several of which contradict the obvious reading of the source —
-> do not have to be established a second time. Nothing here has been implemented.
+> **Status: started, 2026-09-13.** Stage 1 is done — `src/midi.c` with its three
+> backends, and the sending half wired into `Bconout` on device 3 and `Midiws`.
+> A program can play notes at a synthesiser plugged into the host. Nothing
+> receives yet and nothing interrupts, so a sequencer will not keep time; stages
+> 2 to 7 below are what is left, and the verified hardware facts are the reason
+> this document exists rather than being worked out a second time.
+>
+> One departure from the plan as written: a spelling with no prefix is refused
+> rather than read as a sequencer port name. See the note under Stage 1.
 
 ## Context
 
@@ -111,9 +116,18 @@ struct midi_backend {
 };
 ```
 
-`hw:`/`rawmidi:` → rawmidi, `seq:` → sequencer, `file:` → the stand-in; a bare
-spelling falls through to the sequencer, because `20:0` and `"FLUID Synth"` are
-how a person names a port. The ALSA rows sit inside `#ifdef HAVE_ALSA`; asking
+`hw:`/`rawmidi:` → rawmidi, `seq:` → sequencer, `file:` → the stand-in.
+
+**Departure from the plan, decided while building it.** The plan had a bare
+spelling fall through to the sequencer, because `20:0` and `"FLUID Synth"` are
+how a person names a port. That was tried and refused: a mistyped `hw:` then
+becomes a sequencer port connected to nothing, which from the outside is
+indistinguishable from a working port with a silent synthesiser on the end —
+and it makes `make check` behave differently on a machine that has an ALSA
+sequencer and one that does not. The prefix is now required and an unrecognised
+spelling is an error naming the three forms. Relatedly, `seq:<name>` where the
+name does not resolve is now a failure rather than an unconnected port; `seq:`
+with no name is how you ask for one of those on purpose. The ALSA rows sit inside `#ifdef HAVE_ALSA`; asking
 for one on a build without it prints a line and leaves MIDI off, never halts.
 `midi_open` is the one place that reads `setting("TOSEMU_MIDI")` — never `getenv`.
 

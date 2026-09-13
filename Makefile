@@ -21,7 +21,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               keyboard.c \
-              fontface.c printer.c \
+              fontface.c printer.c midi.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -147,16 +147,31 @@ FREETYPEFLAGS = $(shell pkg-config --cflags freetype2 fontconfig 2>/dev/null \
                   && echo -DHAVE_FREETYPE)
 FREETYPELIBS  = $(shell pkg-config --libs freetype2 fontconfig 2>/dev/null)
 
+# And ALSA, for the MIDI port. Looked for the same way and for the same reason:
+# without it the file destination still works and a machine with no sound
+# hardware still runs every program that does not need a synthesiser, which is
+# a smaller machine rather than a broken build. A build server has no MIDI
+# interface and should not need one to compile this.
+ALSAFLAGS = $(shell pkg-config --cflags alsa 2>/dev/null && echo -DHAVE_ALSA)
+ALSALIBS  = $(shell pkg-config --libs alsa 2>/dev/null)
+
+# And leaving it out deliberately, the way NO_WAYLAND does, so that the path a
+# machine without ALSA takes can be built on a machine that has it.
+ifdef NO_ALSA
+ALSAFLAGS =
+ALSALIBS =
+endif
+
 # $(GEN) is on the include path for the same reason $(SRC) is: the generated
 # headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
 # - are included by name, and where they were written is the build's business
 # rather than something every source has to know.
-CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS)
+CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
 # looks for them
-LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS)
+LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS)
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -208,7 +223,7 @@ all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check gdos-check screen-check settings-check scrap-check icon-check \
-        print-check keyboard-check \
+        print-check keyboard-check midi-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -469,6 +484,18 @@ $(BIN)/printtest: $(SRC)/printtest.c $(OBJ)/printer.o $(OBJ)/settings.o
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
+# What the port does with the bytes it is handed, checked without a synthesiser
+# to hear them. Host built for the same reason as the rest of these: a MIDI
+# interface is not something a test can arrange, and neither is a far end that
+# stops reading halfway through a dump. The file destination is what makes the
+# traffic something a test can look at at all.
+$(BIN)/miditest: $(SRC)/miditest.c $(OBJ)/midi.o $(OBJ)/settings.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(ALSALIBS) -o $@
+
+midi-check: $(BIN)/miditest
+	./$(BIN)/miditest
+
 print-check: $(BIN)/printtest
 	./$(BIN)/printtest
 
@@ -581,7 +608,7 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
-       icon-check gdos-check print-check keyboard-check
+       icon-check gdos-check print-check keyboard-check midi-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu
