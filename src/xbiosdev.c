@@ -23,11 +23,11 @@
  * The devices hanging off an ST: the serial port, the printer, MIDI, the
  * keyboard controller, and the MFP that interrupts on their behalf.
  *
- * Only the console has anywhere to go on the host, so the rest divide into
- * two. Settings, such as the serial configuration or the keyboard repeat rate,
- * are remembered and reported back, so that an application which configures a
- * device and reads the configuration sees its own value. Traffic, such as
- * bytes written to MIDI, is discarded.
+ * The console and MIDI have somewhere to go on the host, so the rest divide
+ * into two. Settings, such as the serial configuration or the keyboard repeat
+ * rate, are remembered and reported back, so that an application which
+ * configures a device and reads the configuration sees its own value. Traffic
+ * with nowhere to go, such as bytes written to the printer, is discarded.
  *
  * Nothing here interrupts. tosemu runs the application on a single thread with
  * no timer and no device raising anything, so Mfpint, Jenabint, Jdisint and
@@ -44,6 +44,7 @@
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
+#include "midi.h"
 
 #include "xbios_p.h"
 
@@ -148,12 +149,25 @@ uint32_t XBIOS_Midiws()
 {
     uint16_t cnt = peek_u16(2);
     uint32_t ptr = peek_u32(4);
+    uint32_t i;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    cnt: %d, ptr: 0x%x\n", cnt, ptr);
     }
 
-    /* Nothing is listening on the MIDI port, so the bytes go nowhere */
+    /*
+     * One more byte than the count, the argument being how many to send less
+     * one. It is read unsigned, which is what TOS did and what makes a count
+     * of -1 sixty five thousand bytes rather than none - a program that means
+     * to send nothing does not call this at all.
+     */
+    for (i = 0; i <= cnt; i++)
+        midi_give((uint8_t)m68k_read_memory_8(ptr + i));
+
+    /* Once, rather than after each byte: this is the call a program sends a
+     * whole message with, and the message is what the far end is waiting for */
+    midi_pump();
+
     return XBIOS_E_OK;
 }
 

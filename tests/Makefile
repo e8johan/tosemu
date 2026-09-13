@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -83,10 +83,29 @@ NO_DISPLAY=WAYLAND_DISPLAY=nosuch.wayland
 # whichever order they are said in.
 NO_PRINTER=TOSEMU_PRINT_COMMAND=/bin/true
 
+# And a MIDI port that is not there, for the third time the same reason: a run
+# of this suite must not be able to play notes at somebody's synthesiser. It
+# takes no word said to be nothing - a port is opened only when a setting names
+# one - so this is against a setting that has leaked in from the environment
+# somebody happened to be standing in. The test that means to send bytes says
+# where they are to be written instead.
+NO_MIDI=TOSEMU_MIDI=
+
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
-TOSEMU=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER) ../../bin/tosemu --no-config
+# Everything a run of the suite has to be quiet about, kept apart from the
+# emulator itself so that a check line which means to be loud about one of them
+# can leave that one out. An environment assignment is won by the last one on
+# the line and a check line's own settings go in front, so a setting pinned
+# here cannot be overridden by a check line - it has to be composed around.
+TOSEMU_QUIET=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER)
+
+TOSEMU=$(TOSEMU_QUIET) $(NO_MIDI) ../../bin/tosemu --no-config
+
+# The same, for the one check that means to open a MIDI port and say where it
+# goes. Everything else about it is as quiet as the rest of the suite.
+TOSEMU_WITH_MIDI=$(TOSEMU_QUIET) ../../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
@@ -345,6 +364,27 @@ check: all
 	  $(TOSEMU) test-c-print > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out job.pdf
+	# The MIDI port, both ways round. First with nothing in the socket,
+	# which is what every other test here runs as: writing works and the
+	# bytes go nowhere, which is not the same as writing failing.
+	$(TOSEMU) test-c-midi > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
+	# And then with somewhere for them to go, because the application
+	# cannot see what it sent - a MIDI cable has no other end an ST program
+	# can read. So the file is what says whether this worked, and what it
+	# is compared against is written out by hand here: a note on, a system
+	# exclusive, and a note off, twelve bytes of them.
+	#
+	# The last three are sent as two Bconouts and a Midiws of nought, which
+	# is one byte and not none. That is the check this file exists for.
+	$(RM) -f sent.bin wanted.bin
+	TOSEMU_MIDI=file:,$(CURDIR)/sent.bin \
+	  $(TOSEMU_WITH_MIDI) test-c-midi send > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	printf '\220\074\100\360\175\001\002\003\367\200\074\100' > wanted.bin
+	cmp sent.bin wanted.bin
+	$(RM) -f out sent.bin wanted.bin
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a

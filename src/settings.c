@@ -134,6 +134,19 @@ static const struct {
     { "TOSEMU_PRINT_FILE",      "printer", "file",        0 },
     { "TOSEMU_PRINT_COMMAND",   "printer", "command",     0 },
 
+    /*
+     * The MIDI port, and the one setting is the whole of it: where the bytes
+     * go. A port is a cable rather than a set of choices - there is no baud
+     * rate to pick, MIDI having only ever run at one - so what is left to say
+     * is which socket on the host this machine's is.
+     *
+     * How it is spelled picks what kind it is: hw:1,0,0 for the interface
+     * itself, seq:20:0 for a sequencer port that a patchbay can reach,
+     * file:sent.bin for neither. See midi.h for why there are three, and why
+     * the prefix has to be there.
+     */
+    { "TOSEMU_MIDI",        "midi",    "device",      0 },
+
     { "TOSEMU_AESD",        "session", "socket",      0 },
 
     { "TOSEMU_SCREENSHOT",  "debug",   "screenshot",  0 },

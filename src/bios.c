@@ -27,6 +27,7 @@
 
 #include "tossystem.h"
 #include "console.h"
+#include "midi.h"
 #include "cpu.h"
 #include "m68k.h"
 #include "utils.h"
@@ -111,9 +112,23 @@ uint32_t BIOS_Bconout()
 
     if (is_console(dev))
         console_out(c);
+    else if (dev == DEV_MIDI)
+    {
+        midi_give(c & 0xff);
 
-    /* Bytes for the printer, the serial port, MIDI and the keyboard
-     * controller have nowhere to go */
+        /*
+         * And on its way before the trap returns. A note is a moment rather
+         * than a piece of data, so a byte held back until something else
+         * happened to empty the ring would be a note played late - and what
+         * empties it otherwise is nothing at all yet, there being no timer in
+         * tosemu to do it. When there is one this stops being the only
+         * chance and becomes merely the earliest.
+         */
+        midi_pump();
+    }
+
+    /* Bytes for the printer, the serial port and the keyboard controller have
+     * nowhere to go */
 
     return 0;
 }

@@ -43,6 +43,7 @@
 #include "gem.h"
 #include "screen.h"
 #include "linea.h"
+#include "midi.h"
 
 #include "m68k.h"
 
@@ -951,6 +952,13 @@ int init_tos_environment(struct tos_environment *te, void *binary, uint64_t size
 
     /* Initialize sub-systems */
     gemdos_init(te);
+
+    /* The MIDI port, which is opened whether or not anything will use it: what
+     * decides is the setting rather than the program, and a port that is only
+     * opened when a program first writes would report its troubles in the
+     * middle of a piece of music rather than at the start of the run */
+    midi_open();
+
     /* TODO initialization other sub-systems here as well */
 
     return 0;
@@ -1240,6 +1248,12 @@ void free_tos_environment(struct tos_environment *te)
 {
     /* Clean up sub-systems */
     gemdos_free();
+
+    /* And the MIDI port, which sends what is still waiting before it goes. The
+     * last thing a program does on the way out is silence what it started, and
+     * dropping that would leave a note sounding after the program had gone */
+    midi_close();
+
     /* TODO clean up after other sub-systems here as well */
 
     free(te->bp);
