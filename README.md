@@ -334,6 +334,7 @@ Which is which:
 | `[printer] file`       | `TOSEMU_PRINT_FILE`  |
 | `[printer] command`    | `TOSEMU_PRINT_COMMAND` |
 | `[midi] device`        | `TOSEMU_MIDI`        |
+| `[machine] interrupts` | `TOSEMU_INTERRUPTS`  |
 | `[session] socket`     | `TOSEMU_AESD`        |
 | `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  |
 | `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` |
@@ -869,9 +870,10 @@ in the socket did.
     [midi]
     device = hw:1,0,0
 
-| in the file     | in the environment |
-| --------------- | ------------------ |
-| `[midi] device` | `TOSEMU_MIDI`      |
+| in the file            | in the environment  |
+| ---------------------- | ------------------- |
+| `[midi] device`        | `TOSEMU_MIDI`       |
+| `[machine] interrupts` | `TOSEMU_INTERRUPTS` |
 
 How it is spelled picks what kind of port it is, and the prefix is not
 optional:
@@ -900,13 +902,27 @@ Built without ALSA - `make NO_ALSA=1`, or on a machine that has no
 `libasound2-dev` - `file:` still works and the other two are refused with a
 line saying why. A build server has no MIDI interface and should not need one.
 
-**Nothing interrupts yet, so a sequencer will not keep time.** Sending works,
-which is what a patch editor, a librarian or a program that plays a file needs;
-what is missing is the MFP timer interrupts a sequencer clocks itself off and
-the ACIA interrupt that says a byte has arrived. tosemu has no interrupt
-subsystem at all. That is the next piece of work and it is what Cubase and
-Notator need - see `MIDI.md` on the `midi` branch, which is where the design
-and the hardware notes for it live.
+A machine
+=========
+
+Asking for a MIDI port also gives the machine a 68901 MFP at `0xFFFA00` and the
+two 6850 ACIAs at `0xFFFC00`, because a program with a synthesiser to talk to is
+one that will be programming timers and hanging handlers off them. The timers
+run against the host's clock, the system timer comes up set to two hundred hertz
+the way TOS left it, and the counter at `0x4BA` counts.
+
+`[machine] interrupts = yes` turns that on without a MIDI port, which is how the
+test suite reaches any of it.
+
+It is off otherwise, and that is deliberate rather than cautious: it changes
+what the machine *is* rather than what it is plugged into, and the overwhelming
+majority of TOS programs neither want nor tolerate one that interrupts them.
+
+**A sequencer will still not keep time.** The chips are there and the clock
+runs, but nothing yet turns what the MFP decides into an interrupt the 68000
+takes, so a handler a program installs is never called. That is the next piece
+of work and it is what Cubase and Notator need - see `MIDI.md` on the `midi`
+branch, which is where the design and the hardware notes for it live.
 
 Road Map
 ========

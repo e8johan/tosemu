@@ -44,6 +44,7 @@
 #include "screen.h"
 #include "linea.h"
 #include "midi.h"
+#include "interrupt.h"
 
 #include "m68k.h"
 
@@ -921,6 +922,12 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                 m68k_write_memory_32(4 * vector, default_vector);
         }
     }
+
+    /* And the chips that interrupt, if this machine has any. Here rather than
+     * with the other sub-systems because what it adds is memory areas, and
+     * because a machine built a second time - which is what Pexec does - needs
+     * them again: reset_memory above has just taken them away. */
+    interrupt_init();
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
