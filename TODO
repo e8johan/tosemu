@@ -37,7 +37,15 @@
   and Cconws ignore an Fforce that redirected it. Everything a program writes
   now passes through one place - console.c - which is what makes this doable at
   all; before it there was no single point to redirect.
-- Ptermres, which has nowhere to stay resident in.
+- Ptermres, which has nowhere to stay resident in. Cubase is the case that
+  wants it: MROS, the MIDI kernel it loads before it will start, is a TSR, and
+  Pexec of it ends on this call. Implementing it alone would not be enough -
+  see the entry above about a child of Pexec having a copy of the machine's
+  memory rather than the same memory. A program that stayed resident would stay
+  resident in the forked child, and whoever Pexec'd it would find nothing
+  there. See RESIDENT.md on the pexec-resident branch, which proposes loading
+  the resident and the program that uses it into one machine from one command
+  line rather than making Pexec share memory.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
 - A routine that draws an object for the application may only call the VDI,

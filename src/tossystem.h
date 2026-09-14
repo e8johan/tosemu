@@ -205,6 +205,17 @@ uint32_t bios_static_alloc(uint32_t len);
 uint32_t tos_screen_base(void);
 uint32_t tos_screen_size(void);
 
+/*
+ * Where an exception vector points when nobody has claimed it.
+ *
+ * Every vector is filled with this when the machine is built, because TOS
+ * filled them with ROM addresses and period software reads them - see where
+ * they are written. What wants to know is anything deciding whether a vector
+ * belongs to the application: still this means nobody has installed anything,
+ * and the machine has not been asked to do anything about that exception.
+ */
+uint32_t tos_default_vector(void);
+
 void halt_execution();
 
 /* Whether that has happened. The loop that runs the machine reads it for

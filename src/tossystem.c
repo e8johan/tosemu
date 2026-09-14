@@ -240,6 +240,15 @@ static uint32_t machine_ram(void)
 
 static uint32_t biosram_free;
 
+/* What every exception vector is filled with, and therefore what one still
+ * holding it means: nobody has claimed it. See where they are written. */
+static uint32_t default_vector;
+
+uint32_t tos_default_vector(void)
+{
+    return default_vector;
+}
+
 /* Where the screen was put in the machine this time round, and how much of it
  * there is. A machine built again for another program gets another one, the
  * same way the BIOS RAM does. */
@@ -797,6 +806,42 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, screen_area, te->screenmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
+
+    /*
+     * Somewhere for every exception vector to point.
+     *
+     * They were all nought, and nought is not a handler. TOS filled the table
+     * with addresses in ROM - even the vectors nothing used - and period
+     * software leans on that in a way that is easy to miss: a program that
+     * installs a handler saves what was there and chains to it, and a program
+     * that wants to know whether it is already installed reads the vector and
+     * looks at the code around it.
+     *
+     * Cubase's MROS is the case that showed it. It reads the TRAP #8 vector,
+     * looks four bytes before whatever it points at for its own signature, and
+     * takes that as "already loaded". With the vector at nought that read is of
+     * address 0xFFFFFC, which is not memory, and the machine stops - so Cubase
+     * reports that MROS could not be started.
+     *
+     * An RTS would be wrong: what these are reached by is an exception, and an
+     * exception comes back with RTE. Vectors 0 and 1 are left alone, being the
+     * stack pointer and program counter a machine starts with rather than
+     * anywhere to jump to, and the table stops at 127 because that is as far as
+     * the memory below 0x200 goes.
+     */
+    {
+        int vector;
+
+        default_vector = bios_static_alloc(2);
+
+        if (default_vector)
+        {
+            m68k_write_memory_16(default_vector, 0x4e73); /* RTE */
+
+            for (vector = 2; vector <= 127; vector++)
+                m68k_write_memory_32(4 * vector, default_vector);
+        }
+    }
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
