@@ -149,6 +149,41 @@ uint32_t GEMDOS_Super()
          * stack at the caller's own, so a balanced program has a7 back where
          * the user stack pointer already was.
          */
+        /*
+         * A caller that was already in supervisor mode has been standing on
+         * the supervisor stack, and everything it pushed for this call is on
+         * that stack rather than on the user one it is about to go back to.
+         * So four bytes are carried over and the user stack pointer is moved
+         * down by them, which is what EmuTOS's x20_sup does - see the
+         * `move.l (sp)+,-(a0)` there, and the comment calling it the function
+         * number and the parameter.
+         *
+         * A caller already standing on the user stack - which is what Super(0)
+         * arranges, the supervisor stack having been pointed at the caller's
+         * own - needs none of it, and EmuTOS skips it for exactly that case.
+         * That is the ordinary way round and why nothing noticed before.
+         *
+         * Cubase is the case that wants it. It enters supervisor mode by
+         * writing the status register, calls this to come back out, and then
+         * adds twelve to a7 before returning: six for what it pushed, and six
+         * for the exception frame a real trap would have left. Without the
+         * four bytes carried across, a7 lands past its own return address.
+         */
+        if (is_supervisor_mode_enabled())
+        {
+            uint32_t sp = m68k_get_reg(0, M68K_REG_A7);
+            uint32_t usp = m68k_get_reg(0, M68K_REG_USP);
+
+            if (sp != usp)
+            {
+                uint32_t carried = m68k_read_memory_32(sp);
+
+                usp -= 4;
+                m68k_write_memory_32(usp, carried);
+                m68k_set_reg(M68K_REG_USP, usp);
+            }
+        }
+
         m68k_set_reg(M68K_REG_ISP, lv0);
         disable_supervisor_mode();
         res = 0;
