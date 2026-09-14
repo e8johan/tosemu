@@ -47,6 +47,7 @@
 #include <time.h>
 
 #include "console.h"
+#include "interrupt.h"
 #include "gem_p.h"
 #include "aesclient.h"
 #include "gfx.h"
@@ -223,10 +224,10 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
 
     for (;;)
     {
-        struct pollfd fds[4];
+        struct pollfd fds[5];
         int nfds = 0;
         long left;
-        int wayland, daemon, scrap, giving;
+        int wayland, daemon, scrap, giving, interrupting;
         int wayland_slot = -1, daemon_slot = -1, scrap_slot = -1;
         int giving_slot = -1;
 
@@ -475,6 +476,24 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
          * when it gets round to it, and finishing the write here would let a
          * paste in somebody else's window stop the emulated machine.
          */
+        /*
+         * And the MIDI port, when the machine has one. Like the scrap
+         * directory and unlike the compositor, nothing arriving here can
+         * answer what the application asked for - it serves the machine rather
+         * than the question - so it is not counted by the test above. It is
+         * here to end the sleep, not to end the wait.
+         */
+        interrupting = interrupt_fd();
+        if (interrupting >= 0)
+        {
+            /* No slot is kept for it, unlike every other descriptor here. What
+             * it has to say is read by interrupt_service below whether or not
+             * it was this that woke us, so there is nothing to ask it. */
+            fds[nfds].fd = interrupting;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
+
         giving = gfx_selection_fd();
         if (giving >= 0)
         {
@@ -503,7 +522,8 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
          * end a wait: it serves the desktop, not the application, so a program
          * waiting for a key it will never get would sit here for ever with a
          * watch keeping the count above nought. That is the honest message
-         * below turning into a silent hang.
+         * below turning into a silent hang. The MIDI port is in the set on the
+         * same terms and for the same reason.
          */
         if (wayland_slot < 0 && daemon_slot < 0 && left < 0)
         {
@@ -547,7 +567,37 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                 left = due;
         }
 
+        /*
+         * And no longer than it is until the machine interrupts itself.
+         *
+         * No 68000 instruction runs while this sleeps, and the timers are
+         * driven from the instruction hook - so a timer whose moment passes in
+         * here would not go off until something else happened to wake the
+         * poll. On a program sitting still waiting for a key that is for ever,
+         * which for a sequencer means the music stopping whenever nobody
+         * touched the mouse.
+         *
+         * After the test above and not before it. Clamping first would give a
+         * positive timeout whenever a timer is running, and the honest message
+         * about waiting for a keyboard that is not there would turn into
+         * exactly the silent hang it was written to prevent.
+         */
+        {
+            long due = interrupt_next_due_ms();
+
+            if (due >= 0 && (left < 0 || due < left))
+                left = due;
+        }
+
         poll(fds, nfds, (left < 0) ? -1 : (int)left);
+
+        /*
+         * Whatever came due while we slept, before anything else is looked at:
+         * a timer that came due alongside a compositor event should not wait
+         * another way round the loop. The descriptor's own revents are never
+         * read - it is there to end the sleep, and this is what empties it.
+         */
+        interrupt_service();
 
         if (wayland_slot >= 0 && (fds[wayland_slot].revents & POLLIN))
             gfx_dispatch();
