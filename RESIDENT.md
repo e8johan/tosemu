@@ -1,7 +1,15 @@
 # Programs that stay: Ptermres, and running something on top of one
 
-> **Status: planned, not started, 2026-09-14.** Branch `pexec-resident`, based on
-> `main`. Nothing here is implemented.
+> **Status: planned, 2026-09-14.** Branch `pexec-resident`, based on `main`.
+>
+> The one prerequisite is done: the exception table is filled on `main` as of
+> *"cpu: every exception vector pointed at address nought"*, so MROS gets past
+> its resident check and Cubase now stops at `Ptermres`, which is where this
+> plan starts. Nothing else here is implemented.
+>
+> Settled with the person who asked for it: `--resident` is a command line
+> option and nothing else - not a setting, not a file, not anything the emulated
+> machine can ask for.
 
 ## Context
 
@@ -229,38 +237,35 @@ built out:
 If that holds, shared-memory `Pexec` stays a `TODO` entry for Devpac 3 rather
 than being on Cubase's critical path.
 
-### One prerequisite that is not on this branch
+### The prerequisite, which is done
 
-MROS's resident check reads the TRAP #8 vector and dereferences it. On `main`
-the exception table is all noughts, so that read is of address `0xFFFFFC` and
-the machine stops before any of the above is reached.
+MROS's resident check reads the TRAP #8 vector and dereferences it, and the
+exception table used to be all noughts - so that read was of address `0xFFFFFC`
+and the machine stopped before any of the above was reached.
 
-The fix - filling every vector with a real address, the way TOS filled its
-table from ROM - is committed on the `midi` branch as *"cpu: every exception
-vector pointed at address nought"*. It is independent of MIDI and the part that
-matters here is confined to `tossystem.c` and `tossystem.h`. **It should be
-cherry-picked onto this branch (or onto `main`) first**, or nothing below can
-be tested.
+The table is now filled, on `main`, so this branch has it. Cubase reaches
+`Ptermres` and stops there, which is exactly where the work below begins.
+`tos_default_vector()` is what the table was filled with, for anything that
+later needs to tell a vector nobody claimed from one a program installed.
 
 ---
 
 ## Stages
 
-1. **`cpu`: the exception table** - cherry-pick the vector fill from `midi`,
-   without the interrupt-dispatch half, which does not exist on `main`.
-2. **`GEMDOS`: a program had no way to stay in memory** - `Ptermres`, the
+0. ~~**`cpu`: the exception table**~~ - done, on `main`.
+1. **`GEMDOS`: a program had no way to stay in memory** - `Ptermres`, the
    never-free flag on a memory area, and the child case with its message.
    Testable on its own: a TSR that keeps memory, and `Malloc` afterwards not
    handing that memory out.
-3. **`tosemu`: nothing could be loaded on top of a resident program** -
+2. **`tosemu`: nothing could be loaded on top of a resident program** -
    `--resident`, the floor, and the load-and-run loop over several programs.
-4. **`tests`: a resident program and one that uses it** - the pair described
+3. **`tests`: a resident program and one that uses it** - the pair described
    below.
-5. **`TODO`/`README`** - what residency does and does not do, and the `Pexec`
+4. **`TODO`/`README`** - what residency does and does not do, and the `Pexec`
    child limitation written down where somebody will find it.
-6. **Cubase**, by hand, which is the point of all of it.
+5. **Cubase**, by hand, which is the point of all of it.
 
-`--auto DIR` is a seventh if it is wanted, and wants nothing from the first six
+`--auto DIR` is a sixth if it is wanted, and wants nothing from the first five
 that they do not already do.
 
 ---
@@ -305,7 +310,8 @@ finds none is the ordinary case and must be survivable.
   to the main program or stop? Suggest: carry on, and say what happened - a
   TSR that declines to install is often a TSR saying "already there" or "not
   needed on this machine", which is not a reason to refuse to run anything.
-- **Should `--resident` be sayable in a settings file?** It is per-run rather
-  than per-machine, which argues against it; but a Cubase session is the same
-  three programs every time, which argues for it. Suggest: command line only
-  until somebody is tired of typing it.
+- ~~**Should `--resident` be sayable in a settings file?**~~ Settled: no. It is
+  a command line option and nothing else. What a machine has resident in it is
+  a property of the run rather than of the machine, and a settings file that
+  quietly loaded a TSR would make two runs of the same command mean different
+  things.
