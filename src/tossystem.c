@@ -88,6 +88,30 @@ struct exec_header {
 
 #define SUPERMEMSIZE (512)
 
+/*
+ * How much room the machine's supervisor stack gets.
+ *
+ * It used to start at 0x600 and grow downwards, which put it straight through
+ * the system variables: 0x4BA is the two hundred hertz counter, 0x44E is where
+ * the screen is, and everything from 0x380 up is that sort of thing. One
+ * exception frame is six bytes and a handler that saves its registers is
+ * sixty more, so three deep reached the counter it was very likely there to
+ * service.
+ *
+ * Nothing had noticed because nothing went deep. Supexec runs a short routine
+ * and returns, and every system variable was nought anyway, so writing over
+ * them wrote nought onto nought. Both of those stop being true the moment
+ * something interrupts: a handler is called on this stack, at whatever depth
+ * the program it interrupted had already reached, and by then the variables
+ * have values somebody is reading.
+ *
+ * Eight kilobytes, out of the RAM the system owns rather than out of the
+ * machine's low memory, so that growing down from it reaches nothing that
+ * means anything. An interrupt handler that wants more than this has lost its
+ * return address rather than run out of room.
+ */
+#define SUPERSTACK_SIZE (8192)
+
 /* RAM for structures the system owns rather than the application, see
  * bios_static_alloc. It sits in the cartridge ROM range of the memory map
  * below, which no ST ever has RAM in and which is clear of the TPA, so that
@@ -689,6 +713,11 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     /* RAM for the structures the system hands out pointers to */
     te->biosram = calloc(1, BIOSRAMSIZE);
     biosram_free = BIOSRAMBASE;
+
+    /* And the machine's own stack, taken first so that it is always there:
+     * everything else this hands out is asked for while a program runs, and a
+     * machine with nowhere to put an exception frame is not a machine */
+    te->superstack = bios_static_alloc(SUPERSTACK_SIZE);
     
     /*
      * The screen comes off the top of the machine's RAM, which is where the
@@ -987,9 +1016,17 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
     for (i = 0; i < 7; i++)
         m68k_set_reg(M68K_REG_A0 + i, 0);
 
-    /* TODO is this really correct, or should it be the MSP? If so, why does
-     * that not work? */
-    m68k_set_reg(M68K_REG_ISP, 0x600); /* supervisor stack pointer */
+    /*
+     * The supervisor stack, at the top of the block reserved for it so that it
+     * grows down through its own room and not through the system variables.
+     *
+     * The interrupt stack pointer is the right one and not the master stack
+     * pointer, which the question that used to stand here wondered about: a
+     * 68000 has one supervisor stack and calls it the ISP. The MSP arrives with
+     * the 68020, where the two are told apart by a bit this machine's status
+     * register does not have.
+     */
+    m68k_set_reg(M68K_REG_ISP, te->superstack + SUPERSTACK_SIZE);
 
     if (basepage == 0x800)
     {
