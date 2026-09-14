@@ -12,8 +12,30 @@
 > machine can ask for.
 >
 > **Stages 1 to 4 are done.** `Ptermres`, `--resident`, the memory that is kept
-> and the pair of tests that prove it. Cubase gets past MROS and now stops in
-> the VDI instead, which is a different piece of work.
+> and the pair of tests that prove it. Cubase gets past MROS, and past a VDI
+> form with no width in it - see *"VDI: a form that did not say how wide it was
+> was refused"* - and now runs into MROS's own code and stays there.
+>
+> What it does there is an infinite crash loop, and it is worth writing down
+> because it looks like a hang:
+>
+> ```
+> 846ec: jmp (A1)     ; A1 is nought, so this jumps to address nought
+> 000..014            ; and runs the exception vector table as instructions
+>                     ; until an ILLEGAL
+> 1c5aa               ; which MROS's own exception handler catches
+> 1c600: rte -> 846e2 ; restoring a register set from 0x1c688
+> 846ec: jmp (A1)     ; where A1 is nought again
+> ```
+>
+> The register set it keeps restoring is inside the part of MROS that stayed
+> resident, so nothing has overwritten it - it was never filled in. **A
+> hypothesis worth testing before anything else**: MROS is a multitasking
+> kernel and this looks like it dispatching a task that was never started, and
+> what starts one may well be the timer interrupt it expects. This branch is off
+> `main` and has no interrupts at all; the `midi` branch has the MFP and the
+> timers. If that is the answer, Cubase needs both branches and neither alone.
+> It has not been tried, and it should be before anybody debugs MROS itself.
 
 ## Context
 
