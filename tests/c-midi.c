@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <mint/osbind.h>
+#include <mint/ostruct.h>
 
 #define DEV_PRT     (0)
 #define DEV_AUX     (1)
@@ -132,6 +133,49 @@ int main(int argc, char **argv)
     Bconout(DEV_AUX, 'x');
     Bconout(DEV_IKBD, 'x');
     survived("writing to the devices that are not there");
+
+    if (argc > 1 && strcmp(argv[1], "receive") == 0)
+    {
+        /*
+         * Bytes coming the other way, which on a real machine arrive in an
+         * interrupt: the ACIA says a byte is there, the MFP raises the
+         * channel, and what is on that channel puts the byte in the buffer
+         * Iorec hands out. Nothing an application does makes any of that
+         * happen, so what is checked is that the bytes are simply there.
+         */
+        _IOREC *rec = (_IOREC *)Iorec(2);
+        long i;
+
+        check(rec != 0L, 1, "there is an input record for MIDI");
+
+        /* Bconstat is what a program polls, and it has to become true without
+         * the program doing anything but ask */
+        for (i = 0; i < 2000000L && !Bconstat(DEV_MIDI); i++)
+            ;
+
+        check(Bconstat(DEV_MIDI), -1, "and something arrives on it");
+
+        /*
+         * The bytes, in order. What was sent is the same three-byte note on
+         * that goes the other way in the sending half of this file - the
+         * Makefile writes the file it is read from.
+         */
+        check(Bconin(DEV_MIDI), 0x90, "a note on arrives");
+        check(Bconin(DEV_MIDI), 0x3c, "then the note");
+        check(Bconin(DEV_MIDI), 0x40, "then how hard it was struck");
+
+        /*
+         * And the record the application was handed is the one being filled.
+         * A program watching a stream of notes reads this directly rather than
+         * calling Bconin for each byte, which is what it was for.
+         */
+        check(rec->ibufsiz != 0, 1, "the record has a buffer with a size");
+        check(rec->ibufhd == rec->ibuftl, 1,
+              "and reads as empty once the bytes have been taken");
+
+        printf("1..%d\n", n);
+        return fails;
+    }
 
     if (!sending)
     {

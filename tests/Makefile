@@ -394,6 +394,22 @@ check: all
 	printf '\220\074\100\360\175\001\002\003\367\200\074\100' > wanted.bin
 	cmp sent.bin wanted.bin
 	$(RM) -f out sent.bin wanted.bin
+	# And the other direction, which nothing an application does makes
+	# happen: a byte arrives, the ACIA says so, the MFP raises the channel
+	# and what is on it puts the byte in the buffer Iorec handed out. The
+	# file stands in for the synthesiser, there being no way for a test to
+	# arrange one.
+	$(RM) -f arriving.bin
+	printf '\220\074\100' > arriving.bin
+	# Bounded, because Bconin on MIDI waits: a program that asked for a byte
+	# has stopped until it gets one, so a regression here is a suite that
+	# hangs rather than one that fails - and a test that stops says nothing
+	# about what it found. The count line is what proves it ran to the end.
+	timeout 20 env TOSEMU_MIDI=file:$(CURDIR)/arriving.bin \
+	  $(TOSEMU_QUIET) ../../bin/tosemu --no-config test-c-midi receive > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) -f out arriving.bin
 	# The chips at the top of the memory map, which are only there when
 	# they have been asked for. First on an ordinary machine, where none
 	# of it exists and a program must simply not go looking - which is the
@@ -402,9 +418,10 @@ check: all
 	grep -q '^1\.\.' out
 	$(RM) out
 	# And then on one that interrupts, where the MFP can be read, the
-	# system timer is running because TOS would have left it running, and
-	# the two hundred hertz counter is counting because time is passing.
-	# Nothing is interrupted yet; a handler installed here is never called.
+	# system timer is running because TOS would have left it running, the
+	# two hundred hertz counter is counting because time is passing, and
+	# the interrupts being taken all the while are finished with rather
+	# than left open.
 	TOSEMU_INTERRUPTS=yes \
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-mfp on > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out

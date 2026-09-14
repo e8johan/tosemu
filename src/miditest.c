@@ -336,6 +336,24 @@ static void check_the_mfp(void)
     check(mfp_register(0x0f), 0, "a handler clears its own in-service bit");
     check(mfp_pending_channel(), MFP_ACIA, "and what was waiting underneath comes through");
 
+    /*
+     * And the same thing said as a call rather than as a register write, which
+     * is what the channels tosemu answers for itself need: there is no handler
+     * on them to write their bit away, so a channel acknowledged and never
+     * finished holds itself off for ever. The first byte of MIDI arrives and
+     * the second never does.
+     */
+    mfp_reset();
+    mfp_enable(MFP_ACIA);
+    mfp_raise(MFP_ACIA);
+    check(mfp_acknowledge(), 0x46, "a channel nobody claimed is taken");
+    check(mfp_pending_channel(), -1, "and holds itself off while it is in service");
+    mfp_raise(MFP_ACIA);
+    check(mfp_pending_channel(), -1, "even when it happens again");
+    mfp_finished(MFP_ACIA);
+    check(mfp_pending_channel(), MFP_ACIA,
+          "and comes back the moment it is said to have finished");
+
     /* The same write, on the register TOS's ACIA handler actually writes */
     mfp_reset();
     mfp_enable(MFP_ACIA);

@@ -1,14 +1,25 @@
 # MIDI for tosemu: an ST MIDI program driving a host USB interface
 
-> **Status: started, 2026-09-13.** Stage 1 is done — `src/midi.c` with its three
-> backends, and the sending half wired into `Bconout` on device 3 and `Midiws`.
-> A program can play notes at a synthesiser plugged into the host. Nothing
-> receives yet and nothing interrupts, so a sequencer will not keep time; stages
-> 2 to 7 below are what is left, and the verified hardware facts are the reason
-> this document exists rather than being worked out a second time.
+> **Status: stages 1 to 7 done, 2026-09-14.** A program can send MIDI and receive
+> it, the machine has a 68901 MFP and two 6850 ACIAs in its memory map, the
+> timers run against the host clock, and a handler an application installs is
+> called - between instructions and while the application is asleep in GEM,
+> which is where a sequencer spends its time. Watched end to end through ALSA's
+> sequencer - note on, a complete six-byte sysex, note off - though against its
+> own loopback rather than an interface with a cable in it, there being no MIDI
+> hardware on this machine.
 >
-> One departure from the plan as written: a spelling with no prefix is refused
-> rather than read as a sequencer port name. See the note under Stage 1.
+> What is left is stage 7's remaining polish and stage 10, and the thing none of
+> it proves: **no period sequencer has been run.** Cubase and Notator are the
+> point of the exercise and they have not been tried.
+>
+> Three departures from the plan as written, each decided while building and
+> each noted where it applies below: the MIDI setting requires its prefix; the
+> XBIOS timer calls became real in the dispatch commit rather than the BIOS one,
+> because without them nothing could install a handler to dispatch to; and a
+> channel tosemu answers for itself has to be *finished* as well as
+> acknowledged, which the plan did not mention and which cost an afternoon -
+> the first byte of MIDI arrived and the second never did.
 
 ## Context
 

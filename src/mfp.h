@@ -111,6 +111,18 @@ int mfp_acknowledge(void);
  * is the vector register's top four bits and the channel in the bottom four */
 int mfp_vector_of(int channel);
 
+/*
+ * A channel's handler has finished, which clears its in-service bit.
+ *
+ * A handler on the machine does this for itself by writing its own bit away -
+ * that is what the software end of interrupt arrangement means, and every TOS
+ * handler ends with such a write. This is for the channels tosemu answers for
+ * itself, where there is no handler to do it: a bit left set holds off that
+ * channel and every lower one for ever, which looks exactly like the device
+ * having gone quiet.
+ */
+void mfp_finished(int channel);
+
 /* What Jenabint and Jdisint do. Disabling clears everything the channel had:
  * a channel that is turned off and on again has forgotten what it missed. */
 void mfp_enable(int channel);

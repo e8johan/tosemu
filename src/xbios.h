@@ -43,4 +43,29 @@ int xbios_screen_named(uint32_t address);
 uint8_t magic_xbios_supexec_read(struct _memarea *area, uint32_t address);
 void magic_xbios_supexec_write(struct _memarea *area, uint32_t address, uint8_t value);
 
+/*
+ * The ring buffer an _IOREC describes, which lives in the machine's memory
+ * rather than in ours - Iorec hands the application its address and period
+ * software reads it directly. Device 2 is MIDI; 0 and 1 are the serial port
+ * and the keyboard, which nothing here ever fills.
+ *
+ * These are for the two things on either side of it: whatever is taking bytes
+ * off the device and putting them in, and Bconin and Bconstat taking them out.
+ */
+int xbios_iorec_push(int dev, uint8_t byte);
+int xbios_iorec_take(int dev, uint8_t *byte);
+int xbios_iorec_count(int dev);
+
+/*
+ * Where a byte arriving on the MIDI port is to be taken: midivec out of the
+ * _KBDVECS, which is the application's routine if it installed one and ours if
+ * it did not. Nought when nobody has ever asked for the vectors.
+ *
+ * xbios_midivec_magic is the address of ours, so that whatever is about to
+ * call one can tell the two apart and save itself running two bytes of
+ * emulated code to do what it could do directly.
+ */
+uint32_t xbios_midivec(void);
+uint32_t xbios_midivec_magic(void);
+
 #endif /* XBIOS_H */

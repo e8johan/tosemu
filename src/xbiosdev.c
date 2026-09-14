@@ -47,6 +47,8 @@
 #include "midi.h"
 #include "interrupt.h"
 #include "mfp.h"
+#include "iorec.h"
+#include "memory.h"
 
 #include "xbios_p.h"
 
@@ -204,19 +206,139 @@ uint32_t XBIOS_Initmous()
 
 /* Input buffers *************************************************************/
 
-/* An IOREC describes the ring buffer a device fills from its interrupt
- * handler. Nothing fills them here, so hand out buffers that stay empty:
- * head equal to tail is how a reader knows there is nothing waiting. */
+/*
+ * An IOREC describes the ring buffer a device fills from its interrupt handler
+ * and whatever reads the device empties.
+ *
+ * The record is in the machine's memory rather than in ours, because that is
+ * the point of it: Iorec hands the application its address, and period MIDI
+ * software reads the buffer directly rather than going through Bconin - which
+ * was the quick way to take a stream of notes in on an eight megahertz
+ * machine. So the fields below are read and written where they lie, and the
+ * arithmetic on them is iorec.c's, which is TOS's.
+ *
+ * The serial port and the printer have no interrupt handler here and so stay
+ * empty for ever, which is what a reader finds out from head being equal to
+ * tail.
+ */
 #define IOREC_DEVICES (4)
 #define IOREC_SIZE    (14)
 #define IOREC_BUFSIZE (256)
 
+#define IOREC_MIDI (2)
+
+/* Where each field sits in the record */
+#define IOREC_IBUF    (0)
+#define IOREC_IBUFSIZ (4)
+#define IOREC_IBUFHD  (6)
+#define IOREC_IBUFTL  (8)
+#define IOREC_IBUFLOW (10)
+#define IOREC_IBUFHI  (12)
+
 static uint32_t iorec[IOREC_DEVICES];
+
+/* The record for a device, made the first time anybody wants one - which is
+ * either the application asking for its address or a byte arriving on it */
+static uint32_t iorec_for(int dev)
+{
+    uint32_t buffer;
+
+    if (dev < 0 || dev >= IOREC_DEVICES)
+        return 0;
+
+    if (!iorec[dev])
+    {
+        iorec[dev] = bios_static_alloc(IOREC_SIZE);
+        buffer = bios_static_alloc(IOREC_BUFSIZE);
+
+        if (!iorec[dev] || !buffer)
+        {
+            iorec[dev] = 0;
+            return 0;
+        }
+
+        m68k_write_memory_32(iorec[dev] + IOREC_IBUF, buffer);
+        m68k_write_memory_16(iorec[dev] + IOREC_IBUFSIZ, IOREC_BUFSIZE);
+        m68k_write_memory_16(iorec[dev] + IOREC_IBUFHD, 0);
+        m68k_write_memory_16(iorec[dev] + IOREC_IBUFTL, 0);
+        m68k_write_memory_16(iorec[dev] + IOREC_IBUFLOW, IOREC_BUFSIZE/4);
+        m68k_write_memory_16(iorec[dev] + IOREC_IBUFHI, IOREC_BUFSIZE*3/4);
+    }
+
+    return iorec[dev];
+}
+
+/*
+ * The record as something iorec.c can work on.
+ *
+ * The buffer is read through the machine's own address for it rather than
+ * through the one this handed out, because an application is allowed to point
+ * the record at a buffer of its own and some do - a program expecting a great
+ * deal of MIDI gives it somewhere larger to go. EmuTOS's own handler says as
+ * much where it loads the pointer: "must use ptr, user may have changed it".
+ */
+static int iorec_view(int dev, struct iorec_ring *r)
+{
+    uint32_t rec = iorec_for(dev);
+
+    if (!rec)
+        return 0;
+
+    r->buf = tos_mem_to_host_mem(m68k_read_disassembler_32(rec + IOREC_IBUF));
+    r->size = (int)m68k_read_disassembler_16(rec + IOREC_IBUFSIZ);
+    r->head = (int)m68k_read_disassembler_16(rec + IOREC_IBUFHD);
+    r->tail = (int)m68k_read_disassembler_16(rec + IOREC_IBUFTL);
+
+    return r->buf != 0 && r->size > 0;
+}
+
+/* A byte from a device's interrupt handler. Answers 0 when the ring was full
+ * and it was dropped, which is the only thing a device can do about it. */
+int xbios_iorec_push(int dev, uint8_t byte)
+{
+    struct iorec_ring r;
+
+    if (!iorec_view(dev, &r))
+        return 0;
+
+    if (!iorec_push(&r, byte))
+        return 0;
+
+    m68k_write_memory_16(iorec[dev] + IOREC_IBUFTL, (uint16_t)r.tail);
+
+    return 1;
+}
+
+/* And a byte out of it, which is what Bconin does */
+int xbios_iorec_take(int dev, uint8_t *byte)
+{
+    struct iorec_ring r;
+
+    if (!iorec_view(dev, &r))
+        return 0;
+
+    if (!iorec_take(&r, byte))
+        return 0;
+
+    m68k_write_memory_16(iorec[dev] + IOREC_IBUFHD, (uint16_t)r.head);
+
+    return 1;
+}
+
+/* How many are waiting, which is what Bconstat answers */
+int xbios_iorec_count(int dev)
+{
+    struct iorec_ring r;
+
+    if (!iorec_view(dev, &r))
+        return 0;
+
+    return iorec_count(&r);
+}
 
 uint32_t XBIOS_Iorec()
 {
     uint16_t dev = peek_u16(2);
-    uint32_t buffer;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    dev: %d\n", dev);
@@ -225,39 +347,111 @@ uint32_t XBIOS_Iorec()
     if (dev >= IOREC_DEVICES)
         return 0;
 
-    if (!iorec[dev])
-    {
-        iorec[dev] = bios_static_alloc(IOREC_SIZE);
-        buffer = bios_static_alloc(IOREC_BUFSIZE);
-
-        m68k_write_memory_32(iorec[dev] + 0, buffer);      /* ibuf     */
-        m68k_write_memory_16(iorec[dev] + 4, IOREC_BUFSIZE); /* ibufsiz */
-        m68k_write_memory_16(iorec[dev] + 6, 0);           /* ibufhd   */
-        m68k_write_memory_16(iorec[dev] + 8, 0);           /* ibuftl   */
-        m68k_write_memory_16(iorec[dev] + 10, IOREC_BUFSIZE/4); /* ibuflow  */
-        m68k_write_memory_16(iorec[dev] + 12, IOREC_BUFSIZE*3/4); /* ibufhi */
-    }
-
-    return iorec[dev];
+    return iorec_for(dev);
 }
 
 /* Keyboard vectors **********************************************************/
 
-/* A _KBDVECS is nine vectors and a state byte. TOS points them at its own
- * handlers so that an application can chain onto one. Nothing calls them here,
- * but an application that reads a vector, saves it and installs its own must
- * find something it can restore later rather than reading uninitialised
- * memory. */
+/*
+ * A _KBDVECS is nine vectors and a state byte, and midivec - the first of them
+ * - is where a byte arriving on the MIDI port is taken.
+ *
+ * TOS pointed it at a routine of its own that put the byte in the IOREC, and
+ * the documented way for an application to watch MIDI is to read that address,
+ * keep it, put its own there, and jump to the one it kept when it has finished.
+ * Which means the address it reads has to be something it can actually jump to.
+ * Nought would do for an application that simply replaces the vector and never
+ * looks at what was there, and would send one that chains to address nought.
+ *
+ * So midivec points at two bytes of magic memory that read as an RTS and put
+ * the byte in the IOREC on the way past - the same trick Supexec uses to get
+ * control back, see magic_xbios_supexec_read in xbiossys.c. What an
+ * application chains to is then a real routine that does what TOS's did.
+ *
+ * The other eight point at an RTS and nothing else, which is what TOS pointed
+ * the ones it had no use for at.
+ */
 #define KBDVECS_SIZE (9*4 + 2)
+
+#define KBDVECS_MIDIVEC (0)
 
 static uint32_t kbdvecs;
 
+/* The two bytes that read as an RTS, and the two that read as an RTS and fill
+ * the MIDI buffer on the way */
+static uint32_t just_rts;
+static uint32_t midivec_magic;
+
+uint32_t xbios_midivec_magic(void)
+{
+    return midivec_magic;
+}
+
+/*
+ * Where a byte arriving on the MIDI port should be taken, which is whatever is
+ * in midivec - the application's routine if it installed one, ours if it did
+ * not, and nought if nobody has ever asked for the vectors at all.
+ */
+uint32_t xbios_midivec(void)
+{
+    if (!kbdvecs)
+        return 0;
+
+    return m68k_read_disassembler_32(kbdvecs + KBDVECS_MIDIVEC);
+}
+
+static uint8_t magic_kbdvecs_read(struct _memarea *area, uint32_t address)
+{
+    /* 0x4e75 is RTS. The first byte says so and the second does the work,
+     * which is the last moment before the instruction runs. */
+    if (address == midivec_magic + 1)
+        xbios_iorec_push(IOREC_MIDI, (uint8_t)m68k_get_reg(0, M68K_REG_D0));
+
+    return (address & 1) ? 0x75 : 0x4e;
+}
+
+static void magic_kbdvecs_write(struct _memarea *area, uint32_t address,
+                                uint8_t value)
+{
+    printf("Attempted to write to magic memory at 0x%x\n", address);
+    halt_execution();
+}
+
 uint32_t XBIOS_Kbdvbase()
 {
+    int i;
+
     FUNC_TRACE_ENTER
 
-    if (!kbdvecs)
-        kbdvecs = bios_static_alloc(KBDVECS_SIZE);
+    if (kbdvecs)
+        return kbdvecs;
+
+    kbdvecs = bios_static_alloc(KBDVECS_SIZE);
+    midivec_magic = bios_static_alloc(2);
+    just_rts = bios_static_alloc(2);
+
+    if (!kbdvecs || !midivec_magic || !just_rts)
+    {
+        kbdvecs = 0;
+        return 0;
+    }
+
+    /*
+     * Over the top of the BIOS RAM these were taken from, which works because
+     * an area added later is found first - see find_memarea. The bytes
+     * underneath are never read again.
+     */
+    add_fnct_memory_area("midivec", MEMORY_READ | MEMORY_SUPERREAD,
+                         midivec_magic, 2, 0,
+                         magic_kbdvecs_read, magic_kbdvecs_write);
+    add_fnct_memory_area("justrts", MEMORY_READ | MEMORY_SUPERREAD,
+                         just_rts, 2, 0,
+                         magic_kbdvecs_read, magic_kbdvecs_write);
+
+    for (i = 0; i < 9; i++)
+        m68k_write_memory_32(kbdvecs + 4*i, just_rts);
+
+    m68k_write_memory_32(kbdvecs + KBDVECS_MIDIVEC, midivec_magic);
 
     return kbdvecs;
 }
@@ -397,6 +591,8 @@ void xbios_dev_reset()
         iorec[i] = 0;
 
     kbdvecs = 0;
+    midivec_magic = 0;
+    just_rts = 0;
 
     /*
      * And everything the machine was doing on behalf of the application that

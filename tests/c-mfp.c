@@ -28,10 +28,10 @@
  * started rather than from when it first looked, and that what TOS would have
  * left set up is set up.
  *
- * That is what this is for, and it is all a program can see at this stage.
- * Nothing is interrupted yet - a handler installed here would never be called -
- * so what is checked is the machine having the chips, the timers running, and
- * the counters counting.
+ * That is what this is for: the machine having the chips, the timers running,
+ * the counters counting, and nothing left stuck afterwards. What a handler the
+ * application installs does when it is called is tests/c-timer.c's question,
+ * and what happens while the application waits for GEM is tests/c-clock.c's.
  *
  * Run two ways by the suite. With interrupts asked for, which is everything
  * below; and without, which is every other test in this directory, where none
@@ -48,6 +48,7 @@
 #define MFP_GPIP  (MFP_BASE + 0x01)
 #define MFP_IERB  (MFP_BASE + 0x09)
 #define MFP_IPRB  (MFP_BASE + 0x0D)
+#define MFP_ISRB  (MFP_BASE + 0x11)
 #define MFP_VR    (MFP_BASE + 0x17)
 #define MFP_TCDCR (MFP_BASE + 0x1D)
 #define MFP_TCDR  (MFP_BASE + 0x23)
@@ -177,10 +178,26 @@ int main(int argc, char **argv)
      */
     check(clock_moved_by < 50, 1, "and it counts at something like the right rate");
 
-    /* Timer C has been going off all along, and nothing has acknowledged it -
-     * so its channel is pending, and stays pending */
-    check((peek(MFP_IPRB) >> TIMER_C_CHANNEL) & 1, 1,
-          "Timer C has fired, and nothing has yet taken the interrupt");
+    /*
+     * And nothing is stuck.
+     *
+     * Timer C has been going off all along and the machine has been taking
+     * each one - there is no handler on its vector, so tosemu answers for it
+     * and says it has finished. What that has to leave behind is a channel
+     * that is not in service, because a channel left in service holds off
+     * itself and every lower one for ever. It is the failure that looks like
+     * the device having gone quiet rather than like anything being wrong, and
+     * it is what stopped the second byte of MIDI ever arriving.
+     */
+    check((peek(MFP_ISRB) >> TIMER_C_CHANNEL) & 1, 0,
+          "and the interrupts it took were finished with rather than left open");
+
+    /*
+     * The same for the ACIA's channel, which shares the register. Nothing has
+     * arrived on it - there is no port - but the machine set it up, and a
+     * channel that was never in service must not read as though it were.
+     */
+    check((peek(MFP_ISRB) >> 6) & 1, 0, "and the same for the MIDI channel");
 
     printf("1..%d\n", n);
 
