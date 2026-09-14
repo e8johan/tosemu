@@ -98,6 +98,13 @@
   written; Fmidipipe is the odd one out now, being about MIDI, and what it asks
   for - redirecting one process's MIDI into another's - has an answer here that
   it did not have before.
+- A program that saves the ACIA's interrupt vector and chains to what was there
+  gets a routine that returns and does nothing, rather than one that takes the
+  byte out of the chip the way TOS's did. Replacing midivec - which is the
+  documented way to watch MIDI, and what the vectors in _KBDVECS are for - does
+  work properly, so this is the less travelled of the two roads. Closing it
+  means the ACIA's vector pointing at magic memory of its own that does what
+  acia_arrived does, the way midivec's already does.
 - The magic memory that midivec points at is read by the disassembler as well
   as by the processor, so running with -vvv puts a byte in the input buffer for
   every time the trace walks past it. The same is true of Supexec's, and for
