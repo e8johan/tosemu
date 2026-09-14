@@ -21,7 +21,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               keyboard.c \
-              fontface.c printer.c midi.c \
+              fontface.c printer.c midi.c mfp.c acia.c iorec.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -484,12 +484,19 @@ $(BIN)/printtest: $(SRC)/printtest.c $(OBJ)/printer.o $(OBJ)/settings.o
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
-# What the port does with the bytes it is handed, checked without a synthesiser
-# to hear them. Host built for the same reason as the rest of these: a MIDI
-# interface is not something a test can arrange, and neither is a far end that
-# stops reading halfway through a dump. The file destination is what makes the
-# traffic something a test can look at at all.
-$(BIN)/miditest: $(SRC)/miditest.c $(OBJ)/midi.o $(OBJ)/settings.o
+# What the port does with the bytes it is handed, and what the MFP and the two
+# ACIAs do with what they are told, checked without a synthesiser to hear any
+# of it. Host built for the same reason as the rest of these: a MIDI interface
+# is not something a test can arrange, and neither is a far end that stops
+# reading halfway through a dump.
+#
+# That this links at all is the point of where the line was drawn. None of
+# midi.c, mfp.c, acia.c or iorec.c calls anything in Musashi, so the chips can
+# be driven directly here - a timer's arithmetic and a priority decision
+# checked by asking for them rather than by running a program that provokes
+# them. Everything that does know there is a 68000 is in interrupt.c instead.
+$(BIN)/miditest: $(SRC)/miditest.c $(OBJ)/midi.o $(OBJ)/mfp.o $(OBJ)/acia.o \
+                 $(OBJ)/iorec.o $(OBJ)/settings.o
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(ALSALIBS) -o $@
 
