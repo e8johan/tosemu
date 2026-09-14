@@ -57,6 +57,52 @@
   the system owns. The area is left mapped because a program reading 0x600 is
   cheaper to allow than to explain, but it is five hundred and twelve bytes of
   nothing and the machine would be no different without it.
+- No period sequencer has been run, and that is the whole point of the MIDI
+  work rather than a loose end from it. Cubase, Notator and Dr. T's are what
+  the MFP and the ACIAs were emulated for; what has been watched working is
+  tests, and a note on, a system exclusive and a note off going out through
+  ALSA. Those prove the path exists. They do not prove that a program which
+  reprograms the timers on the fly, hooks several channels at once and expects
+  the machine to keep up will run at all.
+
+  Nor has any of it been tried against real hardware. The sequencer backend was
+  watched through ALSA's own loopback, which is not an interface with a cable
+  in it, and the raw backend - the one meant for the USB device somebody
+  actually plugs in - has never been opened against a device that exists.
+- The vertical blank keeps its counters and interrupts nobody. _vbclock and
+  _frclock advance fifty times a second, so a program that measures time by
+  them is right, but the vector at 0x70 is never taken and neither is anything
+  on the vertical blank queue at 0x456. A program that hangs a routine there -
+  which is how an ST animated anything - is not called. It wants the same
+  dispatch the MFP channels have and a queue to walk; what stopped it being
+  done was that nothing needing it had come up.
+- A byte at a time moves from the host into the ACIA, once per look at the
+  clock, which is once per few thousand instructions. That is the right shape -
+  the chip holds one byte and the machine has to read it before the next may go
+  in - but it ties how fast MIDI arrives to how fast the program is executing
+  rather than to the clock. A system exclusive dump of any size arrives slowly,
+  and a program that stops executing stops receiving. What it should be is a
+  byte every thirty two microseconds, which is what 31250 baud comes to.
+- Timer B counting display lines is refused rather than emulated. It is the one
+  MFP mode that counts something the machine does not have: there is no video
+  running, so there are no horizontal blanks to count. A program using it for a
+  split screen or a raster effect is told out loud and gets no timer, which is
+  better than silently never firing but is not the same as working.
+- Bconmap is remembered and never consulted, so a program that maps a device
+  onto the serial port still reaches nothing. It was already true before MIDI
+  and is worth writing down beside it: the machine now has one device that
+  really goes somewhere, which makes the mapping mean something it did not
+  mean before.
+- Cauxin, Cauxout, Cauxis and Cauxos still halt the emulator, and Fmidipipe
+  with them. The serial port has nowhere to go, which is why they were never
+  written; Fmidipipe is the odd one out now, being about MIDI, and what it asks
+  for - redirecting one process's MIDI into another's - has an answer here that
+  it did not have before.
+- The magic memory that midivec points at is read by the disassembler as well
+  as by the processor, so running with -vvv puts a byte in the input buffer for
+  every time the trace walks past it. The same is true of Supexec's, and for
+  the same reason: nothing distinguishes a read that is about to execute from
+  one that is only looking.
 - A routine that draws an object for the application may only call the VDI,
   and one that calls the AES is refused rather than obeyed. The AES is
   halfway through drawing a tree when it calls the routine, and the tree it
