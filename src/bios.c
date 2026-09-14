@@ -28,6 +28,8 @@
 #include "tossystem.h"
 #include "console.h"
 #include "midi.h"
+#include "xbios.h"
+#include "interrupt.h"
 #include "cpu.h"
 #include "m68k.h"
 #include "utils.h"
@@ -79,6 +81,10 @@ uint32_t BIOS_Setexc()
 #define DEV_IKBD    (4) /* Keyboard controller */
 #define DEV_RAWCON  (5) /* Console without the line-editing the VT52 does */
 
+/* Which of the four input records MIDI's is. The numbering is Iorec's rather
+ * than Bconin's: 0 is the serial port, 1 the keyboard, 2 MIDI. */
+#define DEV_MIDI_IOREC (2)
+
 static int is_console(uint16_t dev)
 {
     return dev == DEV_CON || dev == DEV_RAWCON;
@@ -96,6 +102,43 @@ uint32_t BIOS_Bconin()
      * program asking the keyboard for a key has stopped until it gets one */
     if (is_console(dev))
         return console_key(1);
+
+    /*
+     * MIDI waits, the way the console's own read does and the way TOS's
+     * bconin3 does: it spins on bconstat3 until something is there. A program
+     * that asked for a byte has stopped until it gets one.
+     *
+     * What makes that safe here is that the waiting is done by the emulator
+     * rather than by the machine - interrupts are serviced and the port is
+     * slept on, so the byte that ends the wait can actually arrive. A spin in
+     * emulated code would be the machine running flat out and never looking.
+     */
+    if (dev == DEV_MIDI && midi_wanted())
+    {
+        uint8_t byte;
+
+        while (!xbios_iorec_count(DEV_MIDI_IOREC))
+        {
+            /*
+             * Nothing that could ever end this. Said out loud and given up on
+             * rather than spun on for ever, the same argument the AES makes
+             * about a wait with nothing that could answer it: a program
+             * blocked on a port with nothing on the other end is a hang, and a
+             * hang that says why is worth a great deal more than one that does
+             * not.
+             */
+            if (!interrupt_wanted())
+                break;
+
+            if (execution_halted())
+                break;
+
+            interrupt_wait();
+        }
+
+        if (xbios_iorec_take(DEV_MIDI_IOREC, &byte))
+            return byte;
+    }
 
     /* Nothing arrives from a device that is not there */
     return 0;
@@ -143,6 +186,20 @@ uint32_t BIOS_Bconstat()
 
     if (is_console(dev) && console_ready())
         return -1;
+
+    /*
+     * Whatever has arrived since anybody last looked. Asked of the emulator
+     * first, because a program polling this in a tight loop never executes
+     * enough instructions between one call and the next for the hook that
+     * drives the timers to come round.
+     */
+    if (dev == DEV_MIDI && midi_wanted())
+    {
+        interrupt_service();
+
+        if (xbios_iorec_count(DEV_MIDI_IOREC))
+            return -1;
+    }
 
     return 0;
 }

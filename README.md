@@ -918,11 +918,26 @@ It is off otherwise, and that is deliberate rather than cautious: it changes
 what the machine *is* rather than what it is plugged into, and the overwhelming
 majority of TOS programs neither want nor tolerate one that interrupts them.
 
-**A sequencer will still not keep time.** The chips are there and the clock
-runs, but nothing yet turns what the MFP decides into an interrupt the 68000
-takes, so a handler a program installs is never called. That is the next piece
-of work and it is what Cubase and Notator need - see `MIDI.md` on the `midi`
-branch, which is where the design and the hardware notes for it live.
+Interrupts are real ones. `Xbtimer` sets a timer going and hangs a routine off
+its vector, and from then on the routine is called - between the instructions of
+a running program, and while the application is asleep in `evnt_multi`, which is
+where a sequencer spends most of its time. A handler must clear its own
+in-service bit the way every TOS handler does, or the MFP holds its channel off
+and it is called exactly once.
+
+Bytes arriving go the whole way round: the ACIA says one is there, the MFP
+raises its channel, and whatever is on `midivec` puts it in the buffer `Iorec`
+handed out - which is what `Bconstat` and `Bconin` then read, and what a program
+watching a stream of notes reads directly. A program that replaces `midivec` is
+called instead, and one that chains to what was there finds a real routine
+rather than address nought.
+
+**What has not been tried is real hardware or a real sequencer.** Everything
+above is checked by the test suite, and the sequencer path was watched end to
+end against an ALSA port - note on, a complete six-byte system exclusive, note
+off, all arriving intact. But that was ALSA's own loopback rather than an
+interface with a cable in it, and no period sequencer has been put through any
+of it. See `MIDI.md` on the `midi` branch for what would want checking first.
 
 Road Map
 ========

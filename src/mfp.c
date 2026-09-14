@@ -254,6 +254,14 @@ int mfp_acknowledge(void)
     return mfp_vector_of(channel);
 }
 
+void mfp_finished(int channel)
+{
+    if (channel < 0 || channel > 15)
+        return;
+
+    *reg_for(channel, &mfp.isra, &mfp.isrb) &= (uint8_t)~bit_of(channel);
+}
+
 void mfp_enable(int channel)
 {
     uint8_t bit;

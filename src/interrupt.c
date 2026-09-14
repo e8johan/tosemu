@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <poll.h>
 
 #include "mfp.h"
 #include "acia.h"
@@ -32,6 +33,7 @@
 #include "settings.h"
 #include "tossystem.h"
 #include "cpu.h"
+#include "xbios.h"
 #include "m68k.h"
 
 /*
@@ -283,6 +285,16 @@ void interrupt_init(void)
     mfp_setup_timer(2, 0x50, 192);
     mfp_enable(MFP_200HZ);
 
+    /*
+     * And the MIDI ACIA, set up the way TOS set it: eight bits, no parity,
+     * one stop bit, the clock divided by sixteen, and an interrupt when a byte
+     * arrives. Its channel enabled for the same reason the timer's is - TOS
+     * enabled it, and a program that never configures the port still expects
+     * bytes to reach the buffer Iorec hands it.
+     */
+    acia_write(ACIA_MIDI, 0, 0x95);
+    mfp_enable(MFP_ACIA);
+
     hz200_count = 0;
     vbl_count = 0;
     built = 1;
@@ -304,6 +316,9 @@ void interrupt_reset(void)
 
     mfp_setup_timer(2, 0x50, 192);
     mfp_enable(MFP_200HZ);
+
+    acia_write(ACIA_MIDI, 0, 0x95);
+    mfp_enable(MFP_ACIA);
 
     interrupt_timers_changed();
 }
@@ -424,11 +439,120 @@ int tos_int_ack(int level)
  * machine, so until an application installs something every vector is empty -
  * and the system timer has been running since before the application started.
  */
+/*
+ * Run a routine of the machine's and come back, for the vectors that are
+ * called rather than jumped to.
+ *
+ * The same shape as run_handler below, and simpler: what is on the end of one
+ * of these is an ordinary subroutine ending in RTS, so there is no exception
+ * frame to build - a return address on the stack is the whole of it.
+ */
+static void run_routine(uint32_t routine, uint32_t d0)
+{
+    uint32_t d[8], a[8], pc, sr, isp;
+    long steps;
+    int i;
+
+    for (i = 0; i < 8; i++)
+        d[i] = m68k_get_reg(0, M68K_REG_D0 + i);
+    for (i = 0; i < 8; i++)
+        a[i] = m68k_get_reg(0, M68K_REG_A0 + i);
+    pc = m68k_get_reg(0, M68K_REG_PC);
+    sr = m68k_get_reg(0, M68K_REG_SR);
+    isp = m68k_get_reg(0, M68K_REG_ISP);
+
+    /* In supervisor mode, because it is being called from an interrupt and
+     * that is the mode one runs in */
+    enable_supervisor_mode();
+
+    push_u32(INTERRUPT_RETURN);
+
+    m68k_set_reg(M68K_REG_D0, d0);
+    m68k_set_reg(M68K_REG_PC, routine);
+
+    running = 1;
+
+    for (steps = 0; steps < INTERRUPT_STEPS; steps++)
+    {
+        if (m68k_get_reg(0, M68K_REG_PC) == INTERRUPT_RETURN)
+            break;
+
+        if (execution_halted())
+            break;
+
+        m68k_execute(1);
+    }
+
+    running = 0;
+
+    if (steps >= INTERRUPT_STEPS)
+    {
+        halt_execution();
+        printf("tosemu: the routine at 0x%x ran for %ld instructions without "
+               "returning\n", routine, INTERRUPT_STEPS);
+    }
+
+    m68k_set_reg(M68K_REG_SR, sr);
+    m68k_set_reg(M68K_REG_ISP, isp);
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_D0 + i, d[i]);
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_A0 + i, a[i]);
+    m68k_set_reg(M68K_REG_PC, pc);
+}
+
+/*
+ * A byte has arrived on the MIDI port and nobody has claimed the ACIA's
+ * vector, so tosemu answers for it - which is to say, does what TOS's own
+ * handler did.
+ *
+ * That handler read the byte out of the chip and handed it to midivec, and
+ * midivec put it in the IOREC. Both halves matter: an application that watches
+ * MIDI does it by replacing midivec, and one that does not expects to find the
+ * bytes in the buffer Iorec told it about.
+ *
+ * Reading the byte is also what stops the chip asking. Leaving it unread would
+ * leave the line into the MFP down and the channel pending for ever.
+ */
+static void acia_arrived(void)
+{
+    uint8_t byte = acia_read(ACIA_MIDI, 1);
+    uint32_t vec;
+
+    acia_settled();
+
+    vec = xbios_midivec();
+
+    /* Ours is two bytes of magic memory that read as an RTS and fill the
+     * buffer on the way past. Running it would work and would mean executing
+     * an instruction to do what can be done here. */
+    if (vec == 0 || vec == xbios_midivec_magic())
+    {
+        xbios_iorec_push(2, byte);
+        return;
+    }
+
+    run_routine(vec, byte);
+}
+
 static void handled_here(int channel)
 {
-    (void)channel;
-
     mfp_acknowledge();
+
+    if (channel == MFP_ACIA)
+        acia_arrived();
+
+    /*
+     * And finished, which matters as much as having done it.
+     *
+     * Acknowledging puts the channel in service, and a channel in service
+     * holds off itself and everything below it until its handler says it is
+     * done. Here tosemu is the handler, so tosemu has to say so - without this
+     * the first byte of MIDI arrives and the second never does, the channel
+     * having blocked itself for ever. An application's handler clears its own
+     * bit and wants no help; this is only for the ones nobody claimed.
+     */
+    mfp_finished(channel);
 }
 
 /*
@@ -710,6 +834,52 @@ void interrupt_service(void)
     /* From inside a trap, where the handler has to be run to completion before
      * whatever called this can carry on */
     service(1);
+}
+
+/*
+ * Long enough that a program polling a silent port is not spinning, short
+ * enough that it is not noticeable. Nothing depends on it for accuracy: it is
+ * a floor under how often the caller looks again, and the timers have their
+ * own answer to when they are due.
+ */
+#define WAIT_AT_MOST_MS (20)
+
+void interrupt_wait(void)
+{
+    struct pollfd fds[1];
+    int nfds = 0;
+    long due;
+    int wait;
+
+    if (!built)
+        return;
+
+    due = interrupt_next_due_ms();
+
+    wait = (due < 0 || due > WAIT_AT_MOST_MS) ? WAIT_AT_MOST_MS : (int)due;
+
+    if (midi_fd() >= 0)
+    {
+        fds[0].fd = midi_fd();
+        fds[0].events = POLLIN;
+        nfds = 1;
+    }
+
+    /* A wait with nothing to wait on is still a wait: the timers are what
+     * makes time pass here, and they are watched by the clock rather than by a
+     * descriptor */
+    if (nfds)
+        poll(fds, nfds, wait);
+    else
+    {
+        struct timespec t;
+
+        t.tv_sec = 0;
+        t.tv_nsec = (long)wait * 1000000L;
+        nanosleep(&t, 0);
+    }
+
+    interrupt_service();
 }
 
 void interrupt_tick(void)

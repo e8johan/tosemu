@@ -88,6 +88,21 @@ void interrupt_service(void);
  * decrement rather than a clock read on almost every instruction */
 void interrupt_tick(void);
 
+/*
+ * Sleep until something could have happened, and then do whatever did.
+ *
+ * For a program that has asked for something that can only come from outside -
+ * a byte on the MIDI port - and has nothing else to do until it arrives. The
+ * waiting is the emulator's rather than the machine's, which is what makes it
+ * safe: a spin in emulated code would be the machine running flat out and
+ * never reaching the point where anybody looks.
+ *
+ * Comes back when the port has something to say, when a timer is due, or after
+ * a moment, whichever is first - so a caller must treat it as "time has passed"
+ * and look again rather than as "what you wanted is here".
+ */
+void interrupt_wait(void);
+
 /* A control register changed, so whatever was worked out about how long the
  * timers run for is no longer true */
 void interrupt_timers_changed(void);
