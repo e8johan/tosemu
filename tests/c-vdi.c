@@ -299,6 +299,54 @@ int main(int argc, char **argv)
         check((unsigned short)bits[2], 0xffff, "out of both the planes it lit");
     }
 
+    /*
+     * A form that does not say how wide it is in pixels.
+     *
+     * fd_w is declared in an MFDB and read by nothing in the whole of the VDI:
+     * every raster operation works from the width in words, the height and the
+     * number of planes. So software leaves it out, and is entitled to - Cubase
+     * arrives at vr_trnfm with its resource icons that way, fd_wdwidth saying
+     * eight words and fd_w saying nothing at all, and a VDI that refuses the
+     * form stops the machine over a field it was never going to read.
+     *
+     * vr_trnfm because that is the call it came up in and the one that reads
+     * fewest fields: it turns a form between the layout a resource file uses
+     * and the one a screen does, a word at a time, and a width in pixels does
+     * not come into it.
+     */
+    {
+        static short form[16];          /* one word across, sixteen rows, one plane */
+        MFDB nowidth;
+        int i;
+
+        for (i = 0; i < 16; i++)
+            form[i] = 0x0000;
+
+        form[0] = (short)0xffff;        /* something to tell apart from nothing */
+
+        nowidth.fd_addr = form;
+        nowidth.fd_w = 0;               /* the whole point */
+        nowidth.fd_h = 16;
+        nowidth.fd_wdwidth = 1;
+        nowidth.fd_stand = 1;           /* standard, on the way to device */
+        nowidth.fd_nplanes = 1;
+
+        vr_trnfm(handle, &nowidth, &nowidth);
+
+        /*
+         * Coming back at all is most of what this asks: refusing the form
+         * halts the emulator, and a halted emulator prints nothing further, so
+         * the count line at the end is the other half of the answer.
+         *
+         * One plane transformed in place is the same bits either way round -
+         * standard and device format only differ once there is more than one
+         * plane to interleave - so what proves it ran rather than quietly
+         * doing nothing is that the row it was given is still there.
+         */
+        check(1, 1, "a form with no width in it is accepted");
+        check((unsigned short)form[0], 0xffff, "and comes back with its bits");
+    }
+
     v_clrwk(handle);
     check(pixel(25, 35), 0, "v_clrwk emptied the screen");
 

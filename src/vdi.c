@@ -265,10 +265,28 @@ static int bitmap_in(int16_t *control, int index, int slot)
         return 1;
     }
 
-    if (w <= 0 || h <= 0 || wdwidth <= 0 || planes <= 0)
+    /*
+     * A form with no width in it is not a malformed form.
+     *
+     * What every raster operation works from is the width in words, the height
+     * and the number of planes. fd_w, the width in pixels, is declared in an
+     * MFDB and read by nothing in the whole of EmuTOS's VDI - so software
+     * leaves it out, and is right to. Cubase's resource icons arrive that way:
+     * fd_wdwidth says eight words, which is a hundred and twenty eight pixels,
+     * and fd_w says nothing at all.
+     *
+     * It is worked out rather than left at nought so that what the VDI is
+     * handed describes itself, and so that anything which does later want a
+     * width is given the one the form really has.
+     */
+    if (w <= 0 && wdwidth > 0)
+        w = wdwidth * 16;
+
+    if (h <= 0 || wdwidth <= 0 || planes <= 0)
     {
         halt_execution();
-        printf("VDI: a bitmap of %dx%d in %d planes is not one\n", w, h, planes);
+        printf("VDI: a bitmap %d words across, %d high and %d planes deep is "
+               "not one\n", wdwidth, h, planes);
         return 0;
     }
 
