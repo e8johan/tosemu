@@ -86,8 +86,21 @@
  * If off, all interrupts will be autovectored and all interrupt requests will
  * auto-clear when the interrupt is serviced.
  */
-#define M68K_EMULATE_INT_ACK        OPT_OFF
-#define M68K_INT_ACK_CALLBACK(A)    your_int_ack_handler_function(A)
+/*
+ * The MFP decides which of its sixteen channels won and therefore which vector
+ * the processor goes through, so the acknowledge has to be answered rather
+ * than autovectored: an autovector would send every one of them to 0x78, where
+ * an ST sends them to 0x100 and up.
+ *
+ * Turning this on also turns off Musashi's own clearing of the interrupt line -
+ * see the #if at the end of m68ki_exception_interrupt - so tos_int_ack has to
+ * lower it itself, or the same interrupt is taken again the instant the
+ * handler returns, for ever.
+ */
+int tos_int_ack(int level); /* from interrupt.c */
+
+#define M68K_EMULATE_INT_ACK        OPT_SPECIFY_HANDLER
+#define M68K_INT_ACK_CALLBACK(A)    tos_int_ack(A)
 
 
 /* If ON, CPU will call the breakpoint acknowledge callback when it encounters
