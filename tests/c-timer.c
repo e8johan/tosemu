@@ -132,8 +132,19 @@ int main(int argc, char **argv)
     long seen;
     long spins;
 
+    /*
+     * There is something on the vector before anything is installed, and it is
+     * not nought.
+     *
+     * TOS filled its exception table with addresses in ROM, including for the
+     * vectors nothing used, and software leans on that: a program that installs
+     * a handler saves what was there and chains to it, and a program asking
+     * whether it is already installed reads the vector and looks at the code
+     * around it. A table of noughts sends both of those to address nought.
+     */
     Supexec(read_the_vector);
-    check(vector_before, 0, "nothing is on Timer A's vector to begin with");
+    check(vector_before != 0, 1, "Timer A's vector has something on it already");
+    check(vector_before == (long)timer_handler, 0, "which is not ours");
 
     /*
      * Set the timer going and hang the handler off it, which is the one call

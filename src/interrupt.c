@@ -668,7 +668,19 @@ static void dispatch(int nested)
 
     handler = m68k_read_disassembler_32(VECTOR_ADDRESS(channel));
 
-    if (handler == 0)
+    /*
+     * Nobody has claimed this channel. Nought would say so on a machine whose
+     * vectors were never filled in, and this one's are: they hold an address
+     * that returns from exception and does nothing else, because TOS filled
+     * its table with ROM addresses and software reads them. So the question is
+     * whether the vector is still that, and not whether it is nought.
+     *
+     * Asking the old question here is what made the MIDI buffer stop filling:
+     * every vector became non-nought at once, so the ACIA's channel looked
+     * claimed, the stub returned without taking the byte out of the chip, and
+     * nothing ever arrived.
+     */
+    if (handler == 0 || handler == tos_default_vector())
     {
         handled_here(channel);
         return;
