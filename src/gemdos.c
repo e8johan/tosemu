@@ -126,10 +126,31 @@ uint32_t GEMDOS_Super()
             res = 0;
         }
     } else { /* Set CPU in user mode, restore the supervisor stack to lv0 */
-        sp = m68k_get_reg(0, M68K_REG_A7);
+        /*
+         * The user stack pointer is left exactly as it was, and that is the
+         * whole of what this call does besides putting the mode back.
+         *
+         * A 68000 keeps the two stack pointers in separate registers and swaps
+         * which one a7 is when the mode changes, so coming back to user mode
+         * restores the user one by itself. Writing a7 here would set the user
+         * stack pointer to whatever a7 happened to be in supervisor mode - and
+         * a program that entered supervisor mode by writing the status
+         * register rather than by calling Super has been standing on the
+         * machine's supervisor stack, so what it would be handed back is an
+         * address inside that. The next rts then returns to whatever is there.
+         *
+         * Cubase is the case that showed it. It does `move #$2300,sr`, pushes
+         * its arguments, calls this to come back out, and returns - and with
+         * a7 written here it returned to address nought and ran off through
+         * the exception vector table.
+         *
+         * For a program that paired this with Super(0) the two are the same
+         * value, which is why nothing noticed: Super(0) points the supervisor
+         * stack at the caller's own, so a balanced program has a7 back where
+         * the user stack pointer already was.
+         */
         m68k_set_reg(M68K_REG_ISP, lv0);
         disable_supervisor_mode();
-        m68k_set_reg(M68K_REG_A7, sp);
         res = 0;
     }
 
