@@ -45,6 +45,7 @@
 #include "cpu.h"
 #include "m68k.h"
 #include "midi.h"
+#include "interrupt.h"
 
 #include "xbios_p.h"
 
@@ -343,4 +344,13 @@ void xbios_dev_reset()
         iorec[i] = 0;
 
     kbdvecs = 0;
+
+    /*
+     * And everything the machine was doing on behalf of the application that
+     * has gone: the vectors it installed, the timers it started, and a message
+     * half way down the MIDI cable. A system exclusive dump cut in half by a
+     * Pexec would otherwise be finished off by the next program's first byte.
+     */
+    interrupt_reset();
+    midi_reset();
 }

@@ -739,6 +739,13 @@ int midi_wanted(void)
     return port != 0;
 }
 
+int midi_asked_for(void)
+{
+    const char *said_so = setting("TOSEMU_MIDI");
+
+    return said_so && *said_so;
+}
+
 int midi_fd(void)
 {
     return port ? port->fd() : -1;

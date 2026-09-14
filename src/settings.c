@@ -147,6 +147,20 @@ static const struct {
      */
     { "TOSEMU_MIDI",        "midi",    "device",      0 },
 
+    /*
+     * Whether the machine interrupts at all: the MFP in the memory map, the
+     * timers running, and the system clock counting.
+     *
+     * Off unless it is asked for, because the overwhelming majority of TOS
+     * programs neither want nor tolerate a machine that interrupts them, and
+     * because it is the one thing here that changes what the machine is rather
+     * than what it is connected to. Asking for a MIDI port turns it on as
+     * well: a program given something to play notes at is a program that will
+     * be setting timers going. This is for turning it on without one, which is
+     * the only way a test can reach any of it.
+     */
+    { "TOSEMU_INTERRUPTS",  "machine", "interrupts",  0 },
+
     { "TOSEMU_AESD",        "session", "socket",      0 },
 
     { "TOSEMU_SCREENSHOT",  "debug",   "screenshot",  0 },

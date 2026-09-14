@@ -79,6 +79,17 @@ int midi_open(void);
 int midi_wanted(void);
 
 /*
+ * Whether one was asked for, which is a different question: a port that was
+ * named and could not be opened was still asked for.
+ *
+ * What wants to know is the machine rather than the BIOS. A program given MIDI
+ * to talk to is a program that will be programming the timers and hanging
+ * handlers off them, and that has to be true of the machine it is started on
+ * whether or not the synthesiser happened to be plugged in.
+ */
+int midi_asked_for(void);
+
+/*
  * A descriptor to sleep on, or -1 when there is nothing worth sleeping on.
  *
  * The file backend answers -1 on purpose although it has a descriptor: a

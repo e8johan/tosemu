@@ -30,6 +30,7 @@
 
 #include "tossystem.h"
 #include "settings.h"
+#include "interrupt.h"
 #include "config.h"
 
 /* How much was asked for. config.h says what each level is, and is where the
@@ -40,6 +41,16 @@ void cpu_instr_callback()
 {
     static char buff[100];
     static unsigned int pc;
+
+    /*
+     * Whatever has come due, before the instruction rather than after it. The
+     * hook runs with the program counter still on the instruction that has not
+     * been executed yet, which is the only moment an interrupt may be taken
+     * without the machine having half done something.
+     *
+     * Almost every call is a counter decrement - see the throttle in there.
+     */
+    interrupt_tick();
 
     if (verbose >= VERBOSE_CPU)
     {

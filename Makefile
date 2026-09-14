@@ -21,7 +21,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               gem.c aesclient.c aes.c aesappl.c aesevnt.c aesgraf.c aeswind.c aesmenu.c aesframe.c aesfsel.c aesobjc.c aesrsrc.c aesscrp.c aesshel.c aestree.c vdi.c surface.c \
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               keyboard.c \
-              fontface.c printer.c midi.c mfp.c acia.c iorec.c \
+              fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
 

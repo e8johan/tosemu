@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -91,6 +91,13 @@ NO_PRINTER=TOSEMU_PRINT_COMMAND=/bin/true
 # where they are to be written instead.
 NO_MIDI=TOSEMU_MIDI=
 
+# And a machine that does not interrupt, which is what every test here but one
+# is written against. It takes no word said to be off, the same as MIDI; this
+# is against a setting that has leaked in from somebody's environment, and it
+# matters more than the others because it changes what the machine is rather
+# than what it is plugged into.
+NO_INTERRUPTS=TOSEMU_INTERRUPTS=no
+
 # The GEM tests would each open a window on whatever desktop is logged in,
 # which is no way for a test suite to behave. The screen is in memory either
 # way, and that is the part being tested.
@@ -101,11 +108,13 @@ NO_MIDI=TOSEMU_MIDI=
 # here cannot be overridden by a check line - it has to be composed around.
 TOSEMU_QUIET=TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER)
 
-TOSEMU=$(TOSEMU_QUIET) $(NO_MIDI) ../../bin/tosemu --no-config
+TOSEMU=$(TOSEMU_QUIET) $(NO_MIDI) $(NO_INTERRUPTS) ../../bin/tosemu --no-config
 
-# The same, for the one check that means to open a MIDI port and say where it
-# goes. Everything else about it is as quiet as the rest of the suite.
-TOSEMU_WITH_MIDI=$(TOSEMU_QUIET) ../../bin/tosemu --no-config
+# The same, for the checks that mean to be loud about one of the two. Each
+# leaves out the one thing it is asking for rather than trying to override it,
+# an environment assignment being won by the last one on the line.
+TOSEMU_WITH_MIDI=$(TOSEMU_QUIET) $(NO_INTERRUPTS) ../../bin/tosemu --no-config
+TOSEMU_WITH_INTERRUPTS=$(TOSEMU_QUIET) $(NO_MIDI) ../../bin/tosemu --no-config
 
 # The same, with a limit on how long it may take. The tests that need a daemon
 # leave a process waiting for a message, and one that never comes would
@@ -385,6 +394,21 @@ check: all
 	printf '\220\074\100\360\175\001\002\003\367\200\074\100' > wanted.bin
 	cmp sent.bin wanted.bin
 	$(RM) -f out sent.bin wanted.bin
+	# The chips at the top of the memory map, which are only there when
+	# they have been asked for. First on an ordinary machine, where none
+	# of it exists and a program must simply not go looking - which is the
+	# case every other test in this directory runs as.
+	$(TOSEMU) test-c-mfp > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
+	# And then on one that interrupts, where the MFP can be read, the
+	# system timer is running because TOS would have left it running, and
+	# the two hundred hertz counter is counting because time is passing.
+	# Nothing is interrupted yet; a handler installed here is never called.
+	TOSEMU_INTERRUPTS=yes \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-mfp on > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a
