@@ -19,13 +19,13 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll \
-            c-keyboard c-modal
+            c-keyboard c-modal c-clock
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -407,6 +407,16 @@ check: all
 	# Nothing is interrupted yet; a handler installed here is never called.
 	TOSEMU_INTERRUPTS=yes \
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-mfp on > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
+	# And that the clock goes on running while the application is asleep
+	# in GEM. No instruction executes while the emulator sits in poll, so
+	# the wait has to know when the next thing is due - what it looks like
+	# when it does not is a sequencer playing its notes in clumps whenever
+	# nobody touches the mouse. Two thirds of a second, which is past what
+	# catching up afterwards can cover.
+	TOSEMU_INTERRUPTS=yes \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-clock > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
 	# Which screen the machine turned out to have, which an application is
