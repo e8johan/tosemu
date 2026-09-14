@@ -1035,6 +1035,26 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
      */
     m68k_set_reg(M68K_REG_ISP, te->superstack + SUPERSTACK_SIZE);
 
+    /*
+     * And the interrupt mask down to where TOS left it, on a machine that has
+     * anything to be interrupted by.
+     *
+     * A 68000 comes out of reset with the mask at seven, which is everything
+     * blocked, and it is the boot ROM's business to lower it once there is
+     * somewhere for an interrupt to go. There is no boot ROM here, so the mask
+     * stayed at seven and the most carefully installed handler in the world
+     * would never have been reached - the chip would raise its line and the
+     * processor would decline to look.
+     *
+     * Three is what TOS ran applications at: it lets through the vertical
+     * blank at four and the MFP at six, and blocks the three levels nothing on
+     * this machine uses. Left alone on a machine with no interrupts, which has
+     * nothing to let through and no reason to differ from what it always did.
+     */
+    if (interrupt_wanted())
+        m68k_set_reg(M68K_REG_SR,
+                     (m68k_get_reg(0, M68K_REG_SR) & ~0x0700u) | 0x0300u);
+
     if (basepage == 0x800)
     {
         /* The application the machine was built around. The basepage goes at

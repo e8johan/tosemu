@@ -29,11 +29,11 @@
  * configures a device and reads the configuration sees its own value. Traffic
  * with nowhere to go, such as bytes written to the printer, is discarded.
  *
- * Nothing here interrupts. tosemu runs the application on a single thread with
- * no timer and no device raising anything, so Mfpint, Jenabint, Jdisint and
- * Xbtimer record nothing and do nothing. This is where an interrupt subsystem
- * would attach if one is ever built; Setexc in bios.c already maintains the
- * vector table it would dispatch through.
+ * Whether anything here interrupts depends on the machine. On the ordinary one
+ * nothing does, and Mfpint, Jenabint, Jdisint and Xbtimer accept what they are
+ * given and do nothing with it, as they always have. On a machine that was
+ * asked for interrupts - by naming a MIDI port, or by saying so - they are how
+ * a program reaches the MFP, and what it installs is called. See interrupt.h.
  */
 
 #include "xbios.h"
@@ -46,6 +46,7 @@
 #include "m68k.h"
 #include "midi.h"
 #include "interrupt.h"
+#include "mfp.h"
 
 #include "xbios_p.h"
 
@@ -283,9 +284,23 @@ uint32_t XBIOS_Kbrate()
 
 /* Interrupts ****************************************************************/
 
-/* Nothing in tosemu raises an interrupt, so all four of these accept what they
- * are given and do nothing with it. They are together, and named, so that it
- * is clear where an interrupt subsystem would attach. */
+/*
+ * The four calls a program sets the machine's own interrupts up with.
+ *
+ * On a machine that does not interrupt - which is the ordinary one, see
+ * interrupt.h - all four accept what they are given and do nothing with it,
+ * exactly as they always did. There is no chip to configure and nothing that
+ * would ever call what was installed, and a program that asks anyway should
+ * carry on rather than stop.
+ *
+ * On one that does, they are the whole of how a program reaches the MFP
+ * without writing to it directly. Xbtimer is the one that matters: it is how a
+ * sequencer starts its clock, and everything that follows from a sequencer
+ * working follows from this line.
+ */
+
+/* Where the sixteen channels' vectors live, the MFP's vector base being 0x40 */
+#define MFP_VECTOR_ADDRESS(channel) (0x100 + 4 * ((channel) & 15))
 
 uint32_t XBIOS_Mfpint()
 {
@@ -295,6 +310,18 @@ uint32_t XBIOS_Mfpint()
     FUNC_TRACE_ENTER_ARGS {
         printf("    interno: %d, vector: 0x%x\n", interno, vector);
     }
+
+    if (!interrupt_wanted())
+        return XBIOS_E_OK;
+
+    /*
+     * Turned off around the change, which is EmuTOS's mfpint and is not
+     * tidiness: a channel that fired between the vector being written and the
+     * channel being enabled would be taken through half an arrangement.
+     */
+    mfp_disable(interno & 15);
+    m68k_write_memory_32(MFP_VECTOR_ADDRESS(interno), vector);
+    mfp_enable(interno & 15);
 
     return XBIOS_E_OK;
 }
@@ -307,6 +334,9 @@ uint32_t XBIOS_Jenabint()
         printf("    interno: %d\n", interno);
     }
 
+    if (interrupt_wanted())
+        mfp_enable(interno & 15);
+
     return XBIOS_E_OK;
 }
 
@@ -318,6 +348,9 @@ uint32_t XBIOS_Jdisint()
         printf("    interno: %d\n", interno);
     }
 
+    if (interrupt_wanted())
+        mfp_disable(interno & 15);
+
     return XBIOS_E_OK;
 }
 
@@ -327,11 +360,31 @@ uint32_t XBIOS_Xbtimer()
     uint16_t control = peek_u16(4);
     uint16_t data = peek_u16(6);
     uint32_t vector = peek_u32(8);
+    int channel;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    timer: %d, control: 0x%x, data: 0x%x, vector: 0x%x\n",
                timer, control, data, vector);
     }
+
+    if (!interrupt_wanted())
+        return XBIOS_E_OK;
+
+    channel = mfp_timer_channel(timer);
+
+    if (channel < 0)
+        return XBIOS_E_OK;
+
+    mfp_setup_timer(timer, (uint8_t)control, (uint8_t)data);
+
+    /* The same as Mfpint does, and in the same order, because that is what
+     * Xbtimer is: setting a timer up and then pointing its channel somewhere */
+    mfp_disable(channel);
+    m68k_write_memory_32(MFP_VECTOR_ADDRESS(channel), vector);
+    mfp_enable(channel);
+
+    /* And the control register has changed, so how long it runs for has */
+    interrupt_timers_changed();
 
     return XBIOS_E_OK;
 }

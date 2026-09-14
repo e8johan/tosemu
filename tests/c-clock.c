@@ -55,6 +55,14 @@
 
 #define HZ200 (0x4baL)
 
+/* Timer A, which is the one a sequencer uses, and the register its handler
+ * has to clear its own in-service bit in - see tests/c-timer.c */
+#define TIMER_A         (0)
+#define TIMER_A_CONTROL (7)     /* divide the timer clock by two hundred */
+#define TIMER_A_DATA    (123)   /* and count this many, which is 100Hz */
+#define MFP_ISRA        (0xFFFA0FL)
+#define TIMER_A_ISR_BIT (5)
+
 /* How long to wait, and how many two hundred hertz ticks that is */
 #define WAIT_MS   (660)
 #define WAIT_TICKS (WAIT_MS / 5)
@@ -66,6 +74,25 @@
  * which is sixty four.
  */
 #define AT_LEAST (100)
+
+/*
+ * A handler of the application's own, and the whole point of the second half
+ * of this file: it has to be called while the application is asleep in GEM.
+ *
+ * That is the case a sequencer lives in. Its tempo is a timer and its main
+ * loop is a GEM event loop, so every note it plays is played by a handler
+ * firing at a moment when the application itself is doing nothing at all. A
+ * machine that only takes interrupts between the instructions of a running
+ * program would play nothing until somebody moved the mouse.
+ */
+static volatile long fired;
+
+static void __attribute__((interrupt_handler)) timer_handler(void)
+{
+    fired++;
+
+    *(volatile unsigned char *)MFP_ISRA = (unsigned char)~(1 << TIMER_A_ISR_BIT);
+}
 
 static int n;
 
@@ -127,6 +154,30 @@ int main(int argc, char **argv)
      * which is as wrong as one that stopped and rather harder to notice.
      */
     check(moved < WAIT_TICKS * 2, 1, "and at something like the right rate");
+
+    /*
+     * And again with a handler of the application's own on a timer, which is
+     * the thing this is really about. The wait is the same wait; what is being
+     * asked is whether an interrupt can be taken at all while the emulator is
+     * asleep in poll with no instruction stream to interrupt.
+     */
+    fired = 0;
+    Xbtimer(TIMER_A, TIMER_A_CONTROL, TIMER_A_DATA, timer_handler);
+
+    evnt_multi(MU_TIMER | MU_MESAG, 0, 0, 0,
+               0, 0, 0, 0, 0,
+               0, 0, 0, 0, 0,
+               message, WAIT_MS,
+               &mx, &my, &mb, &ks, &kr, &br);
+
+    Xbtimer(TIMER_A, 0, 0, 0L);
+
+    printf("# a hundred hertz timer fired %ld times during the wait\n",
+           (long)fired);
+
+    check(fired > 0, 1,
+          "a handler of the application's own is called while it waits for GEM");
+    check(fired >= 20, 1, "and goes on being called for as long as the wait");
 
     appl_exit();
 

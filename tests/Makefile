@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -417,6 +417,14 @@ check: all
 	# catching up afterwards can cover.
 	TOSEMU_INTERRUPTS=yes \
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-clock > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
+	# And a handler the application put on a timer's vector, which is what
+	# a sequencer is built out of: Xbtimer starts the clock and hangs the
+	# routine off it, and from then on the routine is the tempo. Nothing
+	# about that works unless an interrupt actually interrupts.
+	TOSEMU_INTERRUPTS=yes \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
 	# Which screen the machine turned out to have, which an application is

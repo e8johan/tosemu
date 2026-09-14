@@ -31,6 +31,7 @@
 #include "memory.h"
 #include "settings.h"
 #include "tossystem.h"
+#include "cpu.h"
 #include "m68k.h"
 
 /*
@@ -351,6 +352,222 @@ void interrupt_timers_changed(void)
     }
 }
 
+/* Taking an interrupt *******************************************************/
+
+/*
+ * Where the sixteen channels' vectors live. The MFP is set up with its vector
+ * base at 0x40, so channel n goes through vector 0x40 + n, and a vector is
+ * four bytes into the table at the bottom of memory.
+ */
+#define VECTOR_ADDRESS(channel) (0x100 + 4 * (channel))
+
+/*
+ * Where a handler run from inside a trap is told to return to.
+ *
+ * Zero, and never fetched from: the loop below looks at the program counter
+ * before it executes anything, so reaching this address is the signal to stop
+ * rather than an instruction to run. The same trick and the same address as
+ * the AES uses for a routine that draws an object - see USERDEF_RETURN.
+ */
+#define INTERRUPT_RETURN (0)
+
+/* A handler that has not come back by now has lost its return address. A MIDI
+ * handler is a few hundred instructions and a slow one a few thousand. */
+#define INTERRUPT_STEPS (1000000L)
+
+static int running;
+
+int tos_int_ack(int level)
+{
+    int vector = M68K_INT_ACK_AUTOVECTOR;
+
+    /*
+     * Level six is the MFP's, and the MFP says which of its channels won and
+     * therefore which vector. Everything else on this machine is autovectored:
+     * the vertical blank comes in at level four straight from the video
+     * hardware and has no chip deciding anything about it.
+     */
+    if (level == 6)
+    {
+        vector = mfp_acknowledge();
+
+        if (vector < 0)
+            vector = M68K_INT_ACK_SPURIOUS;
+    }
+
+    /*
+     * And the line goes down, because nothing else will lower it. Musashi
+     * clears the request for itself only when nobody acknowledges - which is
+     * exactly the arrangement asking to acknowledge turns off - so a line left
+     * up is the same interrupt taken again the instant the handler returns.
+     *
+     * Safe from in here: it sets the level to nothing and then looks for
+     * something above the mask, and there is nothing above nothing. What is
+     * still pending in the chip is raised again by the next tick.
+     */
+    m68k_set_irq(0);
+
+    return vector;
+}
+
+/*
+ * A channel nobody claimed.
+ *
+ * The vector is still nought, which on a real machine means jumping to
+ * whatever is at address zero and on this one means Musashi reading the
+ * uninitialised-interrupt vector, finding that nought as well, and running off
+ * into memory that was never anything. So a channel with no handler is
+ * answered here instead: the interrupt is taken, in the sense that it stops
+ * being pending, and nothing is told about it.
+ *
+ * This is the ordinary case rather than an error. There is no TOS in this
+ * machine, so until an application installs something every vector is empty -
+ * and the system timer has been running since before the application started.
+ */
+static void handled_here(int channel)
+{
+    (void)channel;
+
+    mfp_acknowledge();
+}
+
+/*
+ * Run a handler to completion, for when there is no instruction stream to
+ * interrupt.
+ *
+ * The natural way to take an interrupt is to leave it to Musashi, which builds
+ * the frame and points the processor at the handler, and that is what happens
+ * between instructions. It does not work from inside a trap: the emulator is
+ * in host C with no m68k_execute running, so nothing would execute the handler
+ * until the trap returned - and a wait that sleeps for a tenth of a second at
+ * a time would hold every interrupt for that long. A sequencer waiting for GEM
+ * between notes is exactly that case.
+ *
+ * So the frame is built by hand with a return address that is not real, and
+ * the handler is run here until it comes back to it. The shape is
+ * host_userdef_draw's in aestree.c, including the order things are put back
+ * in, and the reasoning there applies here word for word.
+ */
+static void run_handler(int channel, uint32_t handler)
+{
+    uint32_t d[8], a[8], pc, sr, isp;
+    long steps;
+    int i;
+
+    for (i = 0; i < 8; i++)
+        d[i] = m68k_get_reg(0, M68K_REG_D0 + i);
+    for (i = 0; i < 8; i++)
+        a[i] = m68k_get_reg(0, M68K_REG_A0 + i);
+    pc = m68k_get_reg(0, M68K_REG_PC);
+    sr = m68k_get_reg(0, M68K_REG_SR);
+    isp = m68k_get_reg(0, M68K_REG_ISP);
+
+    /*
+     * In supervisor mode, which is what makes a7 the supervisor stack - and
+     * the supervisor stack is where an interrupt frame belongs. Unlike a
+     * routine that draws an object, a handler is not the application's and
+     * does not want the application's stack.
+     */
+    enable_supervisor_mode();
+
+    /* An exception frame as a 68000 builds one: the program counter to come
+     * back to, then the status register underneath it. RTE takes them off in
+     * the other order. */
+    push_u32(INTERRUPT_RETURN);
+    push_u16((uint16_t)sr);
+
+    /* Masked at the level being serviced, so that a handler is not interrupted
+     * by its own channel going off again while it runs */
+    m68k_set_reg(M68K_REG_SR, (sr & ~0x0700u) | 0x0600u | 0x2000u);
+    m68k_set_reg(M68K_REG_PC, handler);
+
+    running = 1;
+
+    for (steps = 0; steps < INTERRUPT_STEPS; steps++)
+    {
+        if (m68k_get_reg(0, M68K_REG_PC) == INTERRUPT_RETURN)
+            break;
+
+        /* Anything that stops the machine stops this as well, or the rest of
+         * the handler runs after the emulator has given up on it */
+        if (execution_halted())
+            break;
+
+        m68k_execute(1);
+    }
+
+    running = 0;
+
+    if (steps >= INTERRUPT_STEPS)
+    {
+        halt_execution();
+        printf("tosemu: the handler at 0x%x on MFP channel %d ran for %ld "
+               "instructions without returning\n",
+               handler, channel, INTERRUPT_STEPS);
+    }
+
+    /*
+     * The status register first, because it decides which of the two stack
+     * pointers a7 is: putting the mode back afterwards would file the restored
+     * a7 under the wrong one. Then the supervisor stack pointer by hand, the
+     * machine's own not being where the handler was left standing.
+     */
+    m68k_set_reg(M68K_REG_SR, sr);
+    m68k_set_reg(M68K_REG_ISP, isp);
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_D0 + i, d[i]);
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_A0 + i, a[i]);
+    m68k_set_reg(M68K_REG_PC, pc);
+}
+
+/*
+ * Whatever the chip has decided, turned into something the machine does about
+ * it. `nested` says whether there is an instruction stream to interrupt: from
+ * the instruction hook there is, and from inside a trap there is not.
+ */
+static void dispatch(int nested)
+{
+    int channel;
+    uint32_t handler;
+
+    /* A handler that reaches this has called something that services
+     * interrupts - the AES, most likely - and running another one inside it
+     * would be an interrupt interrupting itself */
+    if (running)
+        return;
+
+    channel = mfp_pending_channel();
+
+    if (channel < 0)
+        return;
+
+    handler = m68k_read_disassembler_32(VECTOR_ADDRESS(channel));
+
+    if (handler == 0)
+    {
+        handled_here(channel);
+        return;
+    }
+
+    if (!nested)
+    {
+        /*
+         * Musashi does the rest: raising the line makes it acknowledge, build
+         * the frame and jump, all before this returns. The handler runs when
+         * the hook does, which is to say on the instruction that was about to
+         * happen anyway.
+         */
+        m68k_set_irq(6);
+        return;
+    }
+
+    if (mfp_acknowledge() < 0)
+        return;
+
+    run_handler(channel, handler);
+}
+
 /* Running it ****************************************************************/
 
 int interrupt_fd(void)
@@ -418,7 +635,17 @@ static void carry_midi(void)
     }
 }
 
-void interrupt_service(void)
+/*
+ * Look at the clock, do what has come due, and then let the machine deal with
+ * it.
+ *
+ * `nested` is the one thing the two callers disagree about: whether there is
+ * an instruction stream to interrupt. From the instruction hook there is, and
+ * Musashi can be left to take the interrupt itself. From inside a trap there
+ * is not - the emulator is in host C, and nothing would run the handler until
+ * the trap returned.
+ */
+static void service(int nested)
 {
     long long now;
     int i;
@@ -474,6 +701,15 @@ void interrupt_service(void)
                  "emulated machine having been slow");
         }
     }
+
+    dispatch(nested);
+}
+
+void interrupt_service(void)
+{
+    /* From inside a trap, where the handler has to be run to completion before
+     * whatever called this can carry on */
+    service(1);
 }
 
 void interrupt_tick(void)
@@ -486,5 +722,7 @@ void interrupt_tick(void)
 
     countdown = TICK_INSTRUCTIONS;
 
-    interrupt_service();
+    /* Between two instructions, which is the only moment an interrupt may be
+     * taken without the machine having half done something */
+    service(0);
 }
