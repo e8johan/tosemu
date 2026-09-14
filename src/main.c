@@ -168,7 +168,8 @@ static void usage(void)
 {
     const char *where = settings_default_path();
 
-    printf("Usage: tosemu [-v...] [-c <file>] [--no-config] <binary> [<args>]\n"
+    printf("Usage: tosemu [-v...] [-c <file>] [--no-config] [-r <prog>]... "
+           "<binary> [<args>]\n"
            "\n"
            "\t<binary>       name of binary to execute\n"
            "\t-v             say what the session was configured with\n"
@@ -176,6 +177,9 @@ static void usage(void)
            "\t-vvv           and every instruction it runs\n"
            "\t-c <file>      read settings from <file>\n"
            "\t--no-config    read no settings file at all\n"
+           "\t-r <prog>      run <prog> first and leave it in memory, the way\n"
+           "\t--resident     the AUTO folder did. May be said more than once,\n"
+           "\t               in the order they are to load.\n"
            "\n"
            "Settings are read from %s when there is one, and an environment\n"
            "variable overrides what it says. See README.md for the settings\n"
@@ -194,6 +198,17 @@ int main(int argc, char **argv)
     const char *config = 0;
     int argb = 1;
     int no_config = 0;
+
+    /*
+     * The programs asked to stay in memory, in the order they are to load.
+     * They go into the machine before the program somebody actually wants, the
+     * way the AUTO folder went in before the desktop - see RESIDENT.md.
+     */
+    const char *residents[8];
+    void *resident_binary[8];
+    uint64_t resident_size[8];
+    int resident_count = 0;
+    int i;
 
     verbose = 0;
 
@@ -232,6 +247,23 @@ int main(int argc, char **argv)
         }
         else if (strncmp(arg, "--config=", 9) == 0)
             config = arg + 9;
+        else if (strcmp(arg, "-r") == 0 || strcmp(arg, "--resident") == 0)
+        {
+            if (argb + 1 >= argc)
+            {
+                printf("tosemu: %s wants the name of a program\n", arg);
+                return -1;
+            }
+
+            if (resident_count >= (int)(sizeof residents / sizeof residents[0]))
+            {
+                printf("tosemu: more programs asked to stay resident than "
+                       "this can hold\n");
+                return -1;
+            }
+
+            residents[resident_count++] = argv[++argb];
+        }
         else
         {
             printf("tosemu: %s is not something this understands\n", arg);
@@ -285,9 +317,58 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Setup a TOS environment for the binary */
-    if (init_tos_environment(&te, binary_data, binary_size,
-                             cmdlin, env, env_len))
+    /*
+     * The programs that are to stay, mapped before the machine is built so
+     * that one that is not a program is reported now rather than after
+     * something has already run.
+     */
+    for (i = 0; i < resident_count; i++)
+    {
+        resident_binary[i] = map_tos_binary(residents[i], &resident_size[i]);
+
+        if (resident_binary[i] == NULL)
+        {
+            while (--i >= 0)
+                unmap_tos_binary(resident_binary[i], resident_size[i]);
+
+            free(env);
+            unmap_tos_binary(binary_data, binary_size);
+            return -1;
+        }
+    }
+
+    /*
+     * The machine is built around the first program to run, which is the first
+     * resident when there is one. Everything after it is loaded above whatever
+     * the one before it kept - see tos_run_after.
+     *
+     * They are handed a command line of their own, which is empty: a resident
+     * is named on tosemu's command line and the arguments after the binary
+     * belong to the binary. What they share is the environment, because they
+     * share the machine.
+     */
+    if (resident_count > 0)
+    {
+        char none[TOS_CMDLIN_SIZE];
+
+        memset(none, 0, sizeof none);
+
+        if (init_tos_environment(&te, resident_binary[0], resident_size[0],
+                                 none, env, env_len))
+        {
+            printf("Error: failed to initialize TOS environment\n");
+            free(env);
+            unmap_tos_binary(binary_data, binary_size);
+            return -1;
+        }
+
+        for (i = 1; i < resident_count; i++)
+            tos_run_after(resident_binary[i], resident_size[i], none);
+
+        tos_run_after(binary_data, binary_size, cmdlin);
+    }
+    else if (init_tos_environment(&te, binary_data, binary_size,
+                                  cmdlin, env, env_len))
     {
         printf("Error: failed to initialize TOS environment\n");
         free(env);
@@ -296,9 +377,18 @@ int main(int argc, char **argv)
     }
 
     free(env);
-    unmap_tos_binary(binary_data, binary_size);
 
     run_tos_environment(&te);
+
+    /*
+     * Unmapped after the run rather than before it, which is the one thing
+     * residency changes here: the machine loads the later programs while it is
+     * running, so what they are loaded from has to still be there.
+     */
+    unmap_tos_binary(binary_data, binary_size);
+
+    for (i = 0; i < resident_count; i++)
+        unmap_tos_binary(resident_binary[i], resident_size[i]);
 
     /* Clean up */
     free_tos_environment(&te);

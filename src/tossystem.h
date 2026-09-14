@@ -216,6 +216,34 @@ uint32_t tos_screen_size(void);
  */
 uint32_t tos_default_vector(void);
 
+/*
+ * Programs to run in this machine after the one it was built around, in the
+ * order they were named.
+ *
+ * This is what --resident is: a machine loads its residents first, each one
+ * staying where it is, and then the program somebody actually wanted goes in
+ * above them. All of it happens in one machine and one address space, which is
+ * the whole point - a program that stayed resident has to be somewhere the next
+ * one can see it, and a child of Pexec, being a forked host process, is not.
+ *
+ * The binary has to outlive the run; nothing here copies it. Answers 0 when
+ * there is no room for another.
+ */
+int tos_run_after(void *binary, uint64_t size, const char *cmdlin);
+
+/*
+ * The program that is running now has finished but is staying where it is,
+ * keeping `keep` bytes from its basepage. Hands the loop whatever was named to
+ * run after it, loaded above what this one kept.
+ *
+ * Answers 0 when nothing follows, in which case the caller has an ordinary
+ * termination to do and nothing to stay resident for.
+ */
+int tos_stay_resident(uint32_t keep);
+
+/* Where the program that is running now has its basepage */
+uint32_t tos_current_basepage(void);
+
 void halt_execution();
 
 /* Whether that has happened. The loop that runs the machine reads it for

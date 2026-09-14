@@ -825,6 +825,32 @@ nothing, which is what it reached before. And `v_bit_image` and `vq_scan` are
 not answered: both are for a driver that could only hold a band of a page at a
 time, and this one holds the page.
 
+Programs that stay
+==================
+
+A TSR loads, installs itself into the machine, and stays there so that the next
+program can use it. The AUTO folder was a list of them, and anything that added
+a capability to the machine - a RAM disk, a printer spooler, a MIDI kernel -
+arrived that way.
+
+`-r` (or `--resident`) names one, and may be said more than once, in the order
+they are to load:
+
+    tosemu -r MROS/MROS3_31 CUBASE.PRG
+
+They go into the machine before the program named last, each staying where it
+is, and the program somebody wanted is loaded above them. It is one machine and
+one address space, which is what makes a resident worth having: the program
+that runs next can see what it installed, call it through a vector it left
+behind, and read what it wrote.
+
+**A program `Pexec`d by another one cannot stay**, and this is the one place
+residency has a hole in it. A child is a forked host process with a machine of
+its own, so anything it keeps is kept in that machine and goes when it ends.
+`Ptermres` from a child says so and terminates cleanly, rather than leaving the
+program that started it believing a TSR is there when it is not. What to do
+about it is to name the program with `-r` instead.
+
 Road Map
 ========
 

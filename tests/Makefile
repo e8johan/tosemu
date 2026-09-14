@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -256,6 +256,18 @@ check: all
 	  test-c-memory 2m > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) settings.tosemu said
+	# A program that stays in memory and one that runs on top of it, which
+	# is what --resident is for. Three separate things have to be true: the
+	# resident is still there, it still works when it is called, and the
+	# memory it is standing in is nobody else's.
+	$(TOSEMU) -r test-c-tsr test-c-usetsr > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And the same program with nothing resident, which is how every other
+	# test in this directory runs. A program that looks for a TSR and finds
+	# none is the ordinary case and must carry on being a program.
+	$(TOSEMU) test-c-usetsr alone > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given

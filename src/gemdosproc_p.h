@@ -28,6 +28,7 @@
 uint32_t GEMDOS_Pexec();
 uint32_t GEMDOS_Pterm();
 uint32_t GEMDOS_Pterm0();
+uint32_t GEMDOS_Ptermres();
 uint32_t GEMDOS_Pgetpid();
 uint32_t GEMDOS_Pgetppid();
 uint32_t GEMDOS_Pwait();
