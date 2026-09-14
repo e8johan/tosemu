@@ -48,6 +48,15 @@
   line rather than making Pexec share memory.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
+- The "superram" area at 0x600 is mapped, is five hundred and twelve bytes
+  long, and nothing has ever used it. It was put there for the supervisor
+  stack, which never reached it: the stack pointer started at 0x600 and a
+  stack grows downwards, so what it actually used was the five hundred and
+  twelve bytes below that address rather than the ones above it - which is the
+  system variable area, and which is why the stack has been moved out to RAM
+  the system owns. The area is left mapped because a program reading 0x600 is
+  cheaper to allow than to explain, but it is five hundred and twelve bytes of
+  nothing and the machine would be no different without it.
 - A routine that draws an object for the application may only call the VDI,
   and one that calls the AES is refused rather than obeyed. The AES is
   halfway through drawing a tree when it calls the routine, and the tree it

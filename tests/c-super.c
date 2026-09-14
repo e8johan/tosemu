@@ -70,6 +70,50 @@ static long stack_pointer(void)
     return sp;
 }
 
+/*
+ * Whether the machine's own stack has room of its own.
+ *
+ * A routine run this way stands on the supervisor stack, and so does an
+ * interrupt handler, and so does every trap. That stack used to start at 0x600
+ * and grow downwards, which ran it straight into the system variables - 0x4BA
+ * is the two hundred hertz counter and the whole area from 0x380 up is that
+ * sort of thing. Nothing had noticed, because a Supexec'd routine is usually a
+ * few instructions and every system variable was nought anyway, so writing
+ * over them wrote nought onto nought.
+ *
+ * This is the same routine with the depth a handler has: one that saves its
+ * registers and has somewhere to work has used a few hundred bytes before it
+ * does anything at all. Three hundred and eighty four is past 0x4BA from where
+ * the stack used to start and short of 0x380, which is the bottom of the area
+ * that is mapped at all.
+ */
+#define HZ200 (0x4baL)
+#define LIKE_A_HANDLER (384)
+
+static long marker_survived;
+
+static void deep(void)
+{
+    volatile unsigned long *counter = (volatile unsigned long *)HZ200;
+    unsigned long was = *counter;
+    volatile char scratch[LIKE_A_HANDLER];
+    long sum = 0;
+    int i;
+
+    *counter = 0x5a5a5a5aUL;
+
+    /* Written and read back, so that neither the writing nor the room it
+     * needed can be decided against by the compiler */
+    for (i = 0; i < LIKE_A_HANDLER; i++)
+        scratch[i] = (char)i;
+    for (i = 0; i < LIKE_A_HANDLER; i++)
+        sum += scratch[i];
+
+    marker_survived = (*counter == 0x5a5a5a5aUL) && (sum != 0);
+
+    *counter = was;
+}
+
 int main(int argc, char **argv)
 {
     long before, inside, after;
@@ -101,6 +145,10 @@ int main(int argc, char **argv)
     check(bootdev == bootdev, 1, "so the system variables can be read");
     check(after, before, "coming back leaves it on its own stack as well");
     check(back_again, 0, "and in user mode again");
+
+    Supexec(deep);
+    check(marker_survived, 1,
+          "a routine with a handler's stack depth leaves the system variables alone");
 
     printf("# %d checks, %d failed\n", n, fails);
     printf("1..%d\n", n);

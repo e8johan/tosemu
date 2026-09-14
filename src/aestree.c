@@ -812,9 +812,10 @@ int16_t host_userdef_draw(const struct host_userdef *call)
      * memory that was never anything.
      *
      * Changing the mode changes which stack pointer a7 is, so the application's
-     * own goes back into it: the supervisor stack here is a few hundred bytes
-     * for the short routines Supexec runs, and a routine that draws needs the
-     * room the application has.
+     * own goes back into it. That is what GEM did as well - a userdef ran on
+     * the stack of whatever called the AES - and it is what the routine
+     * expects: the machine's own supervisor stack is for the system's short
+     * excursions, and a routine that draws is neither short nor the system's.
      */
     enable_supervisor_mode();
     m68k_set_reg(M68K_REG_A7, a[7]);

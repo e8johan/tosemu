@@ -49,6 +49,13 @@ struct tos_environment {
      * is standing on. */
     uint32_t stack;
 
+    /* And where the machine's own stack starts, which is a different thing
+     * entirely: the one the processor uses in supervisor mode, for traps,
+     * Supexec'd routines and anything that interrupts. See where it is
+     * reserved in tossystem.c for why it is not simply the low memory the
+     * machine booted with. */
+    uint32_t superstack;
+
     void *appmem;
     void *supermem;
     void *staticmem0;
