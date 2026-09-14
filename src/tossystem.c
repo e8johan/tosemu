@@ -37,6 +37,7 @@
 #include "utils.h"
 #include "cpu.h"
 #include "gemdos.h"
+#include "gemdosmem_p.h"
 #include "xbios.h"
 #include "bios.h"
 #include "gem.h"
@@ -239,6 +240,54 @@ static uint32_t machine_ram(void)
 #define ACCESSORY_STACK (1024)
 
 static uint32_t biosram_free;
+
+/*
+ * The programs still to be run in this machine, and where the next one goes.
+ *
+ * A machine can be asked to load more than one program: the residents first,
+ * each staying where it is, and then the program somebody wanted. They share
+ * one address space, which is what makes a resident worth having - see
+ * tos_run_after, and RESIDENT.md for why this is a command line rather than
+ * anything the machine arranges for itself.
+ */
+#define FOLLOWING_MOST (8)
+
+static struct {
+    void *binary;
+    uint64_t size;
+    char cmdlin[TOS_CMDLIN_SIZE];
+} following[FOLLOWING_MOST];
+
+static int following_count;
+static int following_next;
+
+/* Where the next program's basepage goes, which moves up as programs stay */
+static uint32_t resident_floor = 0x800;
+
+/* The environment every program in this machine is handed, placed once when
+ * the machine was built */
+static uint32_t machine_env;
+
+/* And where the one running now has its basepage */
+static uint32_t current_basepage = 0x800;
+
+uint32_t tos_current_basepage(void)
+{
+    return current_basepage;
+}
+
+int tos_run_after(void *binary, uint64_t size, const char *cmdlin)
+{
+    if (following_count >= FOLLOWING_MOST)
+        return 0;
+
+    following[following_count].binary = binary;
+    following[following_count].size = size;
+    memcpy(following[following_count].cmdlin, cmdlin, TOS_CMDLIN_SIZE);
+    following_count++;
+
+    return 1;
+}
 
 /* What every exception vector is filled with, and therefore what one still
  * holding it means: nobody has claimed it. See where they are written. */
@@ -845,7 +894,8 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
-    te->bp->p_env = endianize_32(place_environment(env, env_len));
+    machine_env = place_environment(env, env_len);
+    te->bp->p_env = endianize_32(machine_env);
 
     /* And so does the line-A block, for the same reason. It is handed the
      * screen this machine was built around rather than asking for one of its
@@ -978,6 +1028,8 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
 static struct {
     int active;
     int replace;      /* Whether a machine has to be built, or one is there */
+    int follow;       /* Or whether the next program named goes in above the
+                       * one that just stayed resident */
     uint32_t basepage;
     void *binary;
     uint64_t binary_size;
@@ -986,10 +1038,35 @@ static struct {
     uint32_t env_len;
 } pending;
 
+int tos_stay_resident(uint32_t keep)
+{
+    uint32_t floor;
+
+    if (following_next >= following_count)
+        return 0;
+
+    floor = mem_keep(current_basepage, keep);
+
+    if (!floor)
+        return 0;
+
+    resident_floor = floor;
+
+    pending.active = 1;
+    pending.replace = 0;
+    pending.follow = 1;
+
+    /* Leave the loop, which is where the next program can be put in */
+    halt_execution();
+
+    return 1;
+}
+
 void exec_tos_basepage(uint32_t basepage)
 {
     pending.active = 1;
     pending.replace = 0;
+    pending.follow = 0;
     pending.basepage = basepage;
 
     /* Leave the loop, which is where the CPU can be pointed somewhere else */
@@ -1061,12 +1138,65 @@ static int replace_application(struct tos_environment *te)
     return err;
 }
 
+/*
+ * Puts the next program named on the command line into the machine, above
+ * whatever the one before it kept.
+ *
+ * Everything it needs is already here: place_program builds a basepage
+ * anywhere, mem_claim says the block is spoken for so that Malloc does not
+ * hand it out, and start_cpu reads where to start from the basepage. What is
+ * new is only that a machine can be asked to do it more than once.
+ *
+ * Answers the basepage to run, or 0 having said why not.
+ */
+static uint32_t bring_in_the_next_program(struct tos_environment *te)
+{
+    uint32_t top = 0x900 + (uint32_t)te->size;
+    uint32_t base = resident_floor;
+    uint32_t len;
+    int32_t placed;
+    int i;
+
+    i = following_next++;
+
+    if (base >= top || top - base < TOS_BASEPAGE_SIZE)
+    {
+        printf("tosemu: the programs that stayed resident have left no room "
+               "for the one that was to run after them\n");
+        return 0;
+    }
+
+    len = top - base;
+
+    if (!mem_claim(base, len))
+    {
+        printf("tosemu: there is already something where the next program "
+               "would go, at 0x%x\n", base);
+        return 0;
+    }
+
+    placed = place_program(base, len, following[i].binary, following[i].size,
+                           following[i].cmdlin, machine_env, 0);
+
+    if (placed != TOS_LOAD_OK)
+    {
+        printf("tosemu: the next program could not be loaded at 0x%x (%s)\n",
+               base, placed == TOS_LOAD_NOROOM ? "no room for it"
+                                               : "not a program");
+        return 0;
+    }
+
+    return base;
+}
+
 void run_tos_environment(struct tos_environment *te)
 {
     uint32_t basepage = 0x800; /* The application the machine was built for */
 
     for (;;)
     {
+        current_basepage = basepage;
+
         start_cpu(te, basepage);
 
         keepongoing = 1;
@@ -1089,6 +1219,17 @@ void run_tos_environment(struct tos_environment *te)
             }
 
             basepage = 0x800;
+        }
+        else if (pending.follow)
+        {
+            /* The one that just ran is staying where it is, and the next one
+             * named goes in above it - see tos_stay_resident */
+            pending.follow = 0;
+
+            basepage = bring_in_the_next_program(te);
+
+            if (!basepage)
+                break;
         }
         else
             basepage = pending.basepage;

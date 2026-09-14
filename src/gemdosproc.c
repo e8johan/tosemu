@@ -197,6 +197,77 @@ uint32_t GEMDOS_Pterm0()
     return 0;
 }
 
+/*
+ * A program that has finished running but is staying in memory, so that
+ * whatever runs next can use it.
+ *
+ * This is how every TSR of the period ended: the AUTO folder was a list of
+ * them, and anything that added a capability to the machine - a RAM disk, a
+ * printer spooler, a MIDI kernel - arrived this way. What makes it work is not
+ * the call so much as there being one address space, with the next program
+ * loaded above this one and able to see what it installed.
+ *
+ * So tosemu can only honour it where that is true, which is for the programs
+ * named on its own command line - see --resident, and RESIDENT.md. A program
+ * Pexec'd by another one is a forked host process: anything it keeps is kept in
+ * its own copy of the machine, and the copy goes when it exits. There is no
+ * arrangement of this call that changes that, so what it does instead is say
+ * so, once and plainly, and terminate the way Pterm would.
+ */
+uint32_t GEMDOS_Ptermres()
+{
+    uint32_t keep = peek_u32(2);
+    int16_t code = peek_s16(6);
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    keep: %d (0x%x), code: %d\n", keep, keep, code);
+    }
+
+    /*
+     * From inside Pexec, where staying is not something this can do. Said
+     * rather than done, because the alternative is the parent being told the
+     * program loaded, believing it, and failing later on a call into something
+     * that is not there - which is a far worse failure than this one, and a
+     * much harder one to read.
+     */
+    if (exit_code_fd >= 0)
+    {
+        static int said;
+
+        if (!said)
+        {
+            said = 1;
+            printf("tosemu: a program tried to stay resident from inside "
+                   "Pexec, which cannot work - a child is a process of its "
+                   "own, and what it keeps goes when it ends.\n"
+                   "        Start it with --resident instead, before the "
+                   "program that wants it. If you already have, this is the "
+                   "program checking, and is harmless.\n");
+            fflush(stdout);
+        }
+
+        terminate((uint16_t)code);
+        return 0;
+    }
+
+    /*
+     * Otherwise this is one of the machine's own programs, and there may be
+     * another waiting to be loaded above it. tos_stay_resident keeps the
+     * memory and hands the loop the next one.
+     */
+    if (tos_stay_resident(keep))
+        return 0;
+
+    /*
+     * Nothing follows it. The program is finished and there is nobody to use
+     * what it wanted to leave behind, so this is an ordinary termination -
+     * which is also what an ST did with the last program in the AUTO folder.
+     */
+    terminate((uint16_t)code);
+
+    return 0;
+}
+
 uint32_t GEMDOS_Pgetpid()
 {
     FUNC_TRACE_ENTER

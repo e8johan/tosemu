@@ -209,7 +209,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Psigpending NULL
 #define GEMDOS_Psigreturn NULL
 #define GEMDOS_Psigsetmask NULL
-#define GEMDOS_Ptermres NULL
 #define GEMDOS_Pumask GEMDOS_Unknown
 #define GEMDOS_Pursval NULL
 #define GEMDOS_Pvfork NULL

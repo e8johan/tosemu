@@ -10,6 +10,10 @@
 > Settled with the person who asked for it: `--resident` is a command line
 > option and nothing else - not a setting, not a file, not anything the emulated
 > machine can ask for.
+>
+> **Stages 1 to 4 are done.** `Ptermres`, `--resident`, the memory that is kept
+> and the pair of tests that prove it. Cubase gets past MROS and now stops in
+> the VDI instead, which is a different piece of work.
 
 ## Context
 
@@ -209,11 +213,28 @@ and the caller acts on it:
 1b56:  bsr  install
 ```
 
-**The already-installed path returns -1 and never reaches `Ptermres`.** So if
-MROS is resident in the machine *before* Cubase starts, then when Cubase
-`Pexec`s it the forked child inherits the parent's memory, finds the signature,
-returns, and exits cleanly. `Pexec` succeeds. Cubase proceeds. Nothing had to
-be shared, because the child only ever needed to *read* what the parent had.
+**The already-installed path returns -1 and never reaches `Ptermres`.**
+
+That was the hypothesis, and the conclusion turned out to be right for a
+different reason than the one predicted. It was tried, and what happens is:
+
+> `tosemu -r MROS/MROS3_31 CUBASE.PRG` gets Cubase past MROS entirely. No "MROS
+> not found" alert, and six times as many OS calls before it stops - it goes on
+> into loading its resources and drawing, where it now fails in the VDI on
+> something unrelated.
+
+But the forked child does *not* find the signature. tosemu's `Pexec` rebuilds
+the machine in the child - two machines are built in that run - so the child
+gets a fresh address space rather than a readable copy of the parent's, does
+its full install into that, and calls `Ptermres`. What makes it work anyway is
+that the child's `Ptermres` now terminates cleanly instead of halting, so
+`Pexec` returns success and Cubase believes it; and the MROS that Cubase
+actually calls through TRAP #8 is the one `--resident` put in *its own* machine
+before it started.
+
+So the conclusion stands - shared-memory `Pexec` is not on Cubase's critical
+path - but not because the child reads the parent's memory. It is because the
+child's answer does not matter once the parent already has what it needs.
 
 And what MROS installs is reachable. The install path writes its handlers into
 the TRAP #8, #9 and #10 vectors:
@@ -229,13 +250,8 @@ Musashi is patched here to intercept traps 1, 2, 13 and 14 only
 exception path and lands on whatever the vector holds - which is MROS. Cubase
 calling into MROS should work with no further emulator support.
 
-So the hypothesis this branch should test first, before any of the rest is
-built out:
-
-> `tosemu -r MROS/MROS3_31 CUBASE.PRG` gets Cubase past its MROS check.
-
-If that holds, shared-memory `Pexec` stays a `TODO` entry for Devpac 3 rather
-than being on Cubase's critical path.
+Shared-memory `Pexec` therefore stays a `TODO` entry for Devpac 3 rather than
+being on Cubase's critical path.
 
 ### The prerequisite, which is done
 

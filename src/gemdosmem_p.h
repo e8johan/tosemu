@@ -45,4 +45,13 @@ uint32_t mem_largest_free(void);
 uint32_t mem_alloc(uint32_t size);
 int32_t mem_free(uint32_t block);
 
+/* A block at an address the caller has already chosen, for loading a program
+ * somewhere particular rather than wherever there is room. Answers 0 when it
+ * would overlap something already there. */
+int mem_claim(uint32_t base, uint32_t len);
+
+/* And a block the program that owned it has left behind - see Ptermres.
+ * Answers where the next program can go, or 0 when there was no such block. */
+uint32_t mem_keep(uint32_t block, uint32_t keep);
+
 #endif /* GEMDOSMEM_H */

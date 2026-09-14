@@ -35,6 +35,12 @@
 struct mem_area;
 struct mem_area {
     uint32_t base, len;
+
+    /* Whether the program that owns this has gone and left it behind. A
+     * resident block is never freed and never handed out again - see mem_keep,
+     * and Ptermres, which is the only thing that sets it. */
+    int resident;
+
     struct mem_area *next;
 };
 struct mem_area *mem_list;
@@ -286,6 +292,16 @@ int32_t mem_free(uint32_t block)
     if (!ma)
         return GEMDOS_EIMBA;
 
+    /*
+     * A program that stayed resident is not there to be freed by whoever comes
+     * after it. On an ST the memory simply was not in the free list any more
+     * and nothing had its address; here an application walking blocks could
+     * reach it, and freeing it would hand the code somebody is still calling
+     * to the next thing that asks for memory.
+     */
+    if (ma->resident)
+        return GEMDOS_EIMBA;
+
     if (prev)
         prev->next = ma->next;
     else
@@ -307,6 +323,123 @@ uint32_t GEMDOS_Mfree()
     return mem_free(block);
 }
 
+
+/*
+ * A block the caller has already decided the base and length of, put into the
+ * list as though it had been allocated.
+ *
+ * What wants this is loading a program somewhere particular rather than
+ * wherever there is room - the program that runs on top of a resident one goes
+ * above it, and its block has to be in the list before it Mshrinks or Mallocs
+ * anything.
+ *
+ * Answers 0 when the block would overlap something already there, which is a
+ * mistake in the caller rather than the machine running out of memory.
+ */
+int mem_claim(uint32_t base, uint32_t len)
+{
+    struct mem_area *prev = 0, *ptr = mem_list, *n;
+
+    while (ptr && ptr->base < base)
+    {
+        if (ptr->base + ptr->len > base)
+            return 0;
+
+        prev = ptr;
+        ptr = ptr->next;
+    }
+
+    if (ptr && base + len > ptr->base)
+        return 0;
+
+    n = malloc(sizeof(struct mem_area));
+    if (!n)
+        return 0;
+
+    memset(n, 0, sizeof(struct mem_area));
+    n->base = base;
+    n->len = len;
+    n->next = ptr;
+
+    if (prev)
+        prev->next = n;
+    else
+        mem_list = n;
+
+    return 1;
+}
+
+/*
+ * Keep a block after the program that owned it has finished, which is what
+ * Ptermres asks for. It shrinks to what was asked to be kept and is then never
+ * freed and never handed out again.
+ *
+ * Answers the address the next program can be loaded at, or 0 when there is no
+ * such block - a program calling Ptermres about memory that is not its own.
+ */
+uint32_t mem_keep(uint32_t block, uint32_t keep)
+{
+    struct mem_area *ma = find_mem_area(block, 0);
+    struct mem_area *ptr, *prev;
+    uint32_t floor = 0;
+
+    if (!ma)
+        return 0;
+
+    /* Asking to keep more than was owned keeps what was owned. TOS had the
+     * same arithmetic to do and no more room to do it in. */
+    if (keep > ma->len)
+        keep = ma->len;
+
+    ma->len = keep;
+    ma->resident = 1;
+
+    /*
+     * And everything else the program owned goes, which is the other half of
+     * what Ptermres means: it keeps what was asked for and releases the rest.
+     *
+     * It matters more here than it sounds. A program that printed anything has
+     * a buffer the C library Malloc'd somewhere above it, and a block left
+     * behind in the middle of the machine is a block the next program cannot be
+     * loaded across - so without this the memory a resident did not even want
+     * decides where everything after it can go.
+     *
+     * Everything still here belongs to the program that is leaving, because a
+     * machine runs one at a time. The exceptions are the blocks that earlier
+     * programs kept, and those say so.
+     */
+    prev = 0;
+    ptr = mem_list;
+
+    while (ptr)
+    {
+        struct mem_area *next = ptr->next;
+
+        if (!ptr->resident)
+        {
+            if (prev)
+                prev->next = next;
+            else
+                mem_list = next;
+
+            free(ptr);
+        }
+        else
+        {
+            /* The next program goes above the highest thing that stayed */
+            if (ptr->base + ptr->len > floor)
+                floor = ptr->base + ptr->len;
+
+            prev = ptr;
+        }
+
+        ptr = next;
+    }
+
+    /* Even, because a basepage is read as words and a 68000 takes an address
+     * error on an odd one */
+    return (floor + 1) & ~1u;
+}
 
 void gemdos_mem_init(struct tos_environment *te)
 {
