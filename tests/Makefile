@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -301,6 +301,12 @@ check: all
 	# bin/dongletest cannot see. Must be the only thing that has read the
 	# port, there being no way to reset a key from inside the machine.
 	$(TOSEMU) --dongle cubase test-c-dongle > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# What the machine says it is. _sysbase left at nought does not fail
+	# loudly - a program follows the null pointer and reads a version out
+	# of the reset vector - so this checks the header is there and that
+	# the three places tosemu answers this agree with each other.
+	$(TOSEMU) test-c-sysbase > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out

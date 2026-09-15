@@ -973,6 +973,23 @@ off, all arriving intact. But that was ALSA's own loopback rather than an
 interface with a cable in it, and no period sequencer has been put through any
 of it. See `MIDI.md` on the `midi` branch for what would want checking first.
 
+What the machine says it is
+==========================
+
+Every TOS has a header at the bottom of its ROM and `_sysbase` points at it, so
+a program that wants to know what it is running on reads the version out of
+there and branches. This machine says **TOS 1.04**, because that is what the
+rest of it already says: `Sversion` answers the GEMDOS that shipped with 1.04
+and the AES answers its AES. A machine that disagreed with itself would be
+worse than an old one - a program comparing two of the three would find it was
+not any TOS at all.
+
+The header answers what this machine can answer truthfully - the version, its
+own address, and where the low memory the system keeps ends - and leaves the
+rest at nought rather than filling it with something plausible. There is no
+reset handler, no GEM memory usage block and no GEMDOS pool here, and inventing
+addresses for them would turn "there is none" into a pointer somebody follows.
+
 Road Map
 ========
 
