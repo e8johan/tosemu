@@ -978,11 +978,18 @@ What the machine says it is
 
 Every TOS has a header at the bottom of its ROM and `_sysbase` points at it, so
 a program that wants to know what it is running on reads the version out of
-there and branches. This machine says **TOS 1.04**, because that is what the
-rest of it already says: `Sversion` answers the GEMDOS that shipped with 1.04
-and the AES answers its AES. A machine that disagreed with itself would be
-worse than an old one - a program comparing two of the three would find it was
-not any TOS at all.
+there and branches. This machine says **TOS 3.06**, and the branch is the whole
+point: MROS, the MIDI kernel Cubase loads, sets itself up through the calls the
+system offers at 3.00 and above, and below it goes looking for Atari TOS's own
+code in the ROM to copy and patch. There is no ROM here to find, and no
+graceful failure on that path either.
+
+`Sversion` and the AES still answer for themselves, which looks like the
+machine contradicting itself and is the opposite. Each of the three says what
+the layer under it implements, because that is what a program asking any one of
+them is really asking: the AES here is an AES 1.4, and an application told
+otherwise would be entitled to call `appl_getinfo` or `menu_popup`, which are
+named and not written.
 
 The header answers what this machine can answer truthfully - the version, its
 own address, and where the low memory the system keeps ends - and leaves the

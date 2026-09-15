@@ -353,6 +353,11 @@ int tos_run_after(void *binary, uint64_t size, const char *cmdlin)
  * holding it means: nobody has claimed it. See where they are written. */
 static uint32_t default_vector;
 
+/* And what the system's handoff vectors are filled with, which is a different
+ * thing: those are called rather than jumped to, so this is an RTS where the
+ * one above is an RTE. See where they are written. */
+static uint32_t default_routine;
+
 /*
  * The operating system's own header, which _sysbase points at.
  *
@@ -388,17 +393,38 @@ static uint32_t os_header;
 /*
  * Which TOS this claims to be.
  *
- * 1.04, because that is what the rest of tosemu already claims and a machine
- * should not disagree with itself: Sversion answers 0x1500, which is the
- * GEMDOS that shipped with 1.04, and the AES answers 0x0140, which is its AES.
- * A program that asks two of the three and compares them would otherwise catch
- * the machine contradicting itself, and that is a worse failure than being an
- * old TOS - it is not being any TOS.
+ * This is a number programs branch on rather than one they print, and the
+ * branch can be the whole difference between running and not. MROS, the MIDI
+ * kernel Cubase loads, reads it and takes one of two paths: at 3.00 and above
+ * it sets itself up through the calls the system offers, and below it goes
+ * looking for Atari TOS's own code in the ROM - reading its internal tables at
+ * fixed offsets, then copying instructions out of 0xE00000 to patch them. The
+ * second of those is not something this machine can ever satisfy. There is no
+ * ROM here to read, TOS being the host rather than an image, and no graceful
+ * failure on that path either: it walks a pointer it expects to find and stops
+ * the emulator when it does not.
  *
- * It is a number a program branches on, so changing it changes behaviour well
- * beyond the version string somebody sees in an about box.
+ * So 3.06, which is the TT's.
+ *
+ * And only here. Sversion still answers the GEMDOS it answered and the AES
+ * still reports 0x0140, which looks like the machine contradicting itself and
+ * is the opposite: each of the three says what the layer under it implements,
+ * which is what a program asking any of them is actually asking. The AES here
+ * is an AES 1.4, and appl_getinfo, appl_search and menu_popup are named and
+ * not written - a program told it was talking to an AES 3.4 would be entitled
+ * to call one, and calling one stops the emulator. Raising that number buys
+ * nothing: this one is the only one MROS reads, and Cubase runs with the other
+ * two left where they were. See the note on AES_VERSION, which said this
+ * before there was a reason to test it.
+ *
+ * What it costs: 3.06 is a TT's ROM and this machine is not a TT. There is no
+ * TT RAM at 0x01000000 - the memory sizes above say so - so a program that
+ * reads this and then goes looking for the rest of a TT finds the screen
+ * modes, which tosemu does have, and not the memory. That is a smaller and
+ * later failure than the one it buys off, and nothing has done it; it is
+ * written down rather than guarded against.
  */
-#define TOS_VERSION (0x0104)
+#define TOS_VERSION (0x0306)
 
 /* The first program in a machine is loaded at 0x800, so that is where the low
  * memory the system keeps for itself ends. Everything else the system owns
@@ -1087,6 +1113,51 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
 
             for (vector = 2; vector <= 127; vector++)
                 m68k_write_memory_32(4 * vector, default_vector);
+        }
+    }
+
+    /*
+     * The system's own handoff vectors, which are not exception vectors at all
+     * and must not hold what those hold.
+     *
+     * etv_timer, etv_critic and etv_term are called - jsr, from inside the
+     * BIOS and GEMDOS - rather than jumped to by the processor, so the routine
+     * on the end of one has to return with RTS. The table above is filled with
+     * an RTE, and an RTE reached by a jsr takes the return address off the
+     * stack as a status register and a program counter and leaves for
+     * somewhere nobody can name.
+     *
+     * They held nothing at all before this, which is worse than holding the
+     * wrong thing and harder to see. A program that means to chain to what was
+     * there reads the vector, keeps it, installs its own, and calls the one it
+     * kept - and what it kept was zero. MROS goes further and walks back along
+     * the XBRA chain from etv_timer before it does anything else, reading the
+     * four bytes twelve in front of whatever the vector points at; from a null
+     * pointer that is an address near the top of the map with nothing at it,
+     * and the emulator stopped there.
+     *
+     * An RTS is also the right answer rather than a placeholder. Nothing in
+     * tosemu hangs anything off these, so what a real machine would do here is
+     * the least it could do, and doing nothing is what these are for until
+     * somebody claims one. etv_critic answers with whatever is in d0, which is
+     * the error it was handed - which is what returning the error code means
+     * and what TOS's own default does.
+     */
+    {
+        default_routine = bios_static_alloc(2);
+
+        if (default_routine)
+        {
+            m68k_write_memory_16(default_routine, 0x4e75); /* RTS */
+
+            /* Through the host pointer, not m68k_write_memory_32: these live
+             * in the supervisor-only half of low memory, and tos_write halts
+             * rather than refusing when it does not like the mode the machine
+             * happens to be in while it is still being built. Same reason as
+             * _sysbase above. */
+            poke_system_long(0x400, default_routine); /* etv_timer */
+            poke_system_long(0x404, default_routine); /* etv_critic */
+            poke_system_long(0x408, default_routine); /* etv_term */
         }
     }
 
