@@ -427,8 +427,8 @@ uint32_t XBIOS_Kbdvbase()
         return kbdvecs;
 
     kbdvecs = bios_static_alloc(KBDVECS_SIZE);
-    midivec_magic = bios_static_alloc(2);
-    just_rts = bios_static_alloc(2);
+    midivec_magic = bios_device_alloc(2);
+    just_rts = bios_device_alloc(2);
 
     if (!kbdvecs || !midivec_magic || !just_rts)
     {
@@ -437,9 +437,11 @@ uint32_t XBIOS_Kbdvbase()
     }
 
     /*
-     * Over the top of the BIOS RAM these were taken from, which works because
-     * an area added later is found first - see find_memarea. The bytes
-     * underneath are never read again.
+     * Areas of their own, over nothing. They are taken from the end of the
+     * BIOS RAM that the plain area does not cover - see bios_device_alloc -
+     * because two areas over one address answer according to the order they
+     * went up in, and find_memarea remembers the last area it found rather
+     * than walking the list again.
      */
     add_fnct_memory_area("midivec", MEMORY_READ | MEMORY_SUPERREAD,
                          midivec_magic, 2, 0,
