@@ -113,17 +113,35 @@ struct exec_header {
  */
 #define SUPERSTACK_SIZE (8192)
 
-/* RAM for structures the system owns rather than the application, see
- * bios_static_alloc. It sits in the cartridge ROM range of the memory map
- * below, which no ST ever has RAM in and which is clear of the TPA, so that
- * what the system reserves does not come out of the application's memory. */
-#define BIOSRAMBASE (0xFA0000)
+/*
+ * RAM for structures the system owns rather than the application, see
+ * bios_static_alloc. It is out of the TPA so that what the system reserves
+ * does not come out of the application's memory, and it is up here rather than
+ * anywhere an ST had RAM for the same reason.
+ *
+ * In the ROM range rather than the cartridge range, which is where it was and
+ * which was wrong. The argument for the cartridge range was that no ST has RAM
+ * there, and that is true and was never the question: the cartridge port is an
+ * address a program can read, and one that read it found the emulator's own
+ * supervisor stack, IOREC buffers and _KBDVECS answering. Nothing had noticed
+ * because nothing had been plugged in, so every read of the port stopped the
+ * emulator before it could reach them.
+ *
+ * A machine with no ROM in it has nothing at these addresses either, and
+ * nothing reads them: TOS is not a ROM here, it is the host, and a program
+ * looking for a version number asks _sysbase rather than the ROM it points at.
+ * That makes this the quietest sixty four kilobytes in the map - but it is
+ * borrowed rather than owned, and if anything ever does want to read the ROM
+ * the answer is to take these structures out of the address space altogether
+ * rather than to move them along again.
+ */
+#define BIOSRAMBASE (0xFC0000)
 #define BIOSRAMSIZE (0x10000)
 
 /* The most RAM the machine can have, which is where the cartridge range
  * begins: nothing above that address was RAM on any of these machines, so it
  * is the first byte a machine of the largest possible size does not have. */
-#define RAM_MAX (BIOSRAMBASE)
+#define RAM_MAX (0xFA0000)
 
 /* The least RAM worth handing a program, which is what has to be left over
  * once the screen has been taken off the top. It is well under the smallest
