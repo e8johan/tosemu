@@ -338,9 +338,116 @@ int tos_run_after(void *binary, uint64_t size, const char *cmdlin)
  * holding it means: nobody has claimed it. See where they are written. */
 static uint32_t default_vector;
 
+/*
+ * The operating system's own header, which _sysbase points at.
+ *
+ * Every TOS has one, at the bottom of the ROM, and a program that wants to
+ * know what it is running on reads the version out of it. tosemu had none and
+ * did not fill _sysbase in either, so a program that looked found a null
+ * pointer, followed it, and read the version out of address 2 - which is the
+ * top half of the reset vector and is nought. Whatever it concluded from that
+ * it concluded confidently.
+ *
+ * See build_os_header for which fields are answered and which are left empty,
+ * and why the version is the one it is.
+ */
+static uint32_t os_header;
+
+/* Offsets into it. Named rather than counted because the header is a layout
+ * somebody else decided and the names are that layout's own. */
+#define OSH_ENTRY    (0x00)     /* a branch to the reset handler */
+#define OSH_VERSION  (0x02)
+#define OSH_RESETH   (0x04)
+#define OSH_BEG      (0x08)     /* the header's own address */
+#define OSH_END      (0x0c)     /* end of the low RAM the system keeps */
+#define OSH_RSVL     (0x10)
+#define OSH_MAGIC    (0x14)     /* the GEM memory usage parameter block */
+#define OSH_DATE     (0x18)
+#define OSH_CONF     (0x1c)
+#define OSH_DOSDATE  (0x1e)
+#define OSH_ROOT     (0x20)     /* the GEMDOS pool */
+#define OSH_KBSHIFT  (0x24)
+#define OSH_RUN      (0x28)     /* the pointer to the running basepage */
+#define OSH_SIZE     (0x30)
+
+/*
+ * Which TOS this claims to be.
+ *
+ * 1.04, because that is what the rest of tosemu already claims and a machine
+ * should not disagree with itself: Sversion answers 0x1500, which is the
+ * GEMDOS that shipped with 1.04, and the AES answers 0x0140, which is its AES.
+ * A program that asks two of the three and compares them would otherwise catch
+ * the machine contradicting itself, and that is a worse failure than being an
+ * old TOS - it is not being any TOS.
+ *
+ * It is a number a program branches on, so changing it changes behaviour well
+ * beyond the version string somebody sees in an about box.
+ */
+#define TOS_VERSION (0x0104)
+
+/* The first program in a machine is loaded at 0x800, so that is where the low
+ * memory the system keeps for itself ends. Everything else the system owns
+ * here is up in the BIOS RAM rather than under the program. */
+#define TOS_LOW_MEMORY_END (0x800)
+
 uint32_t tos_default_vector(void)
 {
     return default_vector;
+}
+
+/*
+ * Writing a system variable, which cannot be done the obvious way.
+ *
+ * The system variable area is supervisor only, and m68k_write_memory_32 goes
+ * through tos_write, which asks the emulated CPU what mode it is in and calls
+ * halt_execution when it does not like the answer. Whether the machine happens
+ * to be in supervisor mode while it is still being built is not something this
+ * should have to depend on, so the host pointer is taken directly. interrupt.c
+ * writes the two hundred hertz counter the same way and for the same reason.
+ */
+static void poke_system_long(uint32_t address, uint32_t value)
+{
+    uint8_t *at = tos_mem_to_host_mem(address);
+
+    if (!at)
+        return;
+
+    at[0] = (uint8_t)(value >> 24);
+    at[1] = (uint8_t)(value >> 16);
+    at[2] = (uint8_t)(value >> 8);
+    at[3] = (uint8_t)value;
+}
+
+/*
+ * The operating system's header, and _sysbase pointing at it.
+ *
+ * What is filled in is what this machine can answer truthfully. The version,
+ * because programs branch on it and because tosemu already answers it twice
+ * elsewhere. Its own address, because that is what the field is. And where the
+ * low memory the system keeps ends, which is where the first program loads.
+ *
+ * The rest is left at nought deliberately rather than filled with something
+ * plausible. There is no reset handler to point at, no GEM memory usage block,
+ * and no GEMDOS pool - inventing addresses for them would turn "this machine
+ * does not have one" into a pointer somebody follows. The date is nought for
+ * the same reason: a date matching the version would be a fact nobody
+ * established.
+ *
+ * os_run is the one worth filling next. It points at the pointer to the
+ * running basepage, which is how a resident program finds out whose memory it
+ * is standing in, and tosemu knows the answer - see current_basepage. What it
+ * has not got is a longword in the machine's own memory kept in step with it.
+ */
+static void build_os_header(void)
+{
+    if (!os_header)
+        return;
+
+    m68k_write_memory_16(os_header + OSH_VERSION, TOS_VERSION);
+    m68k_write_memory_32(os_header + OSH_BEG, os_header);
+    m68k_write_memory_32(os_header + OSH_END, TOS_LOW_MEMORY_END);
+
+    poke_system_long(0x4f2, os_header);
 }
 
 /* Where the screen was put in the machine this time round, and how much of it
@@ -738,6 +845,11 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * everything else this hands out is asked for while a program runs, and a
      * machine with nowhere to put an exception frame is not a machine */
     te->superstack = bios_static_alloc(SUPERSTACK_SIZE);
+
+    /* And the operating system's header, which is reserved here and filled in
+     * further down: what it says is written through the machine's own memory,
+     * and none of that is mapped yet */
+    os_header = bios_static_alloc(OSH_SIZE);
     
     /*
      * The screen comes off the top of the machine's RAM, which is where the
@@ -941,6 +1053,11 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                 m68k_write_memory_32(4 * vector, default_vector);
         }
     }
+
+    /* And what this machine says it is, now that there is somewhere to say it
+     * - the header is in the BIOS RAM and _sysbase is a system variable, and
+     * neither could be written before the areas above went up */
+    build_os_header();
 
     /* And the chips that interrupt, if this machine has any. Here rather than
      * with the other sub-systems because what it adds is memory areas, and

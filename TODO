@@ -549,3 +549,21 @@
   What would close it is a handler in the machine's own memory that is what it
   claims to be: an ACIA interrupt handler with that instruction in it, doing
   what acia_arrived does around it.
+
+- The operating system header answers three of its fields and leaves the rest
+  at nought. os_run is the one worth filling next: it points at the pointer to
+  the running basepage, which is how a resident program finds out whose memory
+  it is standing in, and tosemu knows the answer - current_basepage - but has
+  no longword in the machine's own memory kept in step with it. os_kbshift is
+  the same shape of problem, the shift state being a host variable in bios.c
+  rather than a byte the machine can point at. The reset handler, the GEM
+  memory usage block and the GEMDOS pool are not oversights: there are none,
+  and an address for them would be a pointer somebody follows.
+- Which TOS the machine claims to be is fixed at 1.04 rather than being a
+  setting, and it is a number programs branch on rather than only display.
+  MROS takes an entirely different path through its own startup at 3.00 and
+  above - the one below it goes looking for TOS's code in the ROM to copy and
+  patch, which is not something this machine can ever satisfy. What stops it
+  being a setting today is that the version would have to move together with
+  what Sversion and the AES answer, which is three numbers in three files that
+  currently agree by having been written down three times.
