@@ -31,6 +31,7 @@
 #include "tossystem.h"
 #include "settings.h"
 #include "interrupt.h"
+#include "dongle.h"
 #include "config.h"
 
 /* How much was asked for. config.h says what each level is, and is where the
@@ -180,7 +181,7 @@ static void usage(void)
     const char *where = settings_default_path();
 
     printf("Usage: tosemu [-v...] [-c <file>] [--no-config] [-r <prog>]... "
-           "<binary> [<args>]\n"
+           "[--dongle <key>] <binary> [<args>]\n"
            "\n"
            "\t<binary>       name of binary to execute\n"
            "\t-v             say what the session was configured with\n"
@@ -191,6 +192,9 @@ static void usage(void)
            "\t-r <prog>      run <prog> first and leave it in memory, the way\n"
            "\t--resident     the AUTO folder did. May be said more than once,\n"
            "\t               in the order they are to load.\n"
+           "\t--dongle <key> plug <key> into the cartridge port. The one there\n"
+           "\t               is is cubase, which is the key Cubase 3 came with\n"
+           "\t               and will not start without.\n"
            "\n"
            "Settings are read from %s when there is one, and an environment\n"
            "variable overrides what it says. See README.md for the settings\n"
@@ -258,6 +262,22 @@ int main(int argc, char **argv)
         }
         else if (strncmp(arg, "--config=", 9) == 0)
             config = arg + 9;
+        else if (strcmp(arg, "--dongle") == 0)
+        {
+            if (argb + 1 >= argc)
+            {
+                printf("tosemu: %s wants the name of a key\n", arg);
+                return -1;
+            }
+
+            if (!dongle_asked_for(argv[++argb]))
+                return -1;
+        }
+        else if (strncmp(arg, "--dongle=", 9) == 0)
+        {
+            if (!dongle_asked_for(arg + 9))
+                return -1;
+        }
         else if (strcmp(arg, "-r") == 0 || strcmp(arg, "--resident") == 0)
         {
             if (argb + 1 >= argc)

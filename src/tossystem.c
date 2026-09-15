@@ -45,6 +45,7 @@
 #include "linea.h"
 #include "midi.h"
 #include "interrupt.h"
+#include "dongle.h"
 
 #include "m68k.h"
 
@@ -141,7 +142,7 @@ struct exec_header {
 /* The most RAM the machine can have, which is where the cartridge range
  * begins: nothing above that address was RAM on any of these machines, so it
  * is the first byte a machine of the largest possible size does not have. */
-#define RAM_MAX (0xFA0000)
+#define RAM_MAX (CARTRIDGE_BASE_ADDRESS)
 
 /* The least RAM worth handing a program, which is what has to be left over
  * once the screen has been taken off the top. It is well under the smallest
@@ -946,6 +947,25 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * because a machine built a second time - which is what Pexec does - needs
      * them again: reset_memory above has just taken them away. */
     interrupt_init();
+
+    /*
+     * And whatever is plugged into the cartridge port, for the same two
+     * reasons: it is a memory area, and a machine built a second time needs it
+     * again. Cubase is why this matters rather than an aside - it reads the
+     * port from CUBASE.PRG and again from the CUBASE.EXE it Pexecs, and a
+     * child that came up with nothing out there would halt where its parent
+     * ran.
+     *
+     * Readable in both modes because the port is: a cartridge is ROM on the
+     * bus and an ST lets a program in user mode read it. Writeable because
+     * refusing a write halts the emulator, and dongle_area_write throws it
+     * away instead - see the note there.
+     */
+    if (dongle_wanted())
+        add_fnct_memory_area("cartridge",
+                             MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                             CARTRIDGE_BASE_ADDRESS, CARTRIDGE_LENGTH, 0,
+                             dongle_area_read, dongle_area_write);
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
