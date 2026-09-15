@@ -22,6 +22,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               keyboard.c \
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
+              dongle.c \
               linea.c \
               tossystem.c utils.c memory.c cpu.c
 
@@ -503,6 +504,18 @@ $(BIN)/miditest: $(SRC)/miditest.c $(OBJ)/midi.o $(OBJ)/mfp.o $(OBJ)/acia.o \
 midi-check: $(BIN)/miditest
 	./$(BIN)/miditest
 
+# The cartridge key, checked against the streams the chip really produces.
+# Links dongle.o alone, which is the whole reason the equations were kept out
+# of the file that puts the memory area up: a transcription of sixteen boolean
+# expressions is worth checking one clock at a time, and nothing about doing so
+# needs a machine to run it in.
+$(BIN)/dongletest: $(SRC)/dongletest.c $(OBJ)/dongle.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+dongle-check: $(BIN)/dongletest
+	./$(BIN)/dongletest
+
 print-check: $(BIN)/printtest
 	./$(BIN)/printtest
 
@@ -615,7 +628,8 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
-       icon-check gdos-check print-check keyboard-check midi-check
+       icon-check gdos-check print-check keyboard-check midi-check \
+       dongle-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu

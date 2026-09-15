@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -294,6 +294,13 @@ check: all
 	# test in this directory runs. A program that looks for a TSR and finds
 	# none is the ordinary case and must carry on being a program.
 	$(TOSEMU) test-c-usetsr alone > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The cartridge key, read the way a program reads it. Checks the wiring
+	# rather than the equations - which address bit the question comes off
+	# and that a word read moves the key on once - so it is the half that
+	# bin/dongletest cannot see. Must be the only thing that has read the
+	# port, there being no way to reset a key from inside the machine.
+	$(TOSEMU) --dongle cubase test-c-dongle > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out

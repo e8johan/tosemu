@@ -854,7 +854,7 @@ its own, so anything it keeps is kept in that machine and goes when it ends.
 `Ptermres` from a child says so and terminates cleanly, rather than leaving the
 program that started it believing a TSR is there when it is not. What to do
 about it is to name the program with `-r` instead.
-=======
+
 MIDI
 ====
 
@@ -901,6 +901,40 @@ synthesiser on the end of it.
 Built without ALSA - `make NO_ALSA=1`, or on a machine that has no
 `libasound2-dev` - `file:` still works and the other two are refused with a
 line saying why. A build server has no MIDI interface and should not need one.
+
+The key in the cartridge port
+=============================
+
+Some programs were sold with a key that plugged into the ROM cartridge port,
+and will not start without one. It is not a serial number or a licence file: it
+is a chip on the bus that answers a question, and the program asks by reading
+the port and listens to one bit of what comes back.
+
+`--dongle` plugs one in. There is one, and it is the red key Cubase 3 came
+with:
+
+    tosemu -r MROS/MROS3_31 --dongle cubase CUBASE.PRG
+
+Nothing is plugged in by default, and an empty port is not the same as no port:
+with nothing asked for, the cartridge range is not mapped at all and a program
+that reads it stops the emulator the way any other unmapped address does.
+
+The key is an Altera 5C060, which is a sixteen bit state machine clocked by
+every access to the port. Address bit 8 is the question and data bit 8 is the
+answer, so what a program gets back depends on every question it has asked
+since the machine started. What is here is the device's own equations, taken
+from the de-fused contents of its fuse map, and checked against an independent
+reconstruction of the same chip before it was believed - `bin/dongletest` keeps
+that check, and `tests/c-dongle.c` asks the same questions through the bus to
+catch the ways the wiring rather than the chip can be wrong.
+
+The black key Cubase 2 came with is a different and much smaller machine, and
+is not modelled. Asking for it says so rather than handing over this one, which
+would answer confidently and wrongly.
+
+This is for running software you have on a machine you have, in place of
+hardware that is thirty years old and mostly dead. It is not a way around
+owning the thing in the first place.
 
 A machine
 =========

@@ -519,3 +519,33 @@
   working either - unlike the window frame's gadgets, which are in the same
   position and were at least driven by hand against kwin. This wants somebody
   dragging across a console window and pasting into one before it is believed.
+
+- The whole of the cartridge port clocks the key, where on the machine only
+  half of it does. The port is two banks of sixty four kilobytes with a chip
+  select each, and the key is wired to one of them, so a read of the other half
+  answers but does not move the key on. Here both halves do. Nothing has been
+  seen to read the half Cubase does not, and a program looking for the key
+  finds it either way, which is why this is written down rather than done -
+  what would close it is knowing which of ROM3 and ROM4 is the upper bank
+  firmly enough to refuse the other.
+- The cartridge port is read by the disassembler as well as by the processor,
+  so running with -vvv moves the key on for every time the trace walks past a
+  read of it, and the stream the program gets is not the one it asked for. The
+  same is true of the magic memory midivec and Supexec point at, and for the
+  same reason: nothing distinguishes a read that is about to execute from one
+  that is only looking. It means a program using a key cannot be traced at the
+  instruction level, which is the level at which one would want to trace it.
+- MROS reads TOS's ACIA interrupt handler as code and looks through it for the
+  instruction that tests the keyboard ACIA - tst.b 0xfffc00, or the same test
+  through a register - so that it can splice itself into the middle of it. It
+  walks the XBRA chain back from the vector at 0x118 first, then scans forward
+  word by word from whatever it ends up at.
+
+  There is nothing for it to find. tosemu's ACIA handling is host C and the
+  vector holds a two byte RTE, so the scan runs forward through whatever
+  happens to be mapped after it and off the end. This is the next thing in
+  Cubase's way now that the key answers, and it is the first case of a program
+  wanting TOS to be 68000 code rather than wanting it to behave a certain way.
+  What would close it is a handler in the machine's own memory that is what it
+  claims to be: an ACIA interrupt handler with that instruction in it, doing
+  what acia_arrived does around it.
