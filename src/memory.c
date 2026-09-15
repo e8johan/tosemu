@@ -30,6 +30,32 @@
 /* Memory area linked list head */
 static struct _memarea *head = 0;
 
+/*
+ * The area the last lookup found.
+ *
+ * Every byte the machine reads or writes comes through here, instruction
+ * fetches included, and a fetch is two of them. Walking the list for each one
+ * made what an access costs depend on how many devices are mapped - and the
+ * list is searched newest first, so the areas a program actually lives in are
+ * at the far end of it: the application's RAM was seven deep and anything
+ * registered later went in front of it. Running Cubase as far as it gets,
+ * that came to a hundred and forty eight million steps for thirty million
+ * lookups, very nearly five every time.
+ *
+ * One remembered area answers essentially all of them. A program reads the
+ * instruction it is about to run and the data beside it, so consecutive
+ * accesses are in the same area almost always - the same measurement with this
+ * in place is one step per lookup, a miss every two hundred accesses. What it
+ * really buys is that the cost stops depending on how many devices there are,
+ * which is what makes a device that is always mapped free when nothing is
+ * using it.
+ *
+ * It has to be given up whenever an area is, which is what remove_memory_area
+ * does: the areas are freed when a machine is torn down and a remembered
+ * pointer into one would outlive it.
+ */
+static struct _memarea *last_found;
+
 /* Support functions */
 static uint8_t ptr_read(struct _memarea *area, uint32_t address)
 {
@@ -74,7 +100,11 @@ int remove_memory_area(uint32_t base)
 {
     struct _memarea *ptr = head;
     struct _memarea *prev = 0;
-    
+
+    /* Whatever was remembered may be the one going away, and there is no
+     * reason to work out whether it is: the next lookup pays one walk */
+    last_found = 0;
+
     while (ptr)
     {
         if (ptr->base == base) {
@@ -100,18 +130,27 @@ void reset_memory()
         remove_memory_area(head->base);
 }
 
+
 struct _memarea *find_memarea(uint32_t address)
 {
-    struct _memarea *area = head;
-    
+    struct _memarea *area = last_found;
+
+    if (area && address >= area->base && address < area->base + area->len)
+        return area;
+
+    area = head;
+
     while(area)
     {
         if (address >= area->base && address < area->base + area->len)
+        {
+            last_found = area;
             break;
+        }
 
         area = area->next;
     }
-    
+
     return area;
 }
 
