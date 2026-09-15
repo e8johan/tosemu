@@ -186,6 +186,26 @@ static void mfp_area_write(struct _memarea *area, uint32_t address,
     mfp_write_at(address - MFP_BASE_ADDRESS, value);
 
     /*
+     * A program is setting the chip up on a machine where nothing will ever
+     * go off. The registers are here and they keep what they are given, so it
+     * will get back whatever it writes and then wait for an interrupt for
+     * ever; saying so once is the difference between that and a hang nobody
+     * can account for.
+     *
+     * Once, because a program configuring the MFP writes several registers and
+     * the second one is no more news than the first.
+     */
+    if (!interrupt_wanted())
+    {
+        said("a program is programming the MFP, but this machine has no clock "
+             "behind it and nothing will ever interrupt. Start it with "
+             "interrupts - TOSEMU_INTERRUPTS in README.md - if it is waiting "
+             "for one.");
+
+        return;
+    }
+
+    /*
      * A control register may have started or stopped a timer, and what was
      * worked out about how long each one runs for is no longer true. Asked
      * about every write rather than only the ones that could matter, because
@@ -236,17 +256,32 @@ static void acia_area_write(struct _memarea *area, uint32_t address,
 
 /* Building it ***************************************************************/
 
+/* Below, with the rest of what the handler is - it needs the code it is
+ * made of and the routine its magic byte reaches */
+static void install_acia_handler(void);
+
 void interrupt_init(void)
 {
     int i;
-
-    if (!interrupt_wanted())
-        return;
 
     mfp_reset();
     acia_reset();
 
     /*
+     * The chips are in the machine whether or not anything asked for them,
+     * because they were in the machine. An ST has an MFP and two ACIAs at
+     * these addresses always, and a program is entitled to read them without
+     * having announced an interest in interrupts first - MROS reads both ACIAs
+     * directly, and a program that only wants to know what the keyboard shift
+     * state is reads the MFP. Mapping them only when interrupts were asked for
+     * meant those programs stopped the emulator on an address that is part of
+     * every one of these machines.
+     *
+     * It is worth doing now because it is free now. Every area used to be
+     * another node on the list that each memory access walked, so a device
+     * nobody was using still cost something on every instruction; one
+     * remembered area took that away - see find_memarea.
+     *
      * Readable and writeable in both modes, which is a departure and a
      * deliberate one. An ST bus errors these in user mode, but tos_read does
      * not raise a bus error - it calls halt_execution. So refusing a user mode
@@ -262,6 +297,29 @@ void interrupt_init(void)
                          MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
                          ACIA_BASE_ADDRESS, ACIA_LENGTH, 0,
                          acia_area_read, acia_area_write);
+
+    /*
+     * And the handler, which is a device in the same sense: bytes that are
+     * read, with one of them doing something on the way past. Always, and for
+     * the same reason the chips are always there - a program is entitled to
+     * look at TOS's ACIA handler without having announced an interest in
+     * interrupts, and what it finds has to be a handler.
+     *
+     * The vector goes in over the one tossystem.c filled the table with, which
+     * is why this is after that and not before it.
+     */
+    install_acia_handler();
+
+    /*
+     * What is still asked for is the clock behind them. The chips answer
+     * either way, but nothing counts down and nothing is ever raised unless
+     * this machine was started with interrupts - which is what keeps a run
+     * that wants none from reading the host's clock every few thousand
+     * instructions. A program that programs a timer on a machine with no clock
+     * is told once rather than left waiting - see mfp_area_write.
+     */
+    if (!interrupt_wanted())
+        return;
 
     for (i = 0; i < SOURCES; i++)
     {
@@ -375,6 +433,55 @@ void interrupt_timers_changed(void)
  * four bytes into the table at the bottom of memory.
  */
 #define VECTOR_ADDRESS(channel) (0x100 + 4 * (channel))
+
+/*
+ * TOS's ACIA interrupt handler, as instructions in the machine's own memory.
+ *
+ * Everything else tosemu does for an interrupt it does in host C, and for the
+ * ACIAs that was enough right up until a program wanted to read the handler
+ * rather than be served by it. MROS - the MIDI kernel Cubase loads - takes the
+ * vector at 0x118, walks the XBRA chain back from it, and then scans forward
+ * through what it finds looking for the instruction that tests the keyboard
+ * ACIA, so that it can call TOS's handler as a subroutine from that point.
+ * There was nothing to find: the vector held a two byte return-from-exception,
+ * and the scan ran off the end of whatever was mapped after it.
+ *
+ * So there is a handler here, and it is a real one. It reads as the code below
+ * and runs as the code below, and the working parts are reached the way the
+ * rest of tosemu's magic memory is reached - a byte whose being read is the
+ * event. This is what that mechanism is for.
+ *
+ * Two things about the order the pieces are in, both of which are the whole
+ * design rather than tidiness:
+ *
+ * The test against the keyboard ACIA is a separate routine rather than part of
+ * the body, because what MROS does with the address it finds is jsr to it. It
+ * has to be the start of something that returns.
+ *
+ * And the byte with the side effect on it is placed after that test rather
+ * than before it. MROS's scan reads its way forward a word at a time, so
+ * anything it passes over on the way is read - and a read is exactly what
+ * makes the side effect happen. Putting the MIDI half first would mean that
+ * merely looking for the handler took a byte off the port.
+ */
+#define ACIA_HANDLER_SIZE  (28)
+#define ACIA_HANDLER_IKBD  (20)   /* the tst.b, which is what MROS looks for */
+#define ACIA_HANDLER_MIDI  (26)   /* the byte whose being read does the work */
+
+static const uint8_t acia_handler_code[ACIA_HANDLER_SIZE] = {
+    0x48, 0xe7, 0xc0, 0xc0,             /*  0  movem.l d0-d1/a0-a1,-(sp)     */
+    0x61, 0x14,                         /*  4  bsr.s   midi_side            */
+    0x61, 0x0c,                         /*  6  bsr.s   ikbd_side            */
+    0x11, 0xfc, 0x00, 0xbf, 0xfa, 0x11, /*  8  move.b  #0xbf,0xfffffa11     */
+    0x4c, 0xdf, 0x03, 0x03,             /* 14  movem.l (sp)+,d0-d1/a0-a1    */
+    0x4e, 0x73,                         /* 18  rte                          */
+    0x4a, 0x38, 0xfc, 0x00,             /* 20  ikbd_side: tst.b 0xfffffc00  */
+    0x4e, 0x75,                         /* 24  rts                          */
+    0x4e, 0x75                          /* 26  midi_side: rts, and the byte */
+};
+
+/* Where it was put, and therefore what the vector holds */
+static uint32_t acia_handler;
 
 /*
  * Where a handler run from inside a trap is told to return to.
@@ -535,6 +642,64 @@ static void acia_arrived(void)
     run_routine(vec, byte);
 }
 
+/*
+ * The handler as the machine reads it.
+ *
+ * Reading is the whole of what this device does. The instructions come back as
+ * the bytes they are, and one of them - the second half of the return that
+ * ends the MIDI side - does the work on its way past, which is the last moment
+ * before that instruction runs. midivec's magic is the same trick at the same
+ * place in the same word.
+ */
+static uint8_t acia_handler_read(struct _memarea *area, uint32_t address)
+{
+    uint32_t offset = address - acia_handler;
+
+    (void)area;
+
+    if (offset >= ACIA_HANDLER_SIZE)
+        return 0xff;
+
+    if (offset == ACIA_HANDLER_MIDI + 1)
+        acia_arrived();
+
+    return acia_handler_code[offset];
+}
+
+/*
+ * And writing to it does nothing, quietly.
+ *
+ * This is TOS, and TOS was in ROM: a program that writes here would be writing
+ * to a ROM on the machine, where the write goes nowhere and the program
+ * carries on. Halting instead would turn something a real machine shrugs off
+ * into a dead emulator. Said once, because a program patching what it takes
+ * for a ROM is worth knowing about even though nothing came of it.
+ */
+static void acia_handler_write(struct _memarea *area, uint32_t address,
+                               uint8_t value)
+{
+    (void)area;
+    (void)address;
+    (void)value;
+
+    said("a program wrote to the ACIA interrupt handler, which on a real "
+         "machine is in ROM. Nothing was changed.");
+}
+
+static void install_acia_handler(void)
+{
+    acia_handler = bios_device_alloc(ACIA_HANDLER_SIZE);
+
+    if (!acia_handler)
+        return;
+
+    add_fnct_memory_area("aciahandler", MEMORY_READ | MEMORY_SUPERREAD,
+                         acia_handler, ACIA_HANDLER_SIZE, 0,
+                         acia_handler_read, acia_handler_write);
+
+    poke_system_long(VECTOR_ADDRESS(MFP_ACIA), acia_handler);
+}
+
 static void handled_here(int channel)
 {
     mfp_acknowledge();
@@ -680,7 +845,18 @@ static void dispatch(int nested)
      * claimed, the stub returned without taking the byte out of the chip, and
      * nothing ever arrived.
      */
-    if (handler == 0 || handler == tos_default_vector())
+    /*
+     * And now there is a third thing a vector can hold and still be unclaimed:
+     * tosemu's own ACIA handler. It is real code and it works, but running it
+     * would mean the machine executing thirty-odd instructions to reach a byte
+     * that host C already has in its hand. It is there to be read - scanned,
+     * chained to, called into - by the programs that want to see a handler,
+     * and those programs put their own address in the vector when they mean to
+     * be called. Until one does, this is still nobody, and the byte goes the
+     * short way.
+     */
+    if (handler == 0 || handler == tos_default_vector()
+        || handler == acia_handler)
     {
         handled_here(channel);
         return;
