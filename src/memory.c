@@ -228,6 +228,89 @@ void tos_write(uint32_t address, uint8_t value)
     }
 }
 
+/*
+ * The several bytes of one access, looked up once.
+ *
+ * A word is two bytes and a long is four, and each of them used to go the
+ * whole way round on its own: find the area, ask the CPU what mode it is in,
+ * check the flags, then read. All of that is the same answer every time for an
+ * access that lies inside one area, which is every access a program makes
+ * except the ones that are already going wrong.
+ *
+ * What is not hoisted is the read itself. Each byte still goes through the
+ * area's own function, because for some areas reading is not a lookup but an
+ * event - the cartridge port clocks a key on the byte at the even address, and
+ * the magic memory a midivec points at does its work on the way past. Reading
+ * four bytes in one go would be quicker and would stop those being what they
+ * are.
+ *
+ * Anything that is not a plain access inside one area falls back to going a
+ * byte at a time through tos_read, so that an access running off the end of an
+ * area, or to an address with nothing at it, or from a mode that may not,
+ * stops exactly where it did before and says exactly what it did before.
+ */
+static int one_area_holds(struct _memarea *area, uint32_t address, int n)
+{
+    return area && (address - area->base) + (uint32_t)n <= area->len;
+}
+
+static unsigned int read_run(uint32_t address, int n)
+{
+    struct _memarea *area = find_memarea(address);
+    unsigned int res = 0;
+    int i;
+
+    if (one_area_holds(area, address, n))
+    {
+        uint8_t mask = is_supervisor_mode_enabled()
+                     ? (uint8_t)(MEMORY_READ | MEMORY_SUPERREAD)
+                     : (uint8_t)MEMORY_READ;
+
+        if ((area->flags & mask) != 0)
+        {
+            for (i = 0; i < n; i++)
+                res = (res << 8) | area->read(area, address + i);
+
+            return res;
+        }
+    }
+
+    for (i = 0; i < n; i++)
+        res = (res << 8) | tos_read(address + i);
+
+    return res;
+}
+
+static void write_run(uint32_t address, unsigned int value, int n)
+{
+    struct _memarea *area = find_memarea(address);
+    int i;
+
+    if (one_area_holds(area, address, n))
+    {
+        uint8_t mask = is_supervisor_mode_enabled()
+                     ? (uint8_t)(MEMORY_WRITE | MEMORY_SUPERWRITE)
+                     : (uint8_t)MEMORY_WRITE;
+
+        if ((area->flags & mask) != 0)
+        {
+            for (i = n - 1; i >= 0; i--)
+            {
+                area->write(area, address + i, (uint8_t)(value & 0xff));
+                value >>= 8;
+            }
+
+            return;
+        }
+    }
+
+    for (i = n - 1; i >= 0; i--)
+    {
+        tos_write(address + i, (uint8_t)(value & 0xff));
+        value >>= 8;
+    }
+}
+
 /* These are the read/write functions used by Musashi */
 
 unsigned int  m68k_read_disassembler_8(unsigned int address)
@@ -236,27 +319,11 @@ unsigned int  m68k_read_disassembler_8(unsigned int address)
 }
 unsigned int  m68k_read_disassembler_16(unsigned int address)
 {
-    unsigned int res = 0;
-    int i;
-    
-    for(i=0; i<2; ++i) {
-        res = res << 8;
-        res |= tos_read(address+i);
-    }
-    
-    return res;
+    return read_run(address, 2);
 }
 unsigned int  m68k_read_disassembler_32(unsigned int address)
 {
-    unsigned int res = 0;
-    int i;
-    
-    for(i=0; i<4; ++i) {
-        res = res << 8;
-        res |= tos_read(address+i);
-    }
-    
-    return res;
+    return read_run(address, 4);
 }
 
 unsigned int  m68k_read_memory_8(unsigned int address)
@@ -278,19 +345,9 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 }
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
-    int i;
-    
-    for(i=0; i<2; ++i) {
-        tos_write(address+1-i, value&0xff);
-        value = value >> 8;
-    }
+    write_run(address, value, 2);
 }
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-    int i;
-    
-    for(i=0; i<4; ++i) {
-        tos_write(address+3-i, value&0xff);
-        value = value >> 8;
-    }
+    write_run(address, value, 4);
 }
