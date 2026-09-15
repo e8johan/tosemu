@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -307,6 +307,13 @@ check: all
 	# of the reset vector - so this checks the header is there and that
 	# the three places tosemu answers this agree with each other.
 	$(TOSEMU) test-c-sysbase > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# TOS's ACIA interrupt handler, read the way the programs that care
+	# about it read it - the vector, then forward through the handler as
+	# instructions looking for the keyboard test, then calling it there.
+	# On an ordinary machine, because the handler is part of the machine
+	# rather than part of having asked for interrupts.
+	$(TOSEMU) test-c-acia > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out

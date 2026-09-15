@@ -127,11 +127,28 @@ int main(int argc, char **argv)
     {
         /*
          * The ordinary machine, which is what the rest of the suite runs on.
-         * There is nothing to check here beyond the program still being alive:
-         * reading 0xFFFA00 on a machine with no MFP in its memory map stops
-         * the emulator, so this file simply must not do it.
+         *
+         * The chips are here even so, because they were on the machine: an ST
+         * has an MFP and two ACIAs at these addresses whether or not anything
+         * intends to use them, and a program that reads one without having
+         * announced an interest in interrupts must get an answer rather than
+         * stop the emulator. That is what this half is for - reading 0xFFFA00
+         * used to be the thing this file had to avoid, and is now the thing it
+         * is checking.
          */
-        check(1, 1, "a machine with no interrupts runs a program that ignores them");
+        check(peek(MFP_VR), 0x48, "the MFP is there on an ordinary machine too");
+        check(peek(ACIA_MIDI_STATUS) & 0x02, 0x02,
+              "and so is the MIDI ACIA, ready to be sent to");
+
+        /*
+         * And nothing is running behind them. Timer C is the one TOS leaves
+         * going, so its channel being disabled is what says this machine has
+         * the chips without the clock - which is the whole difference between
+         * the two halves of this test.
+         */
+        check((peek(MFP_IERB) >> TIMER_C_CHANNEL) & 1, 0,
+              "but nothing is enabled, there being no clock behind them");
+
         printf("1..%d\n", n);
         return fails;
     }
