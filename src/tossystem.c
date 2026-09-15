@@ -139,6 +139,18 @@ struct exec_header {
 #define BIOSRAMBASE (0xFC0000)
 #define BIOSRAMSIZE (0x10000)
 
+/*
+ * How much of the top of it is kept for devices rather than for memory.
+ *
+ * What bios_device_alloc hands out becomes a memory area of its own, and an
+ * area of its own is what it cannot be while it stands inside the plain block
+ * registered over the rest of this - two areas over one address, and which
+ * answers decided by the order they were added in. Keeping them apart is what
+ * lets the machine's map have no overlaps in it at all, which is what
+ * find_memarea's remembered area needs to be sound.
+ */
+#define BIOSRAM_DEVICE_SIZE (0x400)
+
 /* The most RAM the machine can have, which is where the cartridge range
  * begins: nothing above that address was RAM on any of these machines, so it
  * is the first byte a machine of the largest possible size does not have. */
@@ -285,6 +297,9 @@ static uint32_t machine_ram(void)
 #define ACCESSORY_STACK (1024)
 
 static uint32_t biosram_free;
+
+/* And where the device end of it has got to - see bios_device_alloc */
+static uint32_t biosdevice_free;
 
 /*
  * The programs still to be run in this machine, and where the next one goes.
@@ -532,15 +547,32 @@ uint32_t tos_screen_size(void)
 uint32_t bios_static_alloc(uint32_t len)
 {
     uint32_t address = biosram_free;
+    uint32_t room = BIOSRAMSIZE - BIOSRAM_DEVICE_SIZE;
 
     /* Keep every block even, a structure handed to a 68000 may be read as a
      * word or a long */
     len = (len + 1) & ~1u;
 
-    if (len > BIOSRAMSIZE || address - BIOSRAMBASE > BIOSRAMSIZE - len)
+    if (len > room || address - BIOSRAMBASE > room - len)
         return 0;
 
     biosram_free += len;
+
+    return address;
+}
+
+uint32_t bios_device_alloc(uint32_t len)
+{
+    uint32_t address = biosdevice_free;
+
+    len = (len + 1) & ~1u;
+
+    if (len > BIOSRAM_DEVICE_SIZE
+        || address - (BIOSRAMBASE + BIOSRAMSIZE - BIOSRAM_DEVICE_SIZE)
+           > BIOSRAM_DEVICE_SIZE - len)
+        return 0;
+
+    biosdevice_free += len;
 
     return address;
 }
@@ -840,6 +872,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     /* RAM for the structures the system hands out pointers to */
     te->biosram = calloc(1, BIOSRAMSIZE);
     biosram_free = BIOSRAMBASE;
+    biosdevice_free = BIOSRAMBASE + BIOSRAMSIZE - BIOSRAM_DEVICE_SIZE;
 
     /* And the machine's own stack, taken first so that it is always there:
      * everything else this hands out is asked for while a program runs, and a
@@ -1016,7 +1049,10 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, screen_area, te->screenmem);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
-    add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE, BIOSRAMSIZE, te->biosram);
+    /* Short of the top by what the devices have, so that nothing registered
+     * there is standing inside this */
+    add_ptr_memory_area("biosram", MEMORY_READWRITE, BIOSRAMBASE,
+                        BIOSRAMSIZE - BIOSRAM_DEVICE_SIZE, te->biosram);
 
     /*
      * Somewhere for every exception vector to point.

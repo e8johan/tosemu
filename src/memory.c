@@ -56,6 +56,10 @@ static struct _memarea *head = 0;
  */
 static struct _memarea *last_found;
 
+/* Whether any two areas cover the same address, which nothing does and which
+ * the remembering above cannot survive - see add_fnct_memory_area */
+static int overlapping;
+
 /* Support functions */
 static uint8_t ptr_read(struct _memarea *area, uint32_t address)
 {
@@ -75,9 +79,32 @@ int add_ptr_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, 
 int add_fnct_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len, void *ptr, uint8_t (*read)(struct _memarea*, uint32_t), void (*write)(struct _memarea*, uint32_t, uint8_t))
 {
     struct _memarea *area;
-    
-    /* TODO ensure that we do not have memory area collisions */
-    
+
+    /*
+     * Two areas over one address used to be a thing that worked: the list is
+     * searched newest first, so the later one answered and the earlier one was
+     * simply never reached there. find_memarea remembering the last area it
+     * found takes that away - it answers from whichever of the two it happened
+     * to see last, which for code running inside the older area is the older
+     * area, and the newer one silently stops existing.
+     *
+     * Nothing overlaps anything now, and this is here so that it stays true.
+     * It says so and gives up the remembering rather than going quietly wrong,
+     * because the cost of the walk is a slower emulator and the cost of the
+     * other thing is a device that is there except when it is not.
+     */
+    for (area = head; area; area = area->next)
+    {
+        if (base < area->base + area->len && area->base < base + len)
+        {
+            printf("Memory area at 0x%x for 0x%x bytes overlaps the one at "
+                   "0x%x; reading the same address can now reach either.\n",
+                   base, len, area->base);
+            overlapping = 1;
+            break;
+        }
+    }
+
     area = malloc(sizeof(struct _memarea));
     if (!area) {
         printf("Failed to allocate memory area for 0x%x\n", base);
@@ -135,7 +162,8 @@ struct _memarea *find_memarea(uint32_t address)
 {
     struct _memarea *area = last_found;
 
-    if (area && address >= area->base && address < area->base + area->len)
+    if (!overlapping
+        && area && address >= area->base && address < area->base + area->len)
         return area;
 
     area = head;

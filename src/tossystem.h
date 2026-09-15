@@ -200,6 +200,24 @@ void run_tos_environment(struct tos_environment *te);
 uint32_t bios_static_alloc(uint32_t len);
 
 /*
+ * The same, for a block that is going to be a device rather than memory.
+ *
+ * Some of what the system hands out is not storage but behaviour: two bytes
+ * that read as an RTS and take a byte of MIDI on the way past, an interrupt
+ * handler whose instructions are real but whose working parts are the host's.
+ * Those are registered as memory areas of their own, and an area of their own
+ * is exactly what they cannot be if they are standing inside the plain block
+ * the rest of this hands out - two areas over the same address, with which one
+ * answers decided by the order they went up in.
+ *
+ * So they come from the other end of the same RAM, out of a region the plain
+ * area does not cover, and nothing in the machine's map overlaps anything
+ * else. Returns an address in the emulated machine, or 0 when the region is
+ * exhausted; there is no matching free.
+ */
+uint32_t bios_device_alloc(uint32_t len);
+
+/*
  * Where the screen is in the machine, and how many bytes of it there are.
  *
  * This is what Physbase and Logbase answer with. Nothing is shown there - what
