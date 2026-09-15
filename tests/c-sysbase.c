@@ -33,10 +33,15 @@
  * confidently. Every check below would pass on a machine that answered
  * rubbish, except that they are checks on what the rubbish would have been.
  *
- * And the last of them is the one worth having. tosemu answers this question
- * in three places and they have to agree, because a program is entitled to ask
- * any of them: a machine whose GEMDOS shipped with one TOS and whose header
- * claims another is not an old TOS, it is not any TOS.
+ * And the last of them is the one worth having, though not for the reason it
+ * first looks. tosemu answers this question in three places and they do not
+ * agree: the header says 3.06 and GEMDOS answers the version it always
+ * answered. That is deliberate and it is pinned here so that it stays
+ * deliberate - each of the three says what the layer under it implements,
+ * which is what a program asking any one of them is really asking. Making
+ * them agree by raising the others would have the AES claim calls that are
+ * named and not written, and a program that believed it and called one would
+ * stop the emulator. See TOS_VERSION in tossystem.c.
  */
 
 #include <stdio.h>
@@ -45,13 +50,16 @@
 #define SYSBASE (0x4F2L)
 
 /*
- * The version this machine claims, and the GEMDOS that came with it.
+ * What the header says, and what GEMDOS says, which are answers about two
+ * different things and are not the same number.
  *
- * 0x1500 is the GEMDOS that shipped in TOS 1.04 - the pairing is a fact about
- * the machines rather than a choice made here, which is what makes it worth
- * asserting. Change the one in tossystem.c and this says so.
+ * 3.06 in the header because that is the oldest TOS whose startup MROS can
+ * take - below 3.00 it goes looking for Atari's own ROM code to patch, which
+ * is not here. 0x1500 out of Sversion because that is the GEMDOS this has,
+ * and saying otherwise would be a claim about which calls exist rather than a
+ * label.
  */
-#define WANT_TOS    (0x0104)
+#define WANT_TOS    (0x0306)
 #define WANT_GEMDOS (0x1500L)
 
 static int n;
@@ -123,9 +131,13 @@ int main(int argc, char **argv)
      * program in a machine is loaded */
     check(end, 0x800L, "and where what the system keeps ends");
 
-    /* The one that catches the machine disagreeing with itself */
+    /*
+     * And GEMDOS still answering for itself. Not the version that shipped with
+     * the TOS the header names, on purpose: what this catches is somebody
+     * making the two agree without building what agreeing would claim.
+     */
     check(Sversion(), WANT_GEMDOS,
-          "and GEMDOS is the one that came with that TOS");
+          "and GEMDOS answers for what GEMDOS is, not for the header");
 
     printf("1..%d\n", n);
 

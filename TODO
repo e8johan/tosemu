@@ -559,11 +559,19 @@
   rather than a byte the machine can point at. The reset handler, the GEM
   memory usage block and the GEMDOS pool are not oversights: there are none,
   and an address for them would be a pointer somebody follows.
-- Which TOS the machine claims to be is fixed at 1.04 rather than being a
-  setting, and it is a number programs branch on rather than only display.
-  MROS takes an entirely different path through its own startup at 3.00 and
-  above - the one below it goes looking for TOS's code in the ROM to copy and
-  patch, which is not something this machine can ever satisfy. What stops it
-  being a setting today is that the version would have to move together with
-  what Sversion and the AES answer, which is three numbers in three files that
-  currently agree by having been written down three times.
+- Which TOS the machine claims to be is fixed at 3.06 rather than being a
+  setting, and it is a number programs branch on rather than only display. It
+  is 3.06 because MROS takes an entirely different path below 3.00 - looking
+  for TOS's own code in the ROM to copy and patch, which this machine cannot
+  satisfy - and nothing else has yet wanted a different answer. A program
+  written for an older TOS that refuses to run on a newer one would want one,
+  and then this becomes a setting.
+- The three places tosemu says what version it is do not agree, deliberately:
+  the header says TOS 3.06, Sversion answers the GEMDOS it always answered,
+  and the AES reports 1.4. Each says what the layer under it implements, which
+  is what a program asking one of them is asking. Making them agree upwards is
+  not a matter of changing the numbers - appl_getinfo, appl_search and
+  menu_popup are named and not written, and an application told it was talking
+  to an AES 3.4 is entitled to call one, which stops the emulator. What would
+  close it is writing them, and then the AES's number goes up because it has
+  earned it.
