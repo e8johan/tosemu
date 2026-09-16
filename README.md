@@ -919,6 +919,13 @@ Nothing is plugged in by default, and an empty port is not the same as no port:
 with nothing asked for, the cartridge range is not mapped at all and a program
 that reads it stops the emulator the way any other unmapped address does.
 
+Plugging the key in also gives the machine a clock, the same as naming a MIDI
+port does and for the same reason: there is one key and it belongs to a
+sequencer. MROS, the MIDI kernel Cubase loads, puts its own handler on Timer B
+and runs it at a kilohertz, and everything Cubase does about time is counted
+there - so on a machine that never interrupts it opens its windows and its
+menus and can never play a note. See *A machine* below for what that turns on.
+
 The key is an Altera 5C060, which is a sixteen bit state machine clocked by
 every access to the port. Address bit 8 is the question and data bit 8 is the
 answer, so what a program gets back depends on every question it has asked
@@ -945,7 +952,10 @@ one that will be programming timers and hanging handlers off them. The timers
 run against the host's clock, the system timer comes up set to two hundred hertz
 the way TOS left it, and the counter at `0x4BA` counts.
 
-`[machine] interrupts = yes` turns that on without a MIDI port, which is how the
+So does plugging in the key from the cartridge port, for the same reason from
+the other end - see *The key in the cartridge port* above.
+
+`[machine] interrupts = yes` turns that on without either, which is how the
 test suite reaches any of it.
 
 It is off otherwise, and that is deliberate rather than cautious: it changes
@@ -966,12 +976,18 @@ watching a stream of notes reads directly. A program that replaces `midivec` is
 called instead, and one that chains to what was there finds a real routine
 rather than address nought.
 
-**What has not been tried is real hardware or a real sequencer.** Everything
-above is checked by the test suite, and the sequencer path was watched end to
-end against an ALSA port - note on, a complete six-byte system exclusive, note
-off, all arriving intact. But that was ALSA's own loopback rather than an
-interface with a cable in it, and no period sequencer has been put through any
-of it. See `MIDI.md` on the `midi` branch for what would want checking first.
+A period sequencer does run on it. Cubase 3.01 starts - with MROS loaded by
+`--resident` and the key in the port - reaches its event loop with a window and
+a menu bar, and MROS's own handler on Timer B is called at the kilohertz it
+asked for: 997.4 a second against 999.0 programmed, over a minute, with the
+shortfall in the first seconds rather than accumulating.
+
+**What has not been tried is real hardware, or playing anything.** Nothing has
+been loaded into Cubase and no note has been asked of it, so the path from its
+handler out through the port has never been walked by the program it was built
+for. And the sequencer backend was only ever watched through ALSA's own
+loopback, which is not an interface with a cable in it. See `MIDI.md` on the
+`midi` branch for what would want checking first.
 
 What the machine says it is
 ==========================
