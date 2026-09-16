@@ -300,7 +300,18 @@ check: all
 	# and that a word read moves the key on once - so it is the half that
 	# bin/dongletest cannot see. Must be the only thing that has read the
 	# port, there being no way to reset a key from inside the machine.
+	#
+	# Note that this one is no longer the quiet machine the rest of the
+	# suite runs on: the key turns the clock on, which is the next check.
 	$(TOSEMU) --dongle cubase test-c-dongle > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# And that it does. The key belongs to a sequencer and a sequencer wants
+	# a clock, so plugging one in gives the machine one - the same as naming
+	# a MIDI port does, and for the same reason. Asked with c-mfp's own
+	# question about an interrupting machine, on a command line that has
+	# already said no to interrupts and no to MIDI - so the key is the only
+	# thing left that could have started one.
+	$(TOSEMU) --dongle cubase test-c-mfp on > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# What the machine says it is. _sysbase left at nought does not fail
 	# loudly - a program follows the null pointer and reads a version out

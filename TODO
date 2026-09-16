@@ -57,18 +57,36 @@
   the system owns. The area is left mapped because a program reading 0x600 is
   cheaper to allow than to explain, but it is five hundred and twelve bytes of
   nothing and the machine would be no different without it.
-- No period sequencer has been run, and that is the whole point of the MIDI
-  work rather than a loose end from it. Cubase, Notator and Dr. T's are what
-  the MFP and the ACIAs were emulated for; what has been watched working is
-  tests, and a note on, a system exclusive and a note off going out through
-  ALSA. Those prove the path exists. They do not prove that a program which
-  reprograms the timers on the fly, hooks several channels at once and expects
-  the machine to keep up will run at all.
+- No period sequencer has been made to play anything, which is the whole point
+  of the MIDI work rather than a loose end from it.
+
+  One now runs. Cubase 3.01 starts - with MROS loaded by --resident and the key
+  in the cartridge port - reaches its event loop with a window and a menu bar,
+  and MROS puts its own handler on Timer B at a kilohertz and is called there:
+  997.4 delivered against the 999.0 it asked for, over a minute, with the
+  shortfall all in the first seconds rather than accumulating. That answers the
+  question this entry used to ask, which was whether a program that programs
+  the chip itself and clocks everything off its own handler would run at all.
+
+  What it does not answer is whether it plays. Nothing has been loaded into it,
+  nothing has been started, and no note has been asked for - so the path from
+  its handler through Midiws and the ACIA to a port has never been exercised by
+  the program it was built for. That is the next thing to do, and it wants a
+  person driving the GUI rather than a test.
 
   Nor has any of it been tried against real hardware. The sequencer backend was
   watched through ALSA's own loopback, which is not an interface with a cable
   in it, and the raw backend - the one meant for the USB device somebody
   actually plugs in - has never been opened against a device that exists.
+- There is no way to say no to interrupts once something has implied them. A
+  MIDI port turns them on and so does the key in the cartridge port, and each
+  of those is an or against the setting rather than a default the setting can
+  overrule - so interrupts = no on a command line that also names a port is
+  simply not heard. Nobody has wanted to yet, and the suite depends on the
+  present behaviour: c-midi sends bytes on a line that says no to interrupts,
+  and they only go out because the port overrode it. What would close it is
+  three states rather than two - asked for, refused, and not mentioned - with
+  the implications filling in only the third.
 - The vertical blank keeps its counters and interrupts nobody. _vbclock and
   _frclock advance fifty times a second, so a program that measures time by
   them is right, but the vector at 0x70 is never taken and neither is anything
@@ -535,21 +553,6 @@
   same reason: nothing distinguishes a read that is about to execute from one
   that is only looking. It means a program using a key cannot be traced at the
   instruction level, which is the level at which one would want to trace it.
-- MROS reads TOS's ACIA interrupt handler as code and looks through it for the
-  instruction that tests the keyboard ACIA - tst.b 0xfffc00, or the same test
-  through a register - so that it can splice itself into the middle of it. It
-  walks the XBRA chain back from the vector at 0x118 first, then scans forward
-  word by word from whatever it ends up at.
-
-  There is nothing for it to find. tosemu's ACIA handling is host C and the
-  vector holds a two byte RTE, so the scan runs forward through whatever
-  happens to be mapped after it and off the end. This is the next thing in
-  Cubase's way now that the key answers, and it is the first case of a program
-  wanting TOS to be 68000 code rather than wanting it to behave a certain way.
-  What would close it is a handler in the machine's own memory that is what it
-  claims to be: an ACIA interrupt handler with that instruction in it, doing
-  what acia_arrived does around it.
-
 - The operating system header answers three of its fields and leaves the rest
   at nought. os_run is the one worth filling next: it points at the pointer to
   the running basepage, which is how a resident program finds out whose memory

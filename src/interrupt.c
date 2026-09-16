@@ -29,6 +29,7 @@
 #include "mfp.h"
 #include "acia.h"
 #include "midi.h"
+#include "dongle.h"
 #include "memory.h"
 #include "settings.h"
 #include "tossystem.h"
@@ -131,8 +132,19 @@ int interrupt_wanted(void)
          * given something to play notes at is a program that will be setting
          * timers going and hanging handlers off them, and it has to be started
          * on a machine where that works.
+         *
+         * And implied by the key in the cartridge port, which is the same
+         * argument from the other end. There is one key and it belongs to a
+         * sequencer: a machine somebody has plugged it into is a machine that
+         * is about to be asked for a clock. MROS hangs its own handler on
+         * Timer B and clocks the whole of Cubase off it, so without one it
+         * reaches its windows and its menus and can never play a note - and
+         * what the machine said about it was a line telling whoever started it
+         * to start it again with interrupts, which is no answer when the thing
+         * that needs them is the thing on the command line.
          */
-        wanted = setting_flag("TOSEMU_INTERRUPTS") || midi_asked_for();
+        wanted = setting_flag("TOSEMU_INTERRUPTS") || midi_asked_for()
+                 || dongle_wanted();
     }
 
     return wanted;
