@@ -247,7 +247,9 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
          * So nothing the compositor said was ever read for such a program. Its
          * keyboard and its mouse arrive on that socket and sat there unread,
          * and what a person got was a window that drew and answered nothing
-         * anybody did to it.
+         * anybody did to it. It is also where the compositor asks for the next
+         * picture, so since window_ready a program that polls would not have
+         * drawn either.
          *
          * This is the same catching up gfx_mouse_now does for the polls that
          * go through graf_mkstate, and it is here rather than there because

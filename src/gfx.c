@@ -248,6 +248,15 @@ struct window {
     struct wl_callback *settling;
     int16_t was_sw, was_sh;
 
+    /*
+     * The frame the compositor has been given and has not yet asked to
+     * replace, and whether there is a newer picture waiting for it to ask.
+     *
+     * See window_ready, which is where both are answered.
+     */
+    struct wl_callback *pacing;
+    int owed;
+
     /* Whether a drag is running on it, which is what makes the window show the
      * outline of the size being chosen rather than what it is showing */
     int dragging;
@@ -3229,6 +3238,8 @@ static void window_destroy(struct window *win)
      * listener holding a pointer to it */
     if (win->settling)
         wl_callback_destroy(win->settling);
+    if (win->pacing)
+        wl_callback_destroy(win->pacing);
 
     if (win->pixels)
         munmap(win->pixels, win->bytes);
@@ -4488,6 +4499,65 @@ static void window_outline(struct window *win)
     }
 }
 
+/*
+ * The compositor saying it is ready for the next picture.
+ *
+ * How often a picture was drawn used to be decided by the application, because
+ * every wait presents and an application is in a wait whenever it is not
+ * drawing. For the ordinary sort of program that is a few times a second and
+ * costs nothing worth measuring. A program that polls is a different thing
+ * entirely: Cubase asks evnt_multi what has happened and takes the answer
+ * rather than waiting for one - a sequencer has a clock to keep and cannot
+ * afford to sleep - so it came back round to the wait as fast as the wait
+ * would let it, and the wait drew the screen every time.
+ *
+ * A screen here is as large as the desktop it is shown on, and every pixel of
+ * one is gathered a plane at a time and looked up in the palette. On this
+ * machine that is seven milliseconds of work, so the emulator spent
+ * ninety-seven per cent of itself redrawing a picture that had not changed and
+ * the 68000 it was drawing for got the rest. The application ran at a fortieth
+ * of its speed, which from the outside is a program that has stopped.
+ *
+ * So the compositor decides instead. It is asked for a frame with every commit
+ * and answers when it wants the next one, which on a screen refreshing sixty
+ * times a second is sixty times a second, and on a window nobody can see -
+ * minimised, or behind something, or on another desk - is not at all. A
+ * present that arrives before the answer leaves a note that one is owed, and
+ * this is what acts on the note: what goes out is the picture as it is when
+ * the compositor asks, and everything drawn between one frame and the next is
+ * skipped, which is what missing a frame has always meant.
+ */
+static void window_ready(void *data, struct wl_callback *callback,
+                         uint32_t stamp)
+{
+    struct window *win = data;
+
+    (void)stamp;
+
+    if (win->pacing == callback)
+        win->pacing = 0;
+
+    wl_callback_destroy(callback);
+
+    if (win->pacing || !win->owed)
+        return;
+
+    window_present(win);
+
+    /*
+     * And out, which nothing else here will do. This runs from inside
+     * wl_display_dispatch, which flushed before it read and will not flush
+     * again - so a picture presented here would sit in the library's buffer
+     * until something else happened to send it, and on an application that is
+     * only polling there may not be anything else for a while.
+     */
+    wl_display_flush(w.display);
+}
+
+static const struct wl_callback_listener ready_listener = {
+    window_ready
+};
+
 static void window_present(struct window *win)
 {
     if (!win->used || !win->configured || !win->pixels)
@@ -4499,10 +4569,25 @@ static void window_present(struct window *win)
     if (win->closed)
         return;
 
+    /* The compositor still has the last picture and has not asked for
+     * another, so this one waits for it to - see window_ready */
+    if (win->pacing)
+    {
+        win->owed = 1;
+        return;
+    }
+
     if (win->dragging)
         window_outline(win);
     else
         window_picture(win);
+
+    win->owed = 0;
+
+    /* Asked for before the commit it is asked about, which is what makes it a
+     * frame callback rather than a sync */
+    win->pacing = wl_surface_frame(win->surface);
+    wl_callback_add_listener(win->pacing, &ready_listener, win);
 
     wl_surface_attach(win->surface, win->buffer, 0, 0);
     wl_surface_damage_buffer(win->surface, 0, 0, win->width, win->height);

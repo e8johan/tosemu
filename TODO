@@ -253,6 +253,24 @@
   somebody asked for. A screen the size of the display, which is what
   TOSEMU_SCREEN=native-mono is for, makes them the same thing.
 
+- Showing the screen means converting the whole of it. A present gathers every
+  pixel of the surface a plane at a time and looks each one up in the palette,
+  and nothing anywhere says which part of it changed - so a screen the size of
+  the display, which is what native-color gives, is five million pixels and
+  about seven milliseconds of work. Since window_ready that happens at the rate
+  the display refreshes rather than at the rate the application asks for a
+  wait, which is what made Cubase usable at all, but sixty of those a second is
+  still something like four tenths of the emulator spent drawing a picture that
+  is nearly always the one already showing.
+
+  Two things would close it and neither needs the other. One is knowing that
+  nothing was drawn, which nothing here can say: the VDI writes plane memory
+  directly, so there is no single place a change passes through, and comparing
+  the planes against a copy is two and a half megabytes of reading to save
+  seven milliseconds of work. The other is converting faster - four plane words
+  hold sixteen pixels, and taking them that way rather than gathering each
+  pixel from four places is how every emulator of this machine does it.
+
 - Nothing in make check reaches the parts of a window's frame that ask the
   desktop for something: dragging it by the title bar, pulling the size box,
   and the window menu on the other button. All three want the serial of an
