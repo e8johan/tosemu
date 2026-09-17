@@ -162,6 +162,16 @@ uint32_t emuvdi_palette_argb(int index);
 void *host_vdi_alloc(long size);
 void host_vdi_free(void *block);
 
+/*
+ * Where the surface being drawn on was drawn in, so that showing it can
+ * convert that much of it rather than all of it.
+ *
+ * A rectangle larger than the surface means the whole of it, which is what
+ * anything that cannot say where it drew says. See surface_damage, which is
+ * where it lands, and emuvdi_call, which decides what to say.
+ */
+void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h);
+
 /* How large the screen the AES lays windows out on is */
 int16_t emuvdi_screen_width();
 int16_t emuvdi_screen_height();

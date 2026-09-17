@@ -250,12 +250,40 @@ struct window {
 
     /*
      * The frame the compositor has been given and has not yet asked to
-     * replace, and whether there is a newer picture waiting for it to ask.
+     * replace, and what has been drawn in since this window last showed
+     * anything - one rectangle of the surface it shows, in that surface's own
+     * pixels, empty when ow is nought.
      *
-     * See window_ready, which is where both are answered.
+     * See window_ready, which is where the frame is answered, and
+     * window_present, which is what owes the drawing.
      */
     struct wl_callback *pacing;
-    int owed;
+    int16_t ox, oy, ow, oh;
+
+    /*
+     * And what the picture in the buffer is of.
+     *
+     * While all of this is still true of the window, the buffer holds a
+     * picture of the right thing and only what has been drawn in since needs
+     * doing again. When any of it stops being true - a window showing a
+     * different part of the screen, or at a different size, or a buffer that
+     * is not the one drawn into - the buffer is a picture of something else
+     * and the whole of it has to be made again.
+     *
+     * Asked as a comparison rather than kept as a flag somebody has to
+     * remember to set. There are a dozen places that move a window or resize
+     * it, and the cost of forgetting one of them is a window that shows what
+     * it used to.
+     */
+    struct {
+        struct surface *shows;
+        int16_t sx, sy, sw, sh;
+        int scale, width, height, dragging;
+    } drew;
+
+    /* Except for the two that a comparison cannot see: a frame redrawn into
+     * the same surface, and a buffer remade at the same size */
+    int refresh;
 
     /* Whether a drag is running on it, which is what makes the window show the
      * outline of the size being chosen rather than what it is showing */
@@ -2017,6 +2045,17 @@ static void window_frame_paint(struct window *win)
     if (!win->frame)
         return;
 
+    /*
+     * The same frame surface with something else in it, which is a picture of
+     * the same window at the same size showing the same part of the screen -
+     * so nothing window_present compares can tell it changed, and without this
+     * the bar would go on showing whichever name or shade it was last drawn
+     * with. It is set here rather than in window_frame_make because two of the
+     * three ways a frame is drawn again do not go through that: a window
+     * becoming the one in front, and one being given a new title.
+     */
+    win->refresh = 1;
+
     if (win->frame_w)
         host_frame_handle(win->frame, win->frame_w, win->sh, win->active);
     else
@@ -2036,6 +2075,11 @@ static void window_frame_paint(struct window *win)
 static void window_frame_make(struct window *win)
 {
     int16_t wide, tall;
+
+    /* Whether or not one is made below, the one that was there has gone and
+     * the buffer is showing it - window_frame_paint says the same for a frame
+     * that is redrawn rather than remade */
+    win->refresh = 1;
 
     if (win->frame)
     {
@@ -2861,6 +2905,10 @@ static int window_rebuffer(struct window *win, int width, int height,
         win->bytes = held;
         return 0;
     }
+
+    /* A new buffer holds nothing, and at the same size as the old one that is
+     * something no comparison in window_present can see */
+    win->refresh = 1;
 
     window_present(win);
 
@@ -4596,7 +4644,7 @@ static void window_ready(void *data, struct wl_callback *callback,
 
     wl_callback_destroy(callback);
 
-    if (win->pacing || !win->owed)
+    if (win->pacing)
         return;
 
     window_present(win);
@@ -4615,8 +4663,41 @@ static const struct wl_callback_listener ready_listener = {
     window_ready
 };
 
+/* Whether the buffer still holds a picture of what this window is showing,
+ * and of nothing else - see the drew member, which says why it is asked */
+static int window_holds_its_picture(const struct window *win)
+{
+    return !win->refresh
+        && win->drew.shows == win->shows
+        && win->drew.sx == win->sx && win->drew.sy == win->sy
+        && win->drew.sw == win->sw && win->drew.sh == win->sh
+        && win->drew.scale == win->scale
+        && win->drew.width == win->width
+        && win->drew.height == win->height
+        && win->drew.dragging == win->dragging;
+}
+
+static void window_remember(struct window *win)
+{
+    win->refresh = 0;
+    win->drew.shows = win->shows;
+    win->drew.sx = win->sx;
+    win->drew.sy = win->sy;
+    win->drew.sw = win->sw;
+    win->drew.sh = win->sh;
+    win->drew.scale = win->scale;
+    win->drew.width = win->width;
+    win->drew.height = win->height;
+    win->drew.dragging = win->dragging;
+}
+
 static void window_present(struct window *win)
 {
+    /* What of the buffer is new, for telling the compositor how much of it to
+     * take - in the buffer's own pixels */
+    int left = 0, top = 0, wide, tall;
+    int whole;
+
     if (!win->used || !win->configured || !win->pixels)
         return;
 
@@ -4627,19 +4708,84 @@ static void window_present(struct window *win)
         return;
 
     /* The compositor still has the last picture and has not asked for
-     * another, so this one waits for it to - see window_ready */
+     * another, so this one waits for it to - see window_ready. What is owed
+     * stays owed, and anything drawn while it waits joins it. */
     if (win->pacing)
+        return;
+
+    whole = !window_holds_its_picture(win);
+    wide = win->width;
+    tall = win->height;
+
+    if (whole)
     {
-        win->owed = 1;
+        if (win->dragging)
+            window_outline(win);
+        else
+            window_picture(win);
+    }
+    else if (win->dragging)
+    {
+        /*
+         * What a window being dragged shows is an outline of the size being
+         * chosen, and nothing drawn on the screen behind it changes that. The
+         * debt is dropped rather than kept: when the drag ends the window goes
+         * back to showing a picture, and that is a whole one.
+         */
+        win->ow = 0;
+        win->oh = 0;
+
+        return;
+    }
+    else if (win->ow)
+    {
+        /*
+         * Only what was drawn in. The rectangle is in the screen's pixels and
+         * says where on the screen something happened; what this window shows
+         * of it is what it has room for, and where that lands in the buffer is
+         * under the frame and scaled up like everything else.
+         */
+        int16_t x = win->ox, y = win->oy;
+        int16_t x2 = (int16_t)(win->ox + win->ow);
+        int16_t y2 = (int16_t)(win->oy + win->oh);
+
+        if (x < win->sx)
+            x = win->sx;
+        if (y < win->sy)
+            y = win->sy;
+        if (x2 > win->sx + win->sw)
+            x2 = (int16_t)(win->sx + win->sw);
+        if (y2 > win->sy + win->sh)
+            y2 = (int16_t)(win->sy + win->sh);
+
+        if (x >= x2 || y >= y2)
+        {
+            /* It happened somewhere this window is not showing */
+            win->ow = 0;
+            win->oh = 0;
+            return;
+        }
+
+        left = (x - win->sx) * win->scale;
+        top = win->frame_h * win->scale + (y - win->sy) * win->scale;
+        wide = (x2 - x) * win->scale;
+        tall = (y2 - y) * win->scale;
+
+        colours_settle();
+        window_magnify(win, win->shows, x, y, (int16_t)(x2 - x),
+                       (int16_t)(y2 - y), left, top);
+    }
+    else
+    {
+        /* Nothing has been drawn since the last picture went out, so there is
+         * nothing to show and no frame to ask for. The next thing drawn
+         * presents at once, this window owing the compositor nothing. */
         return;
     }
 
-    if (win->dragging)
-        window_outline(win);
-    else
-        window_picture(win);
-
-    win->owed = 0;
+    win->ow = 0;
+    win->oh = 0;
+    window_remember(win);
 
     /* Asked for before the commit it is asked about, which is what makes it a
      * frame callback rather than a sync */
@@ -4647,8 +4793,80 @@ static void window_present(struct window *win)
     wl_callback_add_listener(win->pacing, &ready_listener, win);
 
     wl_surface_attach(win->surface, win->buffer, 0, 0);
-    wl_surface_damage_buffer(win->surface, 0, 0, win->width, win->height);
+    wl_surface_damage_buffer(win->surface, left, top, wide, tall);
     wl_surface_commit(win->surface);
+}
+
+/* One rectangle round what this window was already owed and what has just been
+ * drawn, both in the pixels of the surface it shows */
+static void window_owe(struct window *win, int16_t x, int16_t y,
+                       int16_t w, int16_t h)
+{
+    int16_t x2 = (int16_t)(x + w), y2 = (int16_t)(y + h);
+
+    if (win->ow == 0)
+    {
+        win->ox = x;
+        win->oy = y;
+        win->ow = w;
+        win->oh = h;
+
+        return;
+    }
+
+    if (x < win->ox)
+    {
+        win->ow = (int16_t)(win->ow + (win->ox - x));
+        win->ox = x;
+    }
+    if (y < win->oy)
+    {
+        win->oh = (int16_t)(win->oh + (win->oy - y));
+        win->oy = y;
+    }
+    if (x2 > win->ox + win->ow)
+        win->ow = (int16_t)(x2 - win->ox);
+    if (y2 > win->oy + win->oh)
+        win->oh = (int16_t)(y2 - win->oy);
+}
+
+/*
+ * What has been drawn since the last time round, owed to every window that
+ * shows any of it.
+ *
+ * The damage belongs to the surface and is taken from it once, because taking
+ * it is what forgets it - so a screen shown in three windows would otherwise
+ * be redrawn in whichever of them asked first and left stale in the other two.
+ * Each window then owes what it was given until the compositor lets it show
+ * something, which is why the debt is kept per window rather than here.
+ */
+static void take_what_was_drawn(void)
+{
+    int i, j;
+
+    for (i = 0; i < WINDOWS; i++)
+    {
+        struct surface *shows = w.windows[i].shows;
+        int16_t x, y, wide, tall;
+
+        if (!w.windows[i].used || !shows)
+            continue;
+
+        /* Already taken for an earlier window showing the same surface */
+        for (j = 0; j < i; j++)
+            if (w.windows[j].used && w.windows[j].shows == shows)
+                break;
+
+        if (j < i)
+            continue;
+
+        if (!surface_damage_take(shows, &x, &y, &wide, &tall))
+            continue;
+
+        for (j = 0; j < WINDOWS; j++)
+            if (w.windows[j].used && w.windows[j].shows == shows)
+                window_owe(&w.windows[j], x, y, wide, tall);
+    }
 }
 
 void gfx_present()
@@ -4684,6 +4902,8 @@ void gfx_present()
             gfx_menu_open(again.shows, again.sx, again.sy, again.sw, again.sh);
         }
     }
+
+    take_what_was_drawn();
 
     for (i = 0; i < WINDOWS; i++)
         window_present(&w.windows[i]);

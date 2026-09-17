@@ -253,24 +253,22 @@
   somebody asked for. A screen the size of the display, which is what
   TOSEMU_SCREEN=native-mono is for, makes them the same thing.
 
-- Showing a window means converting the whole of what it shows, every frame,
-  whether or not any of it changed. Nothing anywhere says which part did: the
-  VDI writes plane memory directly, so there is no single place a change passes
-  through, and the only way to find out afterwards is to compare the planes
-  against a copy - which for a screen the size of a display is two and a half
-  megabytes of reading to save a couple of milliseconds of work.
+- What a surface owes is one rectangle round everything drawn in it, so two
+  changes at opposite corners of a screen come out as the screen. A list of
+  them would convert what actually changed; one rectangle is what fits in the
+  surface without anything to allocate or free, and what suits the way GEM
+  draws, which is a rectangle at a time with the clipping set to it. Nothing
+  has wanted better yet. Whoever does it wants to carry a handful of
+  rectangles, merge the two nearest when they run out, and hand the list to
+  wl_surface_damage_buffer as it stands rather than one box round the lot.
 
-  What is left of the cost after surface_row is about a fifth of the emulator
-  on a window of six hundred by three hundred, which is what Cubase opens. A
-  window showing the whole of a large screen would be several times that, and
-  it is a fifth of the emulator whatever the picture is doing.
-
-  Two things would close it and neither needs the other. Damage from the AES,
-  which knows the rectangle it just drew into and throws it away, would say
-  which part of a window to convert rather than all of it. And the compositor
-  will take a buffer of the machine's own pixels if it is asked in a format it
-  knows - which for four planes it is not, so that means finding out what it
-  does know and whether anything can hold pens without converting them first.
+- The compositor will take a buffer of the machine's own pixels if it is asked
+  in a format it knows, and then there would be no converting to do at all.
+  Four planes is not one of them, so that means finding out what it does know
+  and whether anything can hold pens without turning them into colours first -
+  and a palette that the machine changes under it would still have to go
+  somewhere. It is a larger piece of work than the two that came before it and
+  it is the one that would finish the job.
 
 - m68kmake.c, Musashi's code generator, warns in five places about writing a
   path into a buffer that a long enough argument would overflow - and above

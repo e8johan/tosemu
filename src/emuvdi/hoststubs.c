@@ -71,6 +71,13 @@ void host_menu_end(void)
 {
 }
 
+/* Nothing here shows a surface to anybody, so where it was drawn in is
+ * nothing anybody needs to be told */
+void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h)
+{
+    (void)x; (void)y; (void)w; (void)h;
+}
+
 /*
  * tosemu's own, which these tests do not link. A directory that cannot be
  * found and a machine with no drives are what a program with no filesystem

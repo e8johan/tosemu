@@ -404,6 +404,18 @@ static struct surface *console_borrow(void)
 
 static void console_return(struct surface *was)
 {
+    /*
+     * Whatever was done to the console while it was borrowed, which is text
+     * put on it through the VT52 emulation rather than anything the VDI was
+     * asked for - so emuvdi_call never saw it and this is where it is said.
+     *
+     * All of it, because none of the console drawing says where it went. The
+     * reads that borrow it as well damage a surface nothing wrote to, which
+     * costs a conversion of a window that is usually not even open.
+     */
+    surface_damage(c.shows, 0, 0,
+                   surface_width(c.shows), surface_height(c.shows));
+
     surface_select(was ? was : gem_screen_surface());
 }
 

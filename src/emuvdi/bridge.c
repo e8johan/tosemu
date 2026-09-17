@@ -703,6 +703,119 @@ static int loaded_fonts_answered(int16_t *control, int16_t *intout)
     return 1;
 }
 
+/*
+ * What a call can have done to the surface the VDI was drawing on.
+ *
+ * Every drawing operation either half of GEM performs goes through
+ * emuvdi_call, so this is the one place that can say which part of a picture
+ * is new - and showing a picture costs far more than making it, so saying so
+ * is worth a table.
+ *
+ * Three answers, and the default is the careful one. Anything not named below
+ * is taken to have drawn somewhere unknowable, which converts the whole
+ * surface: an opcode nobody has thought about here costs time, and an opcode
+ * wrongly thought harmless costs a window that stops redrawing.
+ *
+ * NOTHING is the one that matters. An application sitting in its event loop
+ * asks the VDI things without drawing at all - Cubase calls v_show_c some
+ * seven thousand times a second and nothing else - and every one of those
+ * used to be followed by converting every pixel of its window.
+ *
+ * CLIPPED is the ordinary drawing. EmuTOS's VDI honours vs_clip in all of it,
+ * so the clipping rectangle is a rectangle the drawing cannot have left, which
+ * is exactly what damage has to be: never smaller than what happened. The
+ * raster copies are in it on the same terms - see do_clip in vdi_raster.c,
+ * which clips when the destination is the screen and clipping is on, and note
+ * that a copy into memory rather than onto the screen is then reported as
+ * damage that did not happen, which costs a conversion and breaks nothing.
+ *
+ * ANYWHERE is for drawing the clip says nothing about: clearing a workstation,
+ * the escapes, which write console text through the VT52 emulation and are not
+ * clipped by anything, and the outline text below, which FreeType draws.
+ */
+#define TOUCHES_NOTHING  (0)
+#define TOUCHES_CLIPPED  (1)
+#define TOUCHES_ANYWHERE (2)
+
+static int what_it_touches(int16_t opcode)
+{
+    switch (opcode)
+    {
+    /*
+     * The ones that only set something in the workstation, or only answer a
+     * question about it. Naming a drawing opcode here is the one mistake that
+     * shows, so these are the ones checked against what they do rather than
+     * against what they are called - vdi_main.c's jump table for the shape of
+     * them, and hostvars.c for the four that stand in for vdi_mouse.c and do
+     * nothing at all.
+     */
+    case 4:                             /* v_updwk, a nop here */
+    case 10: case 27: case 29:          /* the three the table answers v_nop */
+    case 12: case 13:                   /* vst_height, vst_rotation */
+    case 15: case 16: case 17:          /* vsl_type, vsl_width, vsl_color */
+    case 18: case 19: case 20:          /* vsm_type, vsm_height, vsm_color */
+    case 21: case 22:                   /* vst_font, vst_color */
+    case 23: case 24: case 25:          /* vsf_interior, vsf_style, vsf_color */
+    case 26:                            /* vq_color */
+    case 28:                            /* v_locator, a nop here */
+    case 32: case 33:                   /* vswr_mode, vsin_mode */
+    case 35: case 36: case 37: case 38: /* the vq*_attributes */
+    case 39:                            /* vst_alignment */
+    case 102:                           /* vq_extnd */
+    case 104:                           /* vsf_perimeter */
+    case 105:                           /* v_get_pixel, which reads one */
+    case 106: case 107: case 108:       /* vst_effects, vst_point, vsl_ends */
+    case 112: case 113:                 /* vsf_udpat, vsl_udsty */
+    case 115: case 116: case 117:       /* vqin_mode, vqt_extent, vqt_width */
+    case 118:                           /* vex_timv, which hangs a vector */
+    case 119: case 120:                 /* vst_load_fonts, vst_unload_fonts */
+    case 122: case 123:                 /* v_show_c, v_hide_c, nops here */
+    case 124:                           /* vq_mouse */
+    case 125: case 126: case 127:       /* the vex_ vectors */
+    case 128:                           /* vq_key_s */
+    case 129:                           /* vs_clip */
+    case 130: case 131:                 /* vqt_name, vqt_fontinfo */
+        return TOUCHES_NOTHING;
+
+    /* And the drawing EmuTOS's VDI clips */
+    case 6: case 7: case 8: case 9:     /* pline, pmarker, gtext, fillarea */
+    case 11:                            /* the GDPs */
+    case 103:                           /* v_contourfill */
+    case 109: case 121:                 /* vro_cpyfm, vrt_cpyfm */
+    case 114:                           /* vr_recfl */
+        return TOUCHES_CLIPPED;
+
+    default:
+        return TOUCHES_ANYWHERE;
+    }
+}
+
+/*
+ * And saying so, once the call has been made.
+ *
+ * The workstation is read afterwards rather than before because screen() is
+ * what finds it: it takes the handle out of the control array and leaves
+ * CUR_WORK pointing at the one it used.
+ */
+static void say_what_was_drawn(int16_t opcode)
+{
+    int touches = what_it_touches(opcode);
+
+    if (touches == TOUCHES_NOTHING)
+        return;
+
+    if (touches == TOUCHES_CLIPPED && CUR_WORK && CUR_WORK->clip)
+    {
+        host_surface_damaged(CUR_WORK->xmn_clip, CUR_WORK->ymn_clip,
+                             CUR_WORK->xmx_clip - CUR_WORK->xmn_clip + 1,
+                             CUR_WORK->ymx_clip - CUR_WORK->ymn_clip + 1);
+        return;
+    }
+
+    /* Larger than any surface, which surface_damage reads as all of one */
+    host_surface_damaged(0, 0, 32767, 32767);
+}
+
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
@@ -738,8 +851,15 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
             screen();
     }
 
+    /*
+     * And what it did to the picture. Not while printing: the page is a
+     * surface of its own that no window shows, and the screen behind it has
+     * not been touched.
+     */
     if (printing)
         prndev_unbind(control);
+    else
+        say_what_was_drawn(control[0]);
 }
 
 void emuvdi_printer_reset(void)
