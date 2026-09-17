@@ -649,7 +649,11 @@ opcode_struct* find_opcode(char* name, int size, char* spec_proc, char* spec_ea)
 	opcode_struct* op;
 
 
-	for(op = g_opcode_input_table;op->name != NULL;op++)
+	/* name is an array in the struct, so its address is never NULL and the
+	 * sentinel never fired: a lookup that found nothing walked the whole
+	 * table and then off the end of it. The unused entries are zero, being a
+	 * global, so an empty name is where the filled ones stop. */
+	for(op = g_opcode_input_table;op->name[0] != '\0';op++)
 	{
 		if(	strcmp(name, op->name) == 0 &&
 			(size == op->size) &&
@@ -665,7 +669,7 @@ opcode_struct* find_illegal_opcode(void)
 {
 	opcode_struct* op;
 
-	for(op = g_opcode_input_table;op->name != NULL;op++)
+	for(op = g_opcode_input_table;op->name[0] != '\0';op++)
 	{
 		if(strcmp(op->name, "illegal") == 0)
 			return op;
