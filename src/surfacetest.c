@@ -157,6 +157,116 @@ static void agrees(int width, int height, int count, const char *name)
     }
 }
 
+/*
+ * Where something says it drew, and what comes back out.
+ *
+ * Saying too much is always allowed and saying too little never is, so what
+ * these ask about most is the edges: a rectangle that hangs off the surface,
+ * one that is the wrong way round, and the whole-of-everything one that
+ * anything unable to say where it drew passes.
+ */
+/*
+ * Takes the damage and says whether it was the rectangle expected. The take
+ * itself is part of the answer: without that, a surface that reported nothing
+ * would leave the four numbers as whatever the check before it read, and a
+ * check comparing them would pass on somebody else's answer.
+ */
+static int took(struct surface *s, int x, int y, int w, int h)
+{
+    int16_t gx = -1, gy = -1, gw = -1, gh = -1;
+
+    if (!surface_damage_take(s, &gx, &gy, &gw, &gh))
+        return 0;
+
+    return gx == x && gy == y && gw == w && gh == h;
+}
+
+static void damage(void)
+{
+    struct surface *s = surface_create(100, 50, 4);
+    int16_t x, y, w, h;
+
+    if (!s)
+    {
+        check(0, 1, "a surface to damage");
+        return;
+    }
+
+    check(surface_damage_take(s, &x, &y, &w, &h), 0,
+          "a surface nothing has drawn in owes nothing");
+
+    surface_damage(s, 10, 20, 5, 6);
+    check(took(s, 10, 20, 5, 6), 1,
+          "and one that has owes the rectangle it was told about");
+
+    check(surface_damage_take(s, &x, &y, &w, &h), 0,
+          "and taking it is what forgets it");
+
+    /* Two of them, which come back as one rectangle round both */
+    surface_damage(s, 10, 10, 2, 2);
+    surface_damage(s, 40, 30, 5, 5);
+    check(took(s, 10, 10, 35, 25), 1,
+          "two places drawn in come back as one rectangle round both");
+
+    /* And the same two the other way about, which is the half of growing a
+     * rectangle that moves the corner it is measured from */
+    surface_damage(s, 40, 30, 5, 5);
+    surface_damage(s, 10, 10, 2, 2);
+    check(took(s, 10, 10, 35, 25), 1,
+          "and the same however they were drawn in");
+
+    /* And one inside the other, which changes nothing */
+    surface_damage(s, 10, 10, 30, 30);
+    surface_damage(s, 15, 15, 2, 2);
+    check(took(s, 10, 10, 30, 30), 1,
+          "and one inside another is the one outside it");
+
+    /* Hanging off the right and the bottom */
+    surface_damage(s, 90, 45, 1000, 1000);
+    check(took(s, 90, 45, 10, 5), 1,
+          "a rectangle running off the end stops at the end");
+
+    /* And off the left and the top, which is where a clipping rectangle with
+     * a negative corner would put it */
+    surface_damage(s, -20, -30, 25, 35);
+    check(took(s, 0, 0, 5, 5), 1,
+          "and one starting before the beginning starts at it");
+
+    /* The whole of everything, which is what something that cannot say where
+     * it drew passes - see host_surface_damaged */
+    surface_damage(s, 0, 0, 32767, 32767);
+    check(took(s, 0, 0, 100, 50), 1,
+          "a rectangle larger than the surface is the surface");
+
+    /* Nothing at all, said in the two ways it can be */
+    surface_damage(s, 10, 10, 0, 5);
+    surface_damage(s, 10, 10, 5, -1);
+    check(surface_damage_take(s, &x, &y, &w, &h), 0,
+          "a rectangle of no size is nothing drawn");
+
+    /* And entirely off the surface, which is a clipping rectangle for a
+     * window that has been moved away */
+    surface_damage(s, 200, 200, 10, 10);
+    check(surface_damage_take(s, &x, &y, &w, &h), 0,
+          "and so is one that misses the surface altogether");
+
+    /* Copying one surface over another is all of it drawn in */
+    {
+        struct surface *from = surface_create(100, 50, 4);
+
+        if (from)
+        {
+            surface_copy(s, from);
+            check(took(s, 0, 0, 100, 50), 1,
+                  "and a surface copied over is the whole of one");
+
+            surface_free(from);
+        }
+    }
+
+    surface_free(s);
+}
+
 int main(void)
 {
     struct surface *s;
@@ -212,6 +322,8 @@ int main(void)
     check(got[8], 0, "on either side");
 
     surface_free(s);
+
+    damage();
 
     printf("1..%d\n", n);
 

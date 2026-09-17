@@ -103,6 +103,34 @@ void surface_row(const struct surface *s, uint16_t x, uint16_t y,
 void surface_copy(struct surface *dst, const struct surface *src);
 
 /*
+ * What has been drawn in since anyone last looked, and taking it away.
+ *
+ * Showing a surface means converting it, and converting all of one every time
+ * anybody might be looking is most of what an emulator with a window costs.
+ * Nearly always almost none of it changed - an application draws in one
+ * rectangle and leaves the rest alone, and an application that is only asking
+ * what has happened draws in none of it at all.
+ *
+ * So whatever draws says where. It is one rectangle round everything since the
+ * last take rather than a list of them, which is the cheapest thing to carry
+ * and is what GEM's own way of drawing suits: the AES sets a clipping
+ * rectangle and draws inside it, and that rectangle is the damage.
+ *
+ * It is always allowed to say more than happened, and never less. A caller
+ * that cannot say where it drew says the whole surface - that is what a
+ * rectangle larger than one is clamped to - and the cost of that is a picture
+ * converted that need not have been.
+ *
+ * surface_damage_take is how the other end reads it: it answers 0 when
+ * nothing was drawn, and otherwise gives the rectangle and forgets it. Whoever
+ * takes it owes the drawing to whoever is looking, so a surface shown in two
+ * windows wants taking once and giving to both.
+ */
+void surface_damage(struct surface *s, int x, int y, int w, int h);
+int surface_damage_take(struct surface *s, int16_t *x, int16_t *y,
+                        int16_t *w, int16_t *h);
+
+/*
  * Writes the surface out as a portable pixmap, for looking at what was drawn
  * without a compositor in the way. The colours come from the palette, so what
  * lands in the file is what would land on a screen.

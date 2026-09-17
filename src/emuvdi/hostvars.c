@@ -37,6 +37,9 @@
 #include <sys/mman.h>
 #include <stdint.h>
 
+/* For saying that setting a colour changed the picture */
+#include "emuvdi.h"
+
 /* Describing the surface being drawn into */
 UWORD v_planes;
 UWORD v_lin_wr;
@@ -374,7 +377,20 @@ WORD Setcolor(WORD colornum, WORD color)
 
     /* A negative colour is a read rather than a write */
     if (color >= 0)
+    {
         palette[colornum] = color;
+
+        /*
+         * Which changes the picture without anything having been drawn: every
+         * pixel already holding this pen is now a different colour. Nothing
+         * says where those are, so it is all of it.
+         *
+         * Here rather than beside the calls, because there are two ways in
+         * and this is where they meet - vs_color through the VDI, and
+         * Setcolor, Setpalette and EsetColor through the XBIOS.
+         */
+        host_surface_damaged(0, 0, 32767, 32767);
+    }
 
     return old;
 }

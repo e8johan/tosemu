@@ -37,6 +37,10 @@ struct surface {
     uint16_t words_per_line;
 
     uint16_t *data;
+
+    /* One rectangle round everything drawn since the damage was last taken,
+     * empty when dw is nought - see surface_damage */
+    int16_t dx, dy, dw, dh;
 };
 
 static struct surface *selected;
@@ -128,6 +132,99 @@ void surface_copy(struct surface *dst, const struct surface *src)
     words = (size_t)dst->words_per_line * dst->height;
 
     memcpy(dst->data, src->data, words * sizeof *dst->data);
+
+    /* All of it, which is what was just written over */
+    surface_damage(dst, 0, 0, dst->width, dst->height);
+}
+
+void surface_damage(struct surface *s, int x, int y, int w, int h)
+{
+    int x2, y2;
+
+    if (!s || w <= 0 || h <= 0)
+        return;
+
+    /*
+     * Clamped to the surface first. A clipping rectangle can be larger than
+     * what it clips, and something that cannot say where it drew says the
+     * whole of everything and means this.
+     */
+    if (x < 0)
+    {
+        w += x;
+        x = 0;
+    }
+    if (y < 0)
+    {
+        h += y;
+        y = 0;
+    }
+
+    x2 = x + w;
+    y2 = y + h;
+
+    if (x2 > s->width)
+        x2 = s->width;
+    if (y2 > s->height)
+        y2 = s->height;
+
+    if (x >= x2 || y >= y2)
+        return;
+
+    if (s->dw == 0)
+    {
+        s->dx = (int16_t)x;
+        s->dy = (int16_t)y;
+        s->dw = (int16_t)(x2 - x);
+        s->dh = (int16_t)(y2 - y);
+
+        return;
+    }
+
+    /* One rectangle round both. Two changes at opposite corners of a screen
+     * come out as the screen, which is the price of keeping one rectangle
+     * rather than a list of them - see TODO. */
+    if (x < s->dx)
+    {
+        s->dw = (int16_t)(s->dw + (s->dx - x));
+        s->dx = (int16_t)x;
+    }
+    if (y < s->dy)
+    {
+        s->dh = (int16_t)(s->dh + (s->dy - y));
+        s->dy = (int16_t)y;
+    }
+    if (x2 > s->dx + s->dw)
+        s->dw = (int16_t)(x2 - s->dx);
+    if (y2 > s->dy + s->dh)
+        s->dh = (int16_t)(y2 - s->dy);
+}
+
+int surface_damage_take(struct surface *s, int16_t *x, int16_t *y,
+                        int16_t *w, int16_t *h)
+{
+    if (!s || s->dw == 0)
+        return 0;
+
+    *x = s->dx;
+    *y = s->dy;
+    *w = s->dw;
+    *h = s->dh;
+
+    s->dw = 0;
+    s->dh = 0;
+
+    return 1;
+}
+
+/*
+ * And the same said from inside the VDI, about whichever surface it is drawing
+ * on. See emuvdi_call, which is the one door every drawing operation goes
+ * through and the only place that knows what a call was allowed to touch.
+ */
+void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h)
+{
+    surface_damage(selected, x, y, w, h);
 }
 
 int surface_write_ppm(const struct surface *s, const char *path)
