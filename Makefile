@@ -223,7 +223,7 @@ EMUTOSLDFLAGS = -no-pie
 all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
-        emuvdi-check gdos-check screen-check settings-check scrap-check icon-check \
+        emuvdi-check gdos-check screen-check surface-check settings-check scrap-check icon-check \
         print-check keyboard-check midi-check \
         demos clean
 
@@ -440,6 +440,22 @@ $(BIN)/screentest: $(SRC)/screentest.c $(OBJ)/screen.o $(OBJ)/settings.o \
 screen-check: $(BIN)/screentest
 	./$(BIN)/screentest
 
+# Reading pixels back out of the planes, checked without a compositor to show
+# them to. Host built for the same reason as the one above: an application
+# draws through the VDI and sees what it drew, and the gathering that turns
+# what it drew into a picture happens on the way out, where no test under the
+# emulator can follow it.
+#
+# It links surface.o and nothing else. What surface.c asks emuvdi for is two
+# functions, and the test answers both itself rather than pulling the VDI in
+# behind them.
+$(BIN)/surfacetest: $(SRC)/surfacetest.c $(OBJ)/surface.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+surface-check: $(BIN)/surfacetest
+	./$(BIN)/surfacetest
+
 # Reading a settings file, checked without one of somebody's own. Host-built
 # for the same reason as the two above: what is checked here - a remark
 # understood as a remark, a value said twice, a name spelled wrongly being
@@ -627,7 +643,7 @@ $(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
-check: $(BIN)/tosemu $(BIN)/tosaesd screen-check settings-check scrap-check \
+check: $(BIN)/tosemu $(BIN)/tosaesd screen-check surface-check settings-check scrap-check \
        icon-check gdos-check print-check keyboard-check midi-check \
        dongle-check
 	$(MAKE) -C tests check

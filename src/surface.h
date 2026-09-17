@@ -67,12 +67,33 @@ uint16_t surface_planes(const struct surface *s);
 /*
  * The colour index at a pixel, gathered from the planes.
  *
- * This is the slow way round on purpose. It is for tests and for whatever
- * turns a surface into something a compositor can show, neither of which is
- * in a hurry, and both of which want to be reading the memory rather than
- * asking the VDI what it thinks it drew.
+ * This is the slow way round on purpose. It is for tests and for anything else
+ * that wants one pixel and is not in a hurry, and it reads the memory rather
+ * than asking the VDI what it thinks it drew.
  */
 uint16_t surface_pixel(const struct surface *s, uint16_t x, uint16_t y);
+
+/*
+ * And the colour indices of a run of pixels along one row, into a byte each.
+ *
+ * The same answer as surface_pixel for each of them, and the reason to have it
+ * is that it is not the same work. Finding one pixel means working out which
+ * row, which group of plane words, and which bit, and then reading a word of
+ * every plane - and the pixel beside it is in the same words, so the next one
+ * works all of that out again and reads them again. Sixteen consecutive pixels
+ * are one group of words: taken together the addressing is paid once for the
+ * sixteen, the words are read once, and what is left per pixel is a shift.
+ *
+ * Which is what showing a screen does, every pixel of it, as often as the
+ * display refreshes. On a screen the size of a desktop that is five million of
+ * them a frame, and a pixel at a time it was seven milliseconds of work - see
+ * window_magnify, which is what this is for.
+ *
+ * Anything outside the surface reads as nought, which is what surface_pixel
+ * answers for it too.
+ */
+void surface_row(const struct surface *s, uint16_t x, uint16_t y,
+                 uint16_t count, uint8_t *into);
 
 /*
  * Copies one surface over another of the same shape. A dialog starts as what

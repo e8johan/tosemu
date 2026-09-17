@@ -4330,13 +4330,46 @@ void gfx_selection_flush(void)
 }
 
 /*
+ * The palette as the colours a buffer holds, rather than as the entries the
+ * machine set.
+ *
+ * emuvdi_palette_argb works one out from the four-bit guns an entry keeps: a
+ * call into another file, a bounds test and a handful of arithmetic. That is
+ * nothing for a pen and several million of it for a picture, and inside one
+ * picture the answer cannot change - no instruction of the emulated machine
+ * executes while this runs, so nothing can call Setcolor in the middle of it.
+ *
+ * So it is worked out once for each of the pens a surface can hold, which is
+ * two hundred and fifty six at eight planes, and read from here after that.
+ */
+static uint32_t colours[256];
+
+static void colours_settle(void)
+{
+    int i;
+
+    for (i = 0; i < 256; i++)
+        colours[i] = emuvdi_palette_argb(i);
+}
+
+/*
+ * How much of a row is taken out of the planes at a time.
+ *
+ * Any multiple of sixteen would do, sixteen being the pixels one group of
+ * plane words holds. All the number decides is how often surface_row is
+ * called, and it is a scratch on the stack rather than anything to keep.
+ */
+#define PENS (256)
+
+/*
  * Puts the part of the screen a window shows into it.
  *
- * A pixel at a time, through the palette and out to as many pixels as the
- * scale asks for. This is the whole of that rectangle every time rather than
- * the part that changed: at ST sizes it is a few hundred thousand writes, and
- * knowing what changed is worth having only once there is something to spend
- * the saving on.
+ * A stretch of a row at a time out of the planes, through the palette and out
+ * to as many pixels as the scale asks for. This is the whole of that rectangle
+ * every time rather than the part that changed: nothing here knows what
+ * changed, the VDI having written the planes directly, and finding out
+ * afterwards means comparing them against a copy - which is more reading than
+ * the conversion it would save. See TODO.
  *
  * The buffer is not always the size of that rectangle. A drag leaves the window
  * the size the drag ended at, and what it shows only becomes that size when the
@@ -4373,34 +4406,54 @@ static void window_magnify(struct window *win, struct surface *from,
         if (top + y * win->scale >= rows)
             break;
 
-        for (x = 0; x < fw; x++)
+        for (x = 0; x < fw; x += PENS)
         {
-            uint32_t argb;
+            uint8_t pens[PENS];
+            int n = fw - x;
+            int i;
 
             if (left + x * win->scale >= columns)
                 break;
 
-            argb = emuvdi_palette_argb(
-                surface_pixel(from, (uint16_t)(fx + x), (uint16_t)(fy + y)));
+            if (n > PENS)
+                n = PENS;
 
-            /* The two tests above ask where a magnified pixel begins, and it
-             * is scale pixels wide and scale pixels tall. The buffer's size is
-             * whatever the compositor last sent and owes nothing to the scale,
-             * so it can end part of the way through one of them - and then the
-             * rest of that pixel is written past where the buffer stops. On
-             * the last row that is past the end of the mapping, which is a
-             * fault rather than a smear. So each of them is drawn as far as
-             * the buffer reaches and no further. */
-            for (sy = 0; sy < win->scale && top + y*win->scale + sy < rows; sy++)
+            /* A stretch of the row out of the planes in one go, which is
+             * where nearly all of what this used to cost went - see
+             * surface_row */
+            surface_row(from, (uint16_t)(fx + x), (uint16_t)(fy + y),
+                        (uint16_t)n, pens);
+
+            for (i = 0; i < n; i++)
             {
-                uint32_t *row = win->pixels
-                              + (size_t)(top + y*win->scale + sy) * win->width
-                              + left + x*win->scale;
+                int at = left + (x + i) * win->scale;
+                uint32_t argb;
 
-                for (sx = 0;
-                     sx < win->scale && left + x*win->scale + sx < columns;
-                     sx++)
-                    row[sx] = argb;
+                if (at >= columns)
+                    break;
+
+                argb = colours[pens[i]];
+
+                /* The two tests ask where a magnified pixel begins, and it is
+                 * scale pixels wide and scale pixels tall. The buffer's size
+                 * is whatever the compositor last sent and owes nothing to the
+                 * scale, so it can end part of the way through one of them -
+                 * and then the rest of that pixel is written past where the
+                 * buffer stops. On the last row that is past the end of the
+                 * mapping, which is a fault rather than a smear. So each of
+                 * them is drawn as far as the buffer reaches and no further. */
+                for (sy = 0;
+                     sy < win->scale && top + y*win->scale + sy < rows;
+                     sy++)
+                {
+                    uint32_t *row = win->pixels
+                                  + (size_t)(top + y*win->scale + sy)
+                                    * win->width
+                                  + at;
+
+                    for (sx = 0; sx < win->scale && at + sx < columns; sx++)
+                        row[sx] = argb;
+                }
             }
         }
     }
@@ -4408,7 +4461,7 @@ static void window_magnify(struct window *win, struct surface *from,
 
 static void window_picture(struct window *win)
 {
-    uint32_t behind = emuvdi_palette_argb(0);
+    uint32_t behind;
 
     /* Where what the window shows begins, which is under its own title bar
      * when it has one */
@@ -4421,6 +4474,10 @@ static void window_picture(struct window *win)
     int rows = top + win->sh * win->scale;
     int columns = right + win->frame_w * win->scale;
     int x, y;
+
+    /* Before anything is looked up in it, and once for the whole picture */
+    colours_settle();
+    behind = colours[0];
 
     if (rows > win->height)
         rows = win->height;

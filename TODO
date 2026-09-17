@@ -253,23 +253,41 @@
   somebody asked for. A screen the size of the display, which is what
   TOSEMU_SCREEN=native-mono is for, makes them the same thing.
 
-- Showing the screen means converting the whole of it. A present gathers every
-  pixel of the surface a plane at a time and looks each one up in the palette,
-  and nothing anywhere says which part of it changed - so a screen the size of
-  the display, which is what native-color gives, is five million pixels and
-  about seven milliseconds of work. Since window_ready that happens at the rate
-  the display refreshes rather than at the rate the application asks for a
-  wait, which is what made Cubase usable at all, but sixty of those a second is
-  still something like four tenths of the emulator spent drawing a picture that
-  is nearly always the one already showing.
+- Showing a window means converting the whole of what it shows, every frame,
+  whether or not any of it changed. Nothing anywhere says which part did: the
+  VDI writes plane memory directly, so there is no single place a change passes
+  through, and the only way to find out afterwards is to compare the planes
+  against a copy - which for a screen the size of a display is two and a half
+  megabytes of reading to save a couple of milliseconds of work.
 
-  Two things would close it and neither needs the other. One is knowing that
-  nothing was drawn, which nothing here can say: the VDI writes plane memory
-  directly, so there is no single place a change passes through, and comparing
-  the planes against a copy is two and a half megabytes of reading to save
-  seven milliseconds of work. The other is converting faster - four plane words
-  hold sixteen pixels, and taking them that way rather than gathering each
-  pixel from four places is how every emulator of this machine does it.
+  What is left of the cost after surface_row is about a fifth of the emulator
+  on a window of six hundred by three hundred, which is what Cubase opens. A
+  window showing the whole of a large screen would be several times that, and
+  it is a fifth of the emulator whatever the picture is doing.
+
+  Two things would close it and neither needs the other. Damage from the AES,
+  which knows the rectangle it just drew into and throws it away, would say
+  which part of a window to convert rather than all of it. And the compositor
+  will take a buffer of the machine's own pixels if it is asked in a format it
+  knows - which for four planes it is not, so that means finding out what it
+  does know and whether anything can hold pens without converting them first.
+
+- Nothing in the build asks for any optimisation. There is no -O anywhere in
+  the Makefile, so gcc's default of -O0 is what the whole emulator is built
+  with, Musashi included. Adding -O2 makes the emulated machine about three
+  times faster - Cubase goes from about two thousand nine hundred waits a
+  second to about eight thousand four hundred - and make check, devpac-check,
+  lattice-check and emuvdi-check all pass with it.
+
+  Which is not the same as it being safe, and that is the reason this is a note
+  rather than a change. -O2 lets the compiler act on things -O0 quietly
+  tolerates, and it finds two of them here already: endianize_16 and
+  endianize_32 in utils.c both read `out` before anything is put in it. The
+  shifts happen to push the rubbish out again, so the answers are right, but
+  the compiler is entitled to assume that never happens. Anything else of that
+  shape in code nobody has ever compiled with optimisation on would show as a
+  fault a long way from its cause, so what this wants is somebody building it
+  that way on purpose and running more than the suite through it.
 
 - Nothing in make check reaches the parts of a window's frame that ask the
   desktop for something: dragging it by the title bar, pulling the size box,
