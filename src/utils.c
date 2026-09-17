@@ -24,32 +24,46 @@
 #include <unistd.h>
 #include <stdio.h>
 
+/*
+ * Both of these build their answer a byte at a time out of the one they were
+ * given, lowest byte first, shifting what they have so far up to make room.
+ *
+ * Which means the first shift is of something nothing has been put in yet.
+ * Started at nought that is nought; started at whatever was on the stack it is
+ * rubbish, and the only reason the answer came out right anyway is that two
+ * more shifts of eight push a word's worth of rubbish back off the top. That
+ * held for as long as nobody compiled this with optimisation on. A compiler is
+ * entitled to assume a variable is never read before it is written and to do
+ * as it likes with code that does, which in a build with -O is what these
+ * were - and what they are read for is the size of a program's text, data and
+ * symbols, and every relocation in it.
+ */
 uint16_t endianize_16(uint16_t in)
 {
-    uint16_t out;
+    uint16_t out = 0;
     int i;
-    
+
     for(i=0; i<2; ++i)
     {
         out = out << 8;
         out = out | (0xff&in);
         in = in >> 8;
     }
-    
+
     return out;
 }
 
 uint32_t endianize_32(uint32_t in)
 {
-    uint32_t out;
+    uint32_t out = 0;
     int i;
-    
+
     for(i=0; i<4; ++i)
     {
         out = out << 8;
         out = out | (0xff&in);
         in = in >> 8;
     }
-    
+
     return out;
 }
