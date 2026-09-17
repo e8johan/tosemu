@@ -179,3 +179,119 @@ uint16_t surface_pixel(const struct surface *s, uint16_t x, uint16_t y)
 
     return value;
 }
+
+/*
+ * A byte of one plane, spread over eight bytes with a bit in each.
+ *
+ * This is the whole of how a run is taken faster than a pixel at a time, and
+ * it is worth being plain about what it holds. Entry b has, in its byte i, the
+ * bit that is 0x80 >> i of b - so the leftmost of the eight pixels a byte of a
+ * plane describes ends up in the lowest byte of the entry, the next one along
+ * in the next byte, and so on.
+ *
+ * What that buys is that a plane's whole contribution to eight pixels is one
+ * look-up and one shift: the bit a plane puts into a pen is 1 << plane, and
+ * shifting the entry by the plane number puts it there in all eight bytes at
+ * once. Four planes are then four look-ups, three shifts and three ors, and
+ * out of that come eight finished pens - against sixteen tests and sixteen
+ * shifts doing it a pixel at a time.
+ *
+ * The bytes are taken back out by shifting rather than by copying the memory,
+ * so nothing here depends on which end of a word this machine puts first.
+ */
+static uint64_t spread[256];
+static int spread_ready;
+
+static void spread_make(void)
+{
+    int b, i;
+
+    for (b = 0; b < 256; b++)
+    {
+        uint64_t entry = 0;
+
+        for (i = 0; i < 8; i++)
+            if (b & (0x80 >> i))
+                entry |= (uint64_t)1 << (8 * i);
+
+        spread[b] = entry;
+    }
+
+    spread_ready = 1;
+}
+
+void surface_row(const struct surface *s, uint16_t x, uint16_t y,
+                 uint16_t count, uint8_t *into)
+{
+    const uint16_t *word;
+    int planes = s->planes;
+    uint16_t have = 0;
+    uint16_t done = 0;
+
+    /* What of the run is actually on the surface. The rest reads as nought,
+     * which is surface_pixel's answer for it and is also what stops this
+     * walking off the end of a row. */
+    if (y < s->height && x < s->width)
+        have = (uint16_t)(s->width - x);
+
+    if (have > count)
+        have = count;
+
+    if (have < count)
+        memset(into + have, 0, (size_t)(count - have));
+
+    if (!have)
+        return;
+
+    if (!spread_ready)
+        spread_make();
+
+    word = s->data + (size_t)y * s->words_per_line + (x / 16) * planes;
+
+    while (done < have)
+    {
+        /* Where in this group of plane words the next pixel is. A group is
+         * one word of every plane and holds sixteen pixels, the leftmost of
+         * them at the top of each word. */
+        int bit = (x + done) & 15;
+        int p;
+
+        if ((bit & 7) == 0 && have - done >= 8)
+        {
+            /*
+             * Eight of them at once, out of one byte of each plane - the top
+             * byte of the group's words for the first eight and the bottom
+             * byte for the second, which is what the shift below picks.
+             */
+            uint64_t eight = 0;
+            int i;
+
+            for (p = 0; p < planes; p++)
+                eight |= spread[(word[p] >> (8 - bit)) & 0xff] << p;
+
+            for (i = 0; i < 8; i++)
+                into[done + i] = (uint8_t)(eight >> (8 * i));
+
+            done = (uint16_t)(done + 8);
+        }
+        else
+        {
+            /* And one at a time for a run that does not begin on a byte of
+             * the planes, and for whatever is left at the end of one */
+            uint16_t mask = (uint16_t)(0x8000u >> bit);
+            unsigned value = 0;
+
+            for (p = 0; p < planes; p++)
+                if (word[p] & mask)
+                    value |= 1u << p;
+
+            into[done] = (uint8_t)value;
+
+            done++;
+        }
+
+        /* Past the end of the group is the start of the next one */
+        if (((x + done) & 15) == 0)
+            word += planes;
+    }
+}
