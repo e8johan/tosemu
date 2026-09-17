@@ -30,6 +30,18 @@ Building
 A simple `make` should do it. The resulting binary can be found in the bin
 directory.
 
+That builds with `-O2`, which matters more here than it does for most
+programs: nearly all of the work is Musashi reading one 68000 instruction after
+another, so a build without it runs the emulated machine at half speed.
+Assembling twenty four thousand lines with Devpac's Gen inside the emulator
+takes seventy three seconds optimised and a hundred and forty seven without,
+and what comes out is the same file either way.
+
+For a build to step through, `make OPT="-O0 -g"` replaces the flag. What must
+not be dropped from it is `-fno-strict-aliasing`: the VDI and the AES here are
+EmuTOS's, and they read one type through a pointer to another as a matter of
+course - see the note beside `OPT` in the Makefile, which says where.
+
 The tree is arranged so that nothing built is ever next to what it was built
 from. Everything somebody wrote is under `src/`, `demos/` and `tests/`;
 everything the build makes goes under `build/` - the objects mirroring the

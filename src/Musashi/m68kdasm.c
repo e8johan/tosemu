@@ -323,9 +323,14 @@ static char* make_signed_hex_str_32(uint val)
 
 
 /* make string of immediate value */
+/* The buffers below hold "#" and whatever make_signed_hex_str_32 wrote, which
+ * is at most "-$7fffffff" - eleven bytes with the terminator, inside fifteen.
+ * They are the size of that source buffer instead, because the compiler cannot
+ * see the bound and says so, and a disassembler string is not worth being
+ * clever about. */
 static char* get_imm_str_s(uint size)
 {
-	static char str[15];
+	static char str[24];
 	if(size == 0)
 		sprintf(str, "#%s", make_signed_hex_str_8(read_imm_8()));
 	else if(size == 1)
@@ -337,7 +342,7 @@ static char* get_imm_str_s(uint size)
 
 static char* get_imm_str_u(uint size)
 {
-	static char str[15];
+	static char str[24];
 	if(size == 0)
 		sprintf(str, "#$%x", read_imm_8() & 0xff);
 	else if(size == 1)

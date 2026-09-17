@@ -121,6 +121,30 @@ EMUVDIFILES = emuvdi/hostvars.c emuvdi/hostfs.c emuvdi/fonts.c emuvdi/keytables.
               emuvdi/strings.c
 
 # Compilation flags
+#
+# What the optimiser is asked for, on one line so that a build for a debugger
+# can say OPT="-O0 -g" on the command line and get it.
+#
+# There was nothing here for a long time, which meant gcc's own default of -O0
+# and an emulator built without optimisation. Nearly everything this program
+# does is Musashi reading one 68000 instruction after another, so that is the
+# thing being paid for twice: assembling twenty four thousand lines with
+# Devpac's Gen inside the emulator takes a hundred and forty seven seconds
+# without the flag and seventy three with it, which is the whole of the reason
+# for it. What came out was the same file and the same listing to the byte.
+#
+# -fno-strict-aliasing is not a matter of taste and must not be dropped. The
+# VDI and the AES linked in here are EmuTOS's, written for a compiler that had
+# no such rule, and they read one type through a pointer to another in the
+# ordinary course of their work: VDI_CLIP casts the middle of a Vwk to a
+# VwkClip on every clipped drawing operation, and gemwrect walks a window's
+# rectangle list by casting the address of a pointer field to the struct that
+# field points at. gcc says so out loud with -Wstrict-aliasing=2, in five
+# places, three of them inside the submodule where nothing here may edit them.
+# Left on, the optimiser is entitled to assume those accesses cannot touch the
+# same memory, and what that buys is a VDI that clips wrongly on some future
+# version of the compiler and not on this one.
+OPT = -O2 -fno-strict-aliasing
 CC = gcc
 LD = gcc
 # -fno-pie, and -no-pie below, are not about tosemu's own code: they are what
@@ -167,7 +191,7 @@ endif
 # headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
 # - are included by name, and where they were written is the build's business
 # rather than something every source has to know.
-CFLAGS = -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
+CFLAGS = $(OPT) -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
@@ -193,7 +217,7 @@ LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS)
 # is what lets the rest of the VDI go unedited, so the two halves of every word
 # are the other way round and the glyph lands in the wrong one. Turning it off
 # sends all text through normal_blit, which works in words and does not care.
-EMUTOSFLAGS = -I$(SRC)/emuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
+EMUTOSFLAGS = $(OPT) -I$(SRC)/emuvdi -I$(EMUTOS)/include -I$(EMUTOS)/vdi -I$(EMUTOS)/bios \
               -I$(EMUTOS)/aes -I$(EMUTOS)/desk -D__mcoldfire__ \
               -DCONF_WITH_BLITTER=0 -DCONF_WITH_VIDEL=0 -DCONF_WITH_TT_SHIFTER=0 \
               -DCONF_WITH_VDI_16BIT=0 -DCONF_WITH_VDI_TEXT_SPEEDUP=0 \
