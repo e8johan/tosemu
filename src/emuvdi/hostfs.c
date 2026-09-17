@@ -45,9 +45,26 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
+
+/*
+ * toupper as a function, which is what the header below expects it to be.
+ *
+ * <string.h> from here is EmuTOS's rather than the host's - everything in this
+ * directory is built with EmuTOS's include path in front of the system one,
+ * which is the whole point of the directory - and EmuTOS's declares toupper
+ * alongside the string routines. The host's <ctype.h> above makes it a macro
+ * instead, but only when optimising: glibc's is a statement expression behind
+ * __OPTIMIZE__, so the declaration below turns into a syntax error in a build
+ * with -O and compiles in a build without one.
+ *
+ * Undefining it leaves the calls in this file reaching the real function,
+ * which is what they did in every build until the day one of them was
+ * optimised.
+ */
+#undef toupper
+
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <sys/stat.h>
 #include <time.h>
 

@@ -599,8 +599,13 @@ static void start_accessory(const char *emulator, const char *path)
 
         started[started_count].pid = child;
         started[started_count].ours = 1;
+
+        /* As much of the name as the field holds and no more, which is what
+         * the field is for: this is what to call the program when saying
+         * something about it, and where it came from is kept whole beside it */
         snprintf(started[started_count].from, sizeof started[started_count].from,
-                 "%s", leaf ? leaf + 1 : path);
+                 "%.*s", (int)sizeof started[started_count].from - 1,
+                 leaf ? leaf + 1 : path);
         snprintf(started[started_count].path, sizeof started[started_count].path,
                  "%s", path);
         started_count++;
@@ -626,7 +631,12 @@ static int find_the_emulator(char *where, size_t size)
         return 0;
 
     *slash = 0;
-    snprintf(where, size, "%s/tosemu", self);
+
+    /* A name that did not fit is not a name of anything, so say so here rather
+     * than handing a truncated path to access and reading its refusal as the
+     * emulator not being there */
+    if (snprintf(where, size, "%s/tosemu", self) >= (int)size)
+        return 0;
 
     return access(where, X_OK) == 0;
 }

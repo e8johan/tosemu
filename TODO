@@ -272,22 +272,13 @@
   knows - which for four planes it is not, so that means finding out what it
   does know and whether anything can hold pens without converting them first.
 
-- Nothing in the build asks for any optimisation. There is no -O anywhere in
-  the Makefile, so gcc's default of -O0 is what the whole emulator is built
-  with, Musashi included. Adding -O2 makes the emulated machine about three
-  times faster - Cubase goes from about two thousand nine hundred waits a
-  second to about eight thousand four hundred - and make check, devpac-check,
-  lattice-check and emuvdi-check all pass with it.
-
-  Which is not the same as it being safe, and that is the reason this is a note
-  rather than a change. -O2 lets the compiler act on things -O0 quietly
-  tolerates, and it finds two of them here already: endianize_16 and
-  endianize_32 in utils.c both read `out` before anything is put in it. The
-  shifts happen to push the rubbish out again, so the answers are right, but
-  the compiler is entitled to assume that never happens. Anything else of that
-  shape in code nobody has ever compiled with optimisation on would show as a
-  fault a long way from its cause, so what this wants is somebody building it
-  that way on purpose and running more than the suite through it.
+- m68kmake.c, Musashi's code generator, warns in five places about writing a
+  path into a buffer that a long enough argument would overflow - and above
+  them is the strcpy of argv[1] that would do the overflowing. It cannot happen
+  from the makefile, which hands it build/gen/, and it only shows in a build
+  with OPT set to something without -O, gcc needing the optimiser to see far
+  enough at -O2 to stop worrying. So it is a real hole in a program nobody runs
+  by hand, which is why it is written down rather than fixed.
 
 - Nothing in make check reaches the parts of a window's frame that ask the
   desktop for something: dragging it by the title bar, pulling the size box,
