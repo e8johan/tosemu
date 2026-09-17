@@ -232,6 +232,32 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
         int giving_slot = -1;
 
         /*
+         * Whatever the compositor has said already, before anything here looks
+         * at what it knows.
+         *
+         * The poll at the bottom is the ordinary way that happens, and for an
+         * application that waits it is the only way needed: it sleeps there
+         * until something arrives and reads it on the way back round. But a
+         * wait that is answered without sleeping never reaches the poll, and a
+         * program can be answered every time - Cubase asks what has happened
+         * with a button mask of nothing, which is a question the state always
+         * satisfies, and it asks it thousands of times a second because a
+         * sequencer has a clock to keep and cannot afford to sleep.
+         *
+         * So nothing the compositor said was ever read for such a program. Its
+         * keyboard and its mouse arrive on that socket and sat there unread,
+         * and what a person got was a window that drew and answered nothing
+         * anybody did to it.
+         *
+         * This is the same catching up gfx_mouse_now does for the polls that
+         * go through graf_mkstate, and it is here rather than there because
+         * what arrives belongs to the queues these waits read. They want every
+         * change and not merely the latest - see gfx_mouse_now, which says why
+         * it leaves the queues alone and this does not.
+         */
+        gfx_dispatch_ready();
+
+        /*
          * The menu bar, before the application hears about anything.
          *
          * It belongs to the AES rather than to the application, so it is
