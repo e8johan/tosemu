@@ -19,12 +19,12 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
-            c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-resize c-poll \
+            c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
             c-keyboard c-modal c-clock
 
 # Where the sources are, found through the makefile that was read rather than
@@ -568,6 +568,13 @@ check: all
 	grep -q '^1\.\.' out
 	TOSEMU_DECORATIONS=desktop $(TOSEMU) test-c-frame desktop > out; \
 	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# Two windows that overlap, and whose pixels are whose where they do.
+	# Each one keeps a picture of its own, so bringing the one behind to
+	# the front without anything being redrawn shows what it drew rather
+	# than what the one in front drew over it. On a colour screen, there
+	# being nothing to tell two windows apart with in black and white.
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-overlap > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# A window given a new rectangle, which is what an application does with
 	# the four words WM_SIZED carries. The frame has to move with it and the

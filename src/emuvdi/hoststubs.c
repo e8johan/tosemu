@@ -78,6 +78,23 @@ void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h)
     (void)x; (void)y; (void)w; (void)h;
 }
 
+/* There are no windows here, so everything is drawn where it was aimed */
+void *host_draw_route(int16_t x, int16_t y, int16_t w, int16_t h, int reading)
+{
+    (void)x; (void)y; (void)w; (void)h; (void)reading;
+
+    return 0;
+}
+
+void host_draw_unroute(void *was)
+{
+    (void)was;
+}
+
+void host_palette_changed(void)
+{
+}
+
 /*
  * tosemu's own, which these tests do not link. A directory that cannot be
  * found and a machine with no drives are what a program with no filesystem

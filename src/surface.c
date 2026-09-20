@@ -137,6 +137,67 @@ void surface_copy(struct surface *dst, const struct surface *src)
     surface_damage(dst, 0, 0, dst->width, dst->height);
 }
 
+void surface_copy_rect(struct surface *dst, const struct surface *src,
+                       int x, int y, int w, int h)
+{
+    int x2, y2, row, first, last, group, p;
+
+    if (!dst || !src || dst->width != src->width
+        || dst->height != src->height || dst->planes != src->planes)
+        return;
+
+    /* Clamped to the surface, like damage is */
+    if (x < 0)
+    {
+        w += x;
+        x = 0;
+    }
+    if (y < 0)
+    {
+        h += y;
+        y = 0;
+    }
+
+    x2 = x + w;
+    y2 = y + h;
+
+    if (x2 > dst->width)
+        x2 = dst->width;
+    if (y2 > dst->height)
+        y2 = dst->height;
+
+    if (x >= x2 || y >= y2)
+        return;
+
+    /* The groups of plane words the rectangle touches, the first and last of
+     * them only in part */
+    first = x / 16;
+    last = (x2 - 1) / 16;
+
+    for (row = y; row < y2; row++)
+    {
+        size_t at = (size_t)row * dst->words_per_line;
+
+        for (group = first; group <= last; group++)
+        {
+            /* Which of the sixteen pixels in this group are inside. The
+             * leftmost pixel is the top bit of a word. */
+            int from = (group == first) ? x % 16 : 0;
+            int to = (group == last) ? (x2 - 1) % 16 : 15;
+            uint16_t mask = (uint16_t)((0xffffu >> from)
+                                       & (0xffffu << (15 - to)));
+            size_t word = at + (size_t)group * dst->planes;
+
+            for (p = 0; p < dst->planes; p++)
+                dst->data[word + p] =
+                    (uint16_t)((dst->data[word + p] & ~mask)
+                               | (src->data[word + p] & mask));
+        }
+    }
+
+    surface_damage(dst, x, y, x2 - x, y2 - y);
+}
+
 void surface_damage(struct surface *s, int x, int y, int w, int h)
 {
     int x2, y2;

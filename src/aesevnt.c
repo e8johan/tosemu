@@ -193,6 +193,13 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
     long deadline = (timeout < 0) ? -1 : now_ms() + timeout;
 
     /*
+     * Waiting ends whatever the application was answering, so nothing said
+     * during it about which window was being drawn is true any more - see
+     * drawing_for in aeswind.c. Whatever the wait hands back says it again.
+     */
+    aes_wind_drawing_for(0);
+
+    /*
      * Whatever was drawn since the last wait goes on the screen now. An
      * application draws and then waits, over and over, so this is where a
      * picture is finished as far as anyone watching is concerned.
@@ -702,6 +709,13 @@ uint32_t AES_evnt_timer()
 
 /* evnt_mesag **************************************************************/
 
+/*
+ * The window messages, WM_REDRAW to WM_TOOLBAR. Every one of them names the
+ * window it is about in its fourth word.
+ */
+#define WM_FIRST (20)
+#define WM_LAST  (37)
+
 /* Copies a message into the buffer the application named in addrin */
 static void message_to_application(uint32_t buffer, const int16_t *message)
 {
@@ -709,6 +723,16 @@ static void message_to_application(uint32_t buffer, const int16_t *message)
 
     for (i = 0; i < MESSAGE_WORDS; i++)
         m68k_write_memory_16(buffer + 2*i, (uint16_t)message[i]);
+
+    /*
+     * A message about a window is what the application answers next, and
+     * what it draws in answering is that window's. Microsoft Write redraws its
+     * clipboard window straight from the WM_REDRAW, with the rectangle out of
+     * the message and without asking the window anything, so this is the only
+     * thing that says whose that drawing is - see drawing_for in aeswind.c.
+     */
+    if (message[0] >= WM_FIRST && message[0] <= WM_LAST)
+        aes_wind_drawing_for(message[3]);
 }
 
 uint32_t AES_evnt_mesag()

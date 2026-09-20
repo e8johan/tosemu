@@ -47,9 +47,9 @@
 #include "tossystem.h"
 #include "m68k.h"
 
-/* How many windows one application can have. Real GEM had eight for everyone
- * together; this is per application until there is more than one. */
-#define WINDOWS (8)
+/* How many windows one application can have - see AES_WINDOWS, which gem.c
+ * needs as well, it keeping a picture for each of them */
+#define WINDOWS (AES_WINDOWS)
 
 /* The message an application is sent when its close box is used */
 #define WM_REDRAW (20)
@@ -145,6 +145,46 @@ static struct window windows[WINDOWS];
 /* Which window is on top, or 0 for the desktop, which is always underneath */
 static int16_t topped;
 
+/*
+ * The open windows in the order they are stacked, front first.
+ *
+ * topped says which one is in front and nothing about the rest, which was all
+ * anything needed while every window was a rectangle of one screen: there was
+ * one picture and the order was already in it, whoever drew last being on top.
+ * Now each window keeps its own picture - see gem_window_surface - and the
+ * order is what says which of them an Atari would have shown at a point. A
+ * window goes to the front when it opens and when it is topped, and leaves
+ * when it closes.
+ */
+static int16_t order[WINDOWS];
+static int ordered;
+
+/*
+ * Whose drawing is being done, as far as anything has said: a window handle,
+ * or 0 when nothing has.
+ *
+ * GEM never says which window a drawing is for. An application sets a
+ * clipping rectangle and draws, and where two windows overlap that rectangle
+ * is inside both, so the rectangle cannot answer it. What does say is the
+ * conversation around the drawing, and this is what is heard of it:
+ *
+ *   a message about a window, which is what an application is answering when
+ *   it draws next - Microsoft Write redraws its clipboard window from the
+ *   WM_REDRAW that arrives for it without ever asking the window anything;
+ *
+ *   wind_get of a window's work area or of its rectangle list, which is how an
+ *   application finds out where to draw in that window - Write's document is
+ *   redrawn this way, and so is every program written from the manuals;
+ *
+ *   and the AES drawing a window's frame, which is the one case where the
+ *   drawer is not guessing.
+ *
+ * It lasts until the application next waits for something. Waiting is what
+ * ends one answer and starts listening for the next, so whatever was said
+ * during the last one says nothing about the next.
+ */
+static int16_t drawing_for;
+
 /* Where a window may be put, which is the whole screen below the menu bar */
 static int16_t desk_x, desk_y, desk_w, desk_h;
 
@@ -152,6 +192,47 @@ void aes_wind_reset()
 {
     memset(windows, 0, sizeof windows);
     topped = 0;
+    ordered = 0;
+    drawing_for = 0;
+}
+
+static void order_remove(int16_t handle)
+{
+    int i, j;
+
+    for (i = 0, j = 0; i < ordered; i++)
+        if (order[i] != handle)
+            order[j++] = order[i];
+
+    ordered = j;
+}
+
+/* To the front of the stack, which is also what GEM calls on top */
+static void to_front(int16_t handle)
+{
+    int i;
+
+    order_remove(handle);
+
+    for (i = ordered; i > 0; i--)
+        order[i] = order[i - 1];
+
+    order[0] = handle;
+    ordered++;
+
+    topped = handle;
+}
+
+/* Off the stack, and no longer on top if it was */
+static void off_stack(int16_t handle)
+{
+    order_remove(handle);
+
+    if (topped == handle)
+        topped = 0;
+
+    if (drawing_for == handle)
+        drawing_for = 0;
 }
 
 /*
@@ -333,7 +414,22 @@ static void draw_frame(struct window *win)
     if (gem_screen_surface())
         surface_select(gem_screen_surface());
 
-    aes_frame_draw(&frame);
+    /*
+     * And into the window's own picture rather than onto the screen as such.
+     *
+     * The screen is still what is selected, which is what lets the drawing be
+     * routed at all - see host_draw_route - and this is the one drawing whose
+     * window is known rather than guessed, so it is said outright. Anything the
+     * application had said about which window it was drawing is put back
+     * afterwards: a frame drawn in the middle of a redraw is not the end of it.
+     */
+    {
+        int16_t was_for = drawing_for;
+
+        drawing_for = (int16_t)(win - windows) + 1;
+        aes_frame_draw(&frame);
+        drawing_for = was_for;
+    }
 
     if (was)
         surface_select(was);
@@ -519,7 +615,7 @@ uint32_t AES_wind_open()
     win->ph = win->h;
 
     win->open = 1;
-    topped = aes_intin(0);
+    to_front(aes_intin(0));
 
     /*
      * And a window of the desktop's to show it in. The whole of the window
@@ -535,7 +631,8 @@ uint32_t AES_wind_open()
 
         window_on_show(win->kind, &sx, &sy, &sw, &sh);
         gfx_window_open(aes_intin(0), win->title, sx, sy, sw, sh,
-                        !desktop_draws_the_frame(win->kind));
+                        !desktop_draws_the_frame(win->kind),
+                        gem_window_surface(aes_intin(0)));
         window_limits(aes_intin(0), win);
     }
 
@@ -604,8 +701,7 @@ uint32_t AES_wind_close()
 
     win->open = 0;
 
-    if (topped == aes_intin(0))
-        topped = 0;
+    off_stack(aes_intin(0));
 
     gfx_window_close(aes_intin(0));
 
@@ -625,13 +721,16 @@ uint32_t AES_wind_delete()
 
     memset(win, 0, sizeof *win);
 
-    if (topped == aes_intin(0))
-        topped = 0;
+    off_stack(aes_intin(0));
 
     /* And off the desktop now rather than in its own time. Giving the handle
      * back is an application saying it has finished with the window, so there
      * is nothing left that it could open again. */
     gfx_window_delete(aes_intin(0));
+
+    /* And the picture it kept, after the desktop's window that was showing it
+     * has gone rather than before */
+    gem_window_drop(aes_intin(0));
 
     return AES_E_OK;
 }
@@ -693,6 +792,16 @@ uint32_t AES_wind_get()
     win = window_at(handle);
     if (!win)
         return AES_ERROR;
+
+    /*
+     * The three questions an application asks of a window it is about to draw
+     * in: where its work area is, and which parts of it are showing. What it
+     * draws next is taken to be that window's - see drawing_for. Its position
+     * as a whole is not among them, being what an application asks before
+     * moving a window as often as before drawing in one.
+     */
+    if (what == WF_WORKXYWH || what == WF_FIRSTXYWH || what == WF_NEXTXYWH)
+        drawing_for = handle;
 
     switch (what)
     {
@@ -894,7 +1003,7 @@ uint32_t AES_wind_set()
             break;
 
         case WF_TOP:
-            topped = handle;
+            to_front(handle);
             break;
 
         default:
@@ -1042,9 +1151,12 @@ uint32_t AES_wind_new()
             gfx_window_delete(handle);
 
         memset(win, 0, sizeof *win);
+        gem_window_drop(handle);
     }
 
     topped = 0;
+    ordered = 0;
+    drawing_for = 0;
 
     return AES_E_OK;
 }
@@ -1201,7 +1313,7 @@ void host_window_activated(int16_t handle, int16_t active)
 
     if (win->active)
     {
-        topped = handle;
+        to_front(handle);
         send_to_owner(WM_TOPPED, handle, 0, 0, 0, 0);
     }
 
@@ -1379,4 +1491,123 @@ int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons)
     }
 
     return 0;
+}
+
+/* Whose drawing this is ****************************************************/
+
+/*
+ * Said from outside this file: aesevnt.c forgets it whenever the application
+ * waits, and says which window a message it hands over was about.
+ */
+void aes_wind_drawing_for(int16_t handle)
+{
+    drawing_for = (handle > 0 && window_at(handle)) ? handle : 0;
+}
+
+static int holds(const struct window *win, int16_t x, int16_t y,
+                 int16_t w, int16_t h)
+{
+    return x >= win->x && y >= win->y
+        && x + w <= win->x + win->w && y + h <= win->y + win->h;
+}
+
+static int touches(const struct window *win, int16_t x, int16_t y,
+                   int16_t w, int16_t h)
+{
+    return x < win->x + win->w && win->x < x + w
+        && y < win->y + win->h && win->y < y + h;
+}
+
+/*
+ * Which window a piece of drawing belongs to, or 0 for the screen itself.
+ *
+ * The rectangle is what the drawing could have reached: the clipping
+ * rectangle while there is one, and the whole screen when there is not. For a
+ * read it is what is being read, and the answer is whose picture an Atari
+ * would have shown there - the window in front - because a program reading
+ * back the screen is asking what is on it.
+ *
+ * For drawing, in order:
+ *
+ *   the window somebody said it was for, as long as the drawing reaches it at
+ *   all - a drawing wholly outside the window it was said to be for cannot be
+ *   that window's, whatever was said;
+ *
+ *   then the window in front that holds the whole of it, which is how an
+ *   application that says nothing is placed: it clips to the window it is
+ *   drawing in, so the window that holds its clipping rectangle is the one.
+ *   Where two windows both hold it the front one wins, and the front one is
+ *   the one somebody is working in - typing into a document under a smaller
+ *   window lands in the document, because the document is what was clicked;
+ *
+ *   then the window in front that it reaches at all, which is what happens to
+ *   a program that draws with no clipping rectangle and has not said where;
+ *
+ *   and otherwise nobody's. That is the menu bar, which is on the screen and
+ *   is shown from there, and anything drawn on the desktop outside every
+ *   window, which nothing shows and nothing ever did.
+ */
+int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
+                       int reading)
+{
+    struct window *win;
+    int i;
+
+    if (w <= 0 || h <= 0)
+        return 0;
+
+    if (!reading && drawing_for > 0)
+    {
+        win = window_at(drawing_for);
+
+        if (win && win->open && touches(win, x, y, w, h))
+            return drawing_for;
+    }
+
+    for (i = 0; i < ordered; i++)
+    {
+        win = window_at(order[i]);
+
+        if (win && win->open && holds(win, x, y, w, h))
+            return order[i];
+    }
+
+    for (i = 0; i < ordered; i++)
+    {
+        win = window_at(order[i]);
+
+        if (win && win->open && touches(win, x, y, w, h))
+            return order[i];
+    }
+
+    return 0;
+}
+
+/*
+ * The open windows back to front, one at a time: the nth from the back, and
+ * where it is on the screen, or 0 once there are no more. This is the order
+ * they are laid on the screen in to make the picture an Atari would have shown
+ * - see gem_composite.
+ */
+int16_t aes_wind_from_back(int n, int16_t *x, int16_t *y, int16_t *w,
+                           int16_t *h)
+{
+    struct window *win;
+    int16_t handle;
+
+    if (n < 0 || n >= ordered)
+        return 0;
+
+    handle = order[ordered - 1 - n];
+    win = window_at(handle);
+
+    if (!win || !win->open)
+        return 0;
+
+    *x = win->x;
+    *y = win->y;
+    *w = win->w;
+    *h = win->h;
+
+    return handle;
 }

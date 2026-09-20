@@ -816,10 +816,115 @@ static void say_what_was_drawn(int16_t opcode)
     host_surface_damaged(0, 0, 32767, 32767);
 }
 
+/*
+ * Where a call is drawn, which is the other half of what the table above is
+ * for.
+ *
+ * Each GEM window keeps its own picture, and drawing aimed at the screen goes
+ * to the window it belongs to rather than onto the screen that every window
+ * used to share - see host_draw_route, which asks the AES whose it is. What
+ * this works out is the rectangle to ask about: what the drawing can reach,
+ * which is the workstation's clipping rectangle while it has one and the whole
+ * of everything when it has not.
+ *
+ * The workstation is found the way screen() is about to find it, from the
+ * handle in the control array. Doing that ahead of screen() is only a look:
+ * get_vwk_by_handle is a table lookup and changes nothing.
+ *
+ * Some calls are about the screen as a whole and belong to no window: opening
+ * and closing a workstation, clearing one, the escapes that write console text
+ * through the VT52 emulation, setting a colour and transforming a bitmap in
+ * memory. Those go where they always went. Two are reads rather than drawing,
+ * and are answered from what an Atari would have had on the screen at that
+ * place, which is the window in front there: v_get_pixel, and a raster copy
+ * from the screen into memory.
+ */
+
+/* The part of a bitmap description that says whether it is the screen: a null
+ * address. The rest of it is vdi_raster.c's, and its addresses travel as
+ * thirty two bits for the reason MFDB_AT there gives. */
+struct bitmap_head {
+    void *fd_addr;
+};
+
+static int is_the_screen(const int16_t *words)
+{
+    const struct bitmap_head *mfdb =
+        (const struct bitmap_head *)(uintptr_t)*(const uint32_t *)words;
+
+    return mfdb && !mfdb->fd_addr;
+}
+
+static void *route(const int16_t *control, const int16_t *ptsin)
+{
+    int16_t opcode = control[0];
+    Vwk *vwk;
+    int16_t x = 0, y = 0, w = 32767, h = 32767;
+
+    switch (opcode)
+    {
+    case 1: case 2: case 3: case 5:     /* the workstation, and the console */
+    case 14:                            /* vs_color */
+    case 100: case 101:                 /* the virtual workstation */
+    case 110:                           /* vr_trnfm, which is memory */
+        return 0;
+
+    case 105:                           /* v_get_pixel */
+        return host_draw_route(ptsin[0], ptsin[1], 1, 1, 1);
+
+    case 109: case 121:                 /* vro_cpyfm, vrt_cpyfm */
+        if (!is_the_screen(&control[9]))
+        {
+            if (!is_the_screen(&control[7]))
+                return 0;
+
+            /* From the screen into memory, which is reading it */
+            return host_draw_route(ptsin[0], ptsin[1],
+                                   (int16_t)(ptsin[2] - ptsin[0] + 1),
+                                   (int16_t)(ptsin[3] - ptsin[1] + 1), 1);
+        }
+
+        /* Onto the screen: where it is going, inside the clipping rectangle
+         * when there is one - see below */
+        x = ptsin[4];
+        y = ptsin[5];
+        w = (int16_t)(ptsin[6] - ptsin[4] + 1);
+        h = (int16_t)(ptsin[7] - ptsin[5] + 1);
+        break;
+
+    default:
+        if (what_it_touches(opcode) == TOUCHES_NOTHING)
+            return 0;
+        break;
+    }
+
+    vwk = get_vwk_by_handle(control[6]);
+
+    if (vwk && vwk->clip)
+    {
+        int16_t x2 = (int16_t)(x + w), y2 = (int16_t)(y + h);
+
+        if (x < vwk->xmn_clip)
+            x = vwk->xmn_clip;
+        if (y < vwk->ymn_clip)
+            y = vwk->ymn_clip;
+        if (x2 > vwk->xmx_clip + 1)
+            x2 = (int16_t)(vwk->xmx_clip + 1);
+        if (y2 > vwk->ymx_clip + 1)
+            y2 = (int16_t)(vwk->ymx_clip + 1);
+
+        w = (int16_t)(x2 - x);
+        h = (int16_t)(y2 - y);
+    }
+
+    return host_draw_route(x, y, w, h, 0);
+}
+
 void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
                  int16_t *intout, int16_t *ptsout)
 {
     int printing;
+    void *routed;
 
     CONTRL = control;
     INTIN = intin;
@@ -837,6 +942,10 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
      * drawing, the same fonts, different memory.
      */
     printing = prndev_bind(control);
+
+    /* And which window's picture it goes in, which a page being printed is
+     * none of */
+    routed = printing ? 0 : route(control, ptsin);
 
     if (!prndev_served(control, intin, intout, ptsout))
     {
@@ -860,6 +969,10 @@ void emuvdi_call(int16_t *control, int16_t *intin, int16_t *ptsin,
         prndev_unbind(control);
     else
         say_what_was_drawn(control[0]);
+
+    /* After the damage is said rather than before, the damage belonging to
+     * the picture the drawing went into */
+    host_draw_unroute(routed);
 }
 
 void emuvdi_printer_reset(void)

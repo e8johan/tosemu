@@ -68,9 +68,9 @@ static struct surface *screen;
  * the coordinates it chose and the drawing lands where it expects; only which
  * memory it lands in has changed.
  *
- * It starts as a copy of the screen, so that any part of the dialog's window
- * the dialog itself does not cover shows what was behind it rather than
- * nothing.
+ * It starts as a copy of what was behind it - the screen with the windows on
+ * it, see gem_composite - so that any part of the dialog's window the dialog
+ * itself does not cover shows what was behind it rather than nothing.
  */
 static struct surface *dialog;
 
@@ -89,6 +89,28 @@ static struct surface *dialog;
  * two do not nest: nothing puts a dialog up from a menu that is still down.
  */
 static struct surface *menu;
+
+/*
+ * And a picture for each window, which is the same idea taken the rest of the
+ * way.
+ *
+ * Every window used to be a rectangle of the screen, so two that overlapped
+ * showed the same pixels where they did and whichever had drawn last was in
+ * both. Microsoft Write is where that was seen: Show Clipboard opens a window
+ * over the document, and the clipboard appeared inside the document window as
+ * well as in its own. On an Atari that was right, the two being one picture.
+ * On a desktop the two are separate windows that can be put anywhere, and each
+ * wants all of its own picture and none of anybody else's.
+ *
+ * So each keeps one here, the size of the screen like a dialog's and a menu's
+ * and for the same reason: an application draws at the coordinates it chose
+ * and the drawing lands where it expects, only in different memory. The
+ * drawing itself is sent here rather than to the screen by host_draw_route,
+ * which asks the AES whose it is.
+ *
+ * Indexed by handle, which runs from 1; the first slot is never used.
+ */
+static struct surface *windows[AES_WINDOWS + 1];
 
 static int started;
 
@@ -237,7 +259,12 @@ void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
     if (!shows)
         return;
 
-    surface_copy(shows, below ? below : screen);
+    /* What is behind it, which is the screen with the windows on it when it
+     * is not another dialog - see gem_composite */
+    if (below && below != screen)
+        surface_copy(shows, below);
+    else
+        gem_composite(shows);
 
     /* Only one of them is shown at a time, so the one underneath goes away
      * while this one is up and comes back when it is done with */
@@ -309,7 +336,10 @@ void gem_menu_begin(void)
     if (!menu)
         return;
 
-    surface_copy(menu, below ? below : screen);
+    if (below && below != screen)
+        surface_copy(menu, below);
+    else
+        gem_composite(menu);
 
     surface_select(menu);
 }
@@ -346,6 +376,126 @@ struct surface *gem_menu_surface(void)
 struct surface *gem_screen_surface(void)
 {
     return screen;
+}
+
+/*
+ * A window's picture, made the first time it is asked for.
+ *
+ * It starts as the screen, which is what the window would have shown before
+ * it had pictures of its own: whatever was drawn there before the window
+ * opened, and none of any other window's drawing, that having gone into those
+ * windows rather than onto the screen.
+ */
+struct surface *gem_window_surface(int16_t handle)
+{
+    if (!started || !screen || handle < 1 || handle > AES_WINDOWS)
+        return 0;
+
+    if (!windows[handle])
+    {
+        windows[handle] = surface_create(surface_width(screen),
+                                         surface_height(screen),
+                                         surface_planes(screen));
+        if (windows[handle])
+            surface_copy(windows[handle], screen);
+    }
+
+    return windows[handle];
+}
+
+/*
+ * And letting it go, which the window's own desktop window has to do first:
+ * a window left standing after it was closed goes on showing its picture, and
+ * would be showing memory that had been given back.
+ */
+void gem_window_drop(int16_t handle)
+{
+    if (handle < 1 || handle > AES_WINDOWS || !windows[handle])
+        return;
+
+    gfx_window_delete(handle);
+
+    if (surface_selected() == windows[handle])
+        surface_select(screen);
+
+    surface_free(windows[handle]);
+    windows[handle] = 0;
+}
+
+/*
+ * The screen as an Atari would have shown it: the screen itself, with each
+ * open window's picture laid over it from the back to the front.
+ *
+ * Nothing on the desktop needs this - each window shows its own picture, and
+ * the desktop does the covering - but the things that stand for the screen as
+ * a whole do. A screenshot is one. A dialog or a menu starting as a copy of
+ * what was behind it is another, and a window missing from that copy would be
+ * a hole beside the dialog where the window was.
+ */
+void gem_composite(struct surface *into)
+{
+    int16_t x, y, w, h, handle;
+    int n;
+
+    if (!into || !screen)
+        return;
+
+    surface_copy(into, screen);
+
+    for (n = 0; (handle = aes_wind_from_back(n, &x, &y, &w, &h)) != 0; n++)
+        if (handle <= AES_WINDOWS && windows[handle])
+            surface_copy_rect(into, windows[handle], x, y, w, h);
+}
+
+/*
+ * Where a piece of drawing goes, asked by emuvdi_call before it draws.
+ *
+ * Only drawing that was going to land on the screen is anybody's to send
+ * anywhere else. A dialog, a menu and the console have surfaces of their own
+ * and are selected while they are up; a page being printed has the VDI pointed
+ * at it; none of those is a window's. For the rest the AES says whose it is -
+ * see aes_wind_owner - and the window's picture is selected in the screen's
+ * place until the call is done.
+ *
+ * The answer is what host_draw_unroute needs to put things back: the screen
+ * when something was routed, and nothing when it was not.
+ */
+void *host_draw_route(int16_t x, int16_t y, int16_t w, int16_t h, int reading)
+{
+    struct surface *into;
+    int16_t owner;
+
+    if (!started || !screen || surface_selected() != screen)
+        return 0;
+
+    owner = aes_wind_owner(x, y, w, h, reading);
+    if (owner <= 0)
+        return 0;
+
+    into = gem_window_surface(owner);
+    if (!into)
+        return 0;
+
+    surface_select(into);
+
+    return screen;
+}
+
+void host_draw_unroute(void *was)
+{
+    if (was)
+        surface_select((struct surface *)was);
+}
+
+/*
+ * The palette changing, which changes every picture at once without anything
+ * being drawn in any of them: every pixel already holding that pen is now a
+ * different colour. There is no saying where those are, and they are in every
+ * window, so every window is shown again whole.
+ */
+void host_palette_changed(void)
+{
+    gfx_palette_changed();
 }
 
 /*
@@ -386,6 +536,20 @@ void gem_forget(void)
         surface_free(menu);
     menu = 0;
 
+    /* And the windows' pictures, freed where they lie rather than through
+     * gem_window_drop, which would ask the desktop to take the parent's
+     * windows away */
+    {
+        int i;
+
+        for (i = 1; i <= AES_WINDOWS; i++)
+        {
+            if (windows[i])
+                surface_free(windows[i]);
+            windows[i] = 0;
+        }
+    }
+
     while (depth > 0)
     {
         depth--;
@@ -415,9 +579,28 @@ void gem_present()
          * console the program has dropped to is above all three, being what
          * has taken the screen over for as long as it is there. */
         struct surface *console = console_showing();
+        struct surface *top = console ? console
+                            : menu ? menu : dialog ? dialog : 0;
 
-        surface_write_ppm(console ? console
-                          : menu ? menu : dialog ? dialog : screen, shot);
+        /* And the screen, when it is the screen, is the screen with the
+         * windows on it: what they drew is in their pictures rather than in
+         * the screen's memory, and a screenshot without them would be a
+         * picture of the desktop underneath */
+        if (top)
+            surface_write_ppm(top, shot);
+        else
+        {
+            struct surface *all = surface_create(surface_width(screen),
+                                                 surface_height(screen),
+                                                 surface_planes(screen));
+
+            if (all)
+            {
+                gem_composite(all);
+                surface_write_ppm(all, shot);
+                surface_free(all);
+            }
+        }
     }
 
     gfx_present();
@@ -468,6 +651,19 @@ void gem_reset()
     gem_dialog_end();
     console_close();
     gfx_close();
+
+    /* The windows' pictures, which nothing is showing now the desktop's
+     * windows have all gone */
+    {
+        int i;
+
+        for (i = 1; i <= AES_WINDOWS; i++)
+        {
+            if (windows[i])
+                surface_free(windows[i]);
+            windows[i] = 0;
+        }
+    }
 
     surface_free(screen);
     screen = 0;

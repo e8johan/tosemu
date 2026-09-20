@@ -394,7 +394,7 @@ uint32_t AES_menu_bar()
                 if (wide > emuvdi_screen_width())
                     wide = emuvdi_screen_width();
 
-                gfx_window_open(BAR_WINDOW, "Menu", 0, 0, wide, tall, 0);
+                gfx_window_open(BAR_WINDOW, "Menu", 0, 0, wide, tall, 0, 0);
 
                 /*
                  * And how wide it may be made. No narrower than its own

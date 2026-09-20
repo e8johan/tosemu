@@ -267,6 +267,82 @@ static void damage(void)
     surface_free(s);
 }
 
+/*
+ * A rectangle copied from one surface to another, checked pixel by pixel: the
+ * inside is the source's, the outside is exactly what was there. Its edges are
+ * put at columns that are not a multiple of sixteen, which is where the plane
+ * words have to be taken apart rather than copied whole.
+ */
+static void copy_rect(void)
+{
+    static const struct { int x, y, w, h; } rects[] = {
+        { 3, 1, 29, 4 },        /* starts and ends inside a word */
+        { 16, 0, 16, 2 },       /* exactly one word across */
+        { 5, 2, 6, 1 },         /* inside a single word */
+        { 60, 3, 40, 9 },       /* runs off the right and the bottom */
+    };
+    struct surface *from, *into;
+    int r, x, y, wrong = 0;
+
+    from = surface_create(80, 6, 4);
+    into = surface_create(80, 6, 4);
+
+    if (!from || !into)
+    {
+        check(0, 1, "two surfaces to copy between");
+        return;
+    }
+
+    surface_select(from);
+    fill();
+
+    for (r = 0; r < (int)(sizeof rects / sizeof rects[0]); r++)
+    {
+        /* Something of its own in the destination, so that "left alone" is
+         * a question with an answer other than nought */
+        surface_select(into);
+        fill();
+        {
+            size_t i;
+
+            for (i = 0; i < words; i++)
+                planes[i] = (uint16_t)~planes[i];
+        }
+
+        {
+            static uint16_t before[80 * 6];
+
+            for (y = 0; y < 6; y++)
+                for (x = 0; x < 80; x++)
+                    before[y * 80 + x] = surface_pixel(into, (uint16_t)x,
+                                                       (uint16_t)y);
+
+            surface_copy_rect(into, from, rects[r].x, rects[r].y,
+                              rects[r].w, rects[r].h);
+
+            for (y = 0; y < 6; y++)
+                for (x = 0; x < 80; x++)
+                {
+                    int inside = x >= rects[r].x && x < rects[r].x + rects[r].w
+                              && y >= rects[r].y && y < rects[r].y + rects[r].h;
+                    uint16_t want = inside
+                                  ? surface_pixel(from, (uint16_t)x,
+                                                  (uint16_t)y)
+                                  : before[y * 80 + x];
+
+                    if (surface_pixel(into, (uint16_t)x, (uint16_t)y) != want)
+                        wrong++;
+                }
+        }
+    }
+
+    check(wrong, 0,
+          "a rectangle copied across is the source inside and untouched out");
+
+    surface_free(from);
+    surface_free(into);
+}
+
 int main(void)
 {
     struct surface *s;
@@ -324,6 +400,7 @@ int main(void)
     surface_free(s);
 
     damage();
+    copy_rect();
 
     printf("1..%d\n", n);
 
