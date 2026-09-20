@@ -5,7 +5,7 @@
 #   make demos
 #   ./bin/tosemu build/demos/dialog
 #
-DEMONAME=dialog window menu fsel userdef
+DEMONAME=dialog window menu fsel userdef overlap
 
 # An accessory is named for what it is rather than after its source: the daemon
 # looks for .ACC and nothing else

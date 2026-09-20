@@ -164,42 +164,25 @@
   Supexec'd routine of the period does is told the machine has none. It is
   worth doing now that how much there is can be chosen, since that is the
   answer they would be carrying.
-- Two windows of one application that overlap on the emulated screen show each
-  other's pixels. Microsoft Write is the case: Edit -> Show Clipboard opens the
-  clipboard window where it belongs, and what it draws also appears inside the
-  document window underneath it, in the rectangle the two share.
+- Which window a piece of drawing belongs to is decided by aes_wind_owner, and
+  where it says nothing certain it is a guess. GEM never says: an application
+  sets a clipping rectangle and draws, and where two windows overlap that
+  rectangle is inside both. What is listened to is the conversation around the
+  drawing - a message about a window, a wind_get of one - and where there is
+  none, the drawing is placed by which window holds it and which of those is in
+  front.
 
-  Every GEM window is a rectangle of one screen surface - see gfx_window_open,
-  which hands window_create w.screen for all of them - so two windows whose
-  rectangles overlap are two windows showing the same pixels there, and what
-  either of them draws is what both of them show. Whichever drew last wins.
+  The guessing is good enough for everything tried so far and it is still
+  guessing. An application that draws in a window it has said nothing about,
+  inside the part another window is standing on, lands in the wrong one; so
+  does one that answers a message about one window by drawing in another
+  without asking anything first. Microsoft Write does neither, and nor does
+  anything else here, which is why the fallbacks are what they are rather than
+  something cleverer.
 
-  This is the problem dialogs and menus were already given surfaces of their
-  own to avoid, and gem.c says so where it makes them: a menu drawn into the
-  screen appears inside every window showing that part of it, which is exactly
-  what having real windows was meant to avoid. Windows never got the same
-  treatment.
-
-  The AES has already been written as though they had. wind_get WF_FIRSTXYWH
-  answers that the whole work area is visible and nothing is cut out of it,
-  on the stated grounds that a window will be a surface of its own and the
-  compositor does the covering. That is a promise nothing keeps yet, and it is
-  also what makes the fix reachable: an application told its window is wholly
-  visible draws the whole of it, so a surface of its own would be filled
-  rather than half filled.
-
-  What is missing is the router - the thing that says which window a piece of
-  drawing belongs to. GEM does not say. An application sets a clipping
-  rectangle and draws, and inside the overlap that rectangle is inside both
-  windows, so the rectangle cannot answer it. The signals that could are the
-  redraw protocol, where wind_get of a window's rectangle list names the handle
-  and wind_update brackets the drawing that follows, and the WM_REDRAW message
-  the AES itself sent, which names the window it asked about. Neither covers an
-  application drawing of its own accord, and wind_update is a no-op here today.
-
-  Damage does not help with this and it is worth saying why, because it looks
-  as though it should. Damage says where something was drawn and when; it says
-  nothing about whose it was, and in the overlap that is the whole question.
+  What would end it is the application saying, and GEM has no way for it to.
+  wind_update brackets a redraw without naming a window, which is the shape the
+  answer would take if there were one.
 
 - wind_update takes no
   lock, and with a process per application there is

@@ -3507,7 +3507,8 @@ int gfx_showing()
 }
 
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
-                     int16_t sw, int16_t sh, int own_frame)
+                     int16_t sw, int16_t sh, int own_frame,
+                     struct surface *shows)
 {
     struct window *win;
 
@@ -3542,6 +3543,7 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
         win->closed = 0;
         win->sx = x;
         win->sy = y;
+        win->shows = shows ? shows : w.screen;
 
         gfx_window_title(handle, title);
 
@@ -3565,7 +3567,8 @@ void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
 
     window_destroy(win);
 
-    if (window_create(win, title, w.screen, x, y, sw, sh, 0, own_frame))
+    if (window_create(win, title, shows ? shows : w.screen, x, y, sw, sh, 0,
+                      own_frame))
         win->handle = handle;
     else
         window_destroy(win);
@@ -4795,6 +4798,7 @@ static void window_present(struct window *win)
     wl_surface_attach(win->surface, win->buffer, 0, 0);
     wl_surface_damage_buffer(win->surface, left, top, wide, tall);
     wl_surface_commit(win->surface);
+
 }
 
 /* One rectangle round what this window was already owed and what has just been
@@ -4911,6 +4915,17 @@ void gfx_present()
     wl_display_flush(w.display);
 }
 
+void gfx_palette_changed(void)
+{
+    int i;
+
+    /* Whole, because nothing says where the pens that changed are - and
+     * every window, because each keeps its own picture and all of them hold
+     * pens */
+    for (i = 0; i < WINDOWS; i++)
+        w.windows[i].refresh = 1;
+}
+
 #else /* NO_WAYLAND */
 
 /*
@@ -4958,10 +4973,11 @@ int gfx_showing()
 }
 
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
-                     int16_t sw, int16_t sh, int own_frame)
+                     int16_t sw, int16_t sh, int own_frame,
+                     struct surface *shows)
 {
     (void)handle; (void)title; (void)x; (void)y; (void)sw; (void)sh;
-    (void)own_frame;
+    (void)own_frame; (void)shows;
 }
 
 void gfx_window_move(int16_t handle, int16_t x, int16_t y,
@@ -5068,6 +5084,10 @@ void gfx_flush()
 }
 
 void gfx_present()
+{
+}
+
+void gfx_palette_changed(void)
 {
 }
 

@@ -172,6 +172,21 @@ void host_vdi_free(void *block);
  */
 void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h);
 
+/*
+ * Which surface a piece of drawing goes on, asked before it is drawn: each
+ * GEM window keeps its own picture, and drawing aimed at the screen is sent to
+ * the window it belongs to - see host_draw_route in gem.c. The rectangle is
+ * what the drawing could reach, or for a read what is being read.
+ *
+ * The answer is handed back to host_draw_unroute once the call is done, and
+ * means nothing to anybody else.
+ */
+void *host_draw_route(int16_t x, int16_t y, int16_t w, int16_t h, int reading);
+void host_draw_unroute(void *was);
+
+/* A colour changing, which changes every picture there is at once */
+void host_palette_changed(void);
+
 /* How large the screen the AES lays windows out on is */
 int16_t emuvdi_screen_width();
 int16_t emuvdi_screen_height();

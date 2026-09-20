@@ -383,13 +383,15 @@ WORD Setcolor(WORD colornum, WORD color)
         /*
          * Which changes the picture without anything having been drawn: every
          * pixel already holding this pen is now a different colour. Nothing
-         * says where those are, so it is all of it.
+         * says where those are, and they are in every picture there is - the
+         * screen's, every window's, a dialog's - so all of them are shown
+         * again rather than whichever happened to be selected.
          *
          * Here rather than beside the calls, because there are two ways in
          * and this is where they meet - vs_color through the VDI, and
          * Setcolor, Setpalette and EsetColor through the XBIOS.
          */
-        host_surface_damaged(0, 0, 32767, 32767);
+        host_palette_changed();
     }
 
     return old;

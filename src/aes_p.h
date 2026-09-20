@@ -128,6 +128,26 @@ int aes_frame_hit(const struct aes_frame *frame,
  */
 int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons);
 
+/* How many windows an application can have, handles 1 to this. Real GEM had
+ * eight for everyone together; this is per application. */
+#define AES_WINDOWS (8)
+
+/*
+ * Which window drawing belongs to, for keeping each window's picture on a
+ * surface of its own - see drawing_for and aes_wind_owner in aeswind.c, which
+ * say how it is decided, and host_draw_route in gem.c, which acts on it.
+ *
+ * aes_wind_drawing_for is the conversation's half of it: a handle when the
+ * application has just been handed a message about that window, and 0 when it
+ * waits again. aes_wind_from_back walks the open windows from the back to the
+ * front, which is the order they are laid on the screen in.
+ */
+void aes_wind_drawing_for(int16_t handle);
+int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
+                       int reading);
+int16_t aes_wind_from_back(int n, int16_t *x, int16_t *y, int16_t *w,
+                           int16_t *h);
+
 /* The file selector, aesfsel.c */
 
 uint32_t AES_fsel_input();

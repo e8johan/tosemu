@@ -103,6 +103,19 @@ void surface_row(const struct surface *s, uint16_t x, uint16_t y,
 void surface_copy(struct surface *dst, const struct surface *src);
 
 /*
+ * And one rectangle of it, to the pixel, into the same place on another
+ * surface of the same shape.
+ *
+ * What a window drew is kept on a surface of the window's own, and what an
+ * Atari would have shown is those surfaces laid on the screen one over another,
+ * back to front. This is the laying - see gem_composite. Pixels either side of
+ * the rectangle in the same plane words are left as they were, which is what
+ * makes it a rectangle and not a rectangle rounded out to sixteen pixels.
+ */
+void surface_copy_rect(struct surface *dst, const struct surface *src,
+                       int x, int y, int w, int h);
+
+/*
  * What has been drawn in since anyone last looked, and taking it away.
  *
  * Showing a surface means converting it, and converting all of one every time

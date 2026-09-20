@@ -114,9 +114,21 @@ void gem_menu_end(void);
 struct surface *gem_menu_surface(void);
 
 /* The screen itself, for the things that belong to it whatever else is being
- * drawn into - a window's frame is drawn where the window is, and the window
- * shows the screen rather than whatever a dialog reserved */
+ * drawn into - a window's frame is drawn where the window is, which is on the
+ * screen as far as the drawing knows, rather than whatever a dialog reserved */
 struct surface *gem_screen_surface(void);
+
+/*
+ * The picture each window keeps of its own, by handle, and letting one go.
+ * The desktop's window for a GEM window shows this rather than the screen -
+ * see the windows array in gem.c, which says why.
+ */
+struct surface *gem_window_surface(int16_t handle);
+void gem_window_drop(int16_t handle);
+
+/* The screen as an Atari would have shown it, windows and all, copied into a
+ * surface of the screen's shape */
+void gem_composite(struct surface *into);
 
 /* Puts what has been drawn where it can be seen: a window if there is a
  * compositor, and a file if TOSEMU_SCREENSHOT asked for one */

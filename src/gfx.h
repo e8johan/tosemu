@@ -71,9 +71,11 @@ int gfx_showing();
  * A GEM window, shown as a window of the desktop's.
  *
  * The handle is the AES's, so that closing one closes the right window. What
- * is shown is that rectangle of the screen - the whole window including the
- * frame GEM draws round it, because that frame is part of what the application
- * put there.
+ * is shown is that rectangle of the surface it is given - the whole window
+ * including the frame GEM draws round it, because that frame is part of what
+ * the application put there. A GEM window is given the picture it keeps of
+ * its own, see gem_window_surface; the menu bar is given nothing, which is the
+ * screen.
  */
 /*
  * own_frame says the window draws its own title bar, which is what a GEM
@@ -83,7 +85,8 @@ int gfx_showing();
  * for the desktop's, having otherwise nothing to take hold of.
  */
 void gfx_window_open(int16_t handle, const char *title, int16_t x, int16_t y,
-                     int16_t w, int16_t h, int own_frame);
+                     int16_t w, int16_t h, int own_frame,
+                     struct surface *shows);
 void gfx_window_move(int16_t handle, int16_t x, int16_t y,
                      int16_t w, int16_t h);
 void gfx_window_title(int16_t handle, const char *title);
@@ -271,6 +274,10 @@ void gfx_selection_flush(void);
 /* Puts what is in the surface on the screen, in every window showing part
  * of it */
 void gfx_present();
+
+/* Every window to be shown again whole at the next present, the palette having
+ * changed underneath all of them at once */
+void gfx_palette_changed(void);
 
 /* Input ********************************************************************/
 
