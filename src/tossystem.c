@@ -385,6 +385,7 @@ static uint32_t trap_stub[OS_TRAPS];
  * and why the version is the one it is.
  */
 static uint32_t os_header;
+static uint32_t reset_handler;
 
 /* Offsets into it. Named rather than counted because the header is a layout
  * somebody else decided and the names are that layout's own. */
@@ -477,15 +478,16 @@ static void poke_system_long(uint32_t address, uint32_t value)
  *
  * What is filled in is what this machine can answer truthfully. The version,
  * because programs branch on it and because tosemu already answers it twice
- * elsewhere. Its own address, because that is what the field is. And where the
+ * elsewhere. Its own address, because that is what the field is. Where the
  * low memory the system keeps ends, which is where the first program loads.
+ * And the reset handler, which is also what the reset vector at address 4
+ * holds - see below.
  *
  * The rest is left at nought deliberately rather than filled with something
- * plausible. There is no reset handler to point at, no GEM memory usage block,
- * and no GEMDOS pool - inventing addresses for them would turn "this machine
- * does not have one" into a pointer somebody follows. The date is nought for
- * the same reason: a date matching the version would be a fact nobody
- * established.
+ * plausible. There is no GEM memory usage block and no GEMDOS pool - inventing
+ * addresses for them would turn "this machine does not have one" into a
+ * pointer somebody follows. The date is nought for the same reason: a date
+ * matching the version would be a fact nobody established.
  *
  * os_run is the one worth filling next. It points at the pointer to the
  * running basepage, which is how a resident program finds out whose memory it
@@ -502,6 +504,33 @@ static void build_os_header(void)
     m68k_write_memory_32(os_header + OSH_END, TOS_LOW_MEMORY_END);
 
     poke_system_long(0x4f2, os_header);
+
+    /*
+     * The reset handler, and the reset vector pointing at it.
+     *
+     * On an ST the first eight bytes of memory read from the ROM, so the long
+     * at address 4 is where TOS starts - and a program that wants to know
+     * where the ROM is reads it. HiSoft's MonST does, to know which memory it
+     * may not set a breakpoint in: with nought there it took the ROM to be the
+     * bottom half megabyte of RAM, and refused every program it loaded with
+     * "En ROM!". So it points into the BIOS RAM, which is where the system's
+     * own code is here and where the ROM would have been.
+     *
+     * What it points at is what a reset can come to on a machine that is the
+     * host: the program that asked ends, there being no machine to start
+     * again. Pterm0, through the trap rather than around it, so that a
+     * debugger watching for the program it is debugging to end sees this one.
+     */
+    reset_handler = bios_static_alloc(4);
+
+    if (reset_handler)
+    {
+        m68k_write_memory_16(reset_handler, 0x4267);     /* clr.w -(sp) */
+        m68k_write_memory_16(reset_handler + 2, 0x4e41); /* trap #1 */
+
+        m68k_write_memory_32(os_header + OSH_RESETH, reset_handler);
+        poke_system_long(0x004, reset_handler);
+    }
 }
 
 /* Where the screen was put in the machine this time round, and how much of it
