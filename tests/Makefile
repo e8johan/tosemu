@@ -632,9 +632,16 @@ check: all
 	# are UTF-8 here, the way a setting written by a person is and the way a
 	# compositor reports a keypress, and the ST has its own byte for each of
 	# them.
-	TOSEMU_KEYS='åäöÅÄÖa\r' $(TOSEMU) test-c-keyboard > out; \
+	# The keys after the Return are the ones that type nothing and are
+	# written by name. Without them a setting can only add to the end of
+	# what it has already added, and an editor cannot be driven at all -
+	# which is how the emulator came to have no way of reproducing what
+	# Microsoft Write does when a line is split.
+	TOSEMU_KEYS='åäöÅÄÖa\r\{left}\{up}\{home}\{f1}\{undo}\{backspace}\{nosuchkey}\r' \
+	  $(TOSEMU) test-c-keyboard > out; \
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	grep -q 'no key is called nosuchkey' out
 	# Pexec 200 leaves test-Pterm running in its place, which returns 42
 	$(TOSEMU) test-c-overlay; test "$$?" = 42
 	#

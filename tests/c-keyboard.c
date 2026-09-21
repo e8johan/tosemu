@@ -107,6 +107,32 @@ int main(int argc, char **argv)
      * than the character */
     check(next_key(), 0x1c0d, "and Return arrives with its scan code on it");
 
+    /*
+     * And the keys that type nothing, which are the ones a setting could not
+     * ask for at all until they were given names.
+     *
+     * They matter because a run of characters can only ever add to the end of
+     * what it has already added: nothing typed forwards moves a caret back, so
+     * an editor driven from a setting could not be made to go anywhere. What
+     * arrives is the scan code in the high half and nothing in the low one -
+     * which is the whole of how an application tells them apart - and the few
+     * that do type something answer with it, Backspace being the case here.
+     */
+    check(next_key(), 0x4b00, "\\{left} arrives as the cursor left key");
+    check(next_key(), 0x4800, "and \\{up} as the one above it");
+    check(next_key(), 0x4700, "and \\{home} as Clr Home");
+    check(next_key(), 0x3b00, "and \\{f1} as the first function key");
+    check(next_key(), 0x6100, "and \\{undo} as Undo, which an ST has");
+    check(next_key(), 0x0e08, "and Backspace types the character it types");
+
+    /*
+     * A name nobody has presses nothing at all, and says so where a person
+     * will see it - the check line greps for that. Silently pressing nothing
+     * is the failure worth guarding against: from the far side it looks
+     * exactly like the application ignoring the key.
+     */
+    check(next_key(), 0x1c0d, "a key with no such name presses nothing");
+
     printf("1..%d\n", n);
 
     appl_exit();
