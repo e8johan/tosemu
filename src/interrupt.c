@@ -1082,10 +1082,56 @@ void interrupt_wait(void)
     interrupt_service();
 }
 
+/*
+ * The frames the video hardware draws, counted on a machine that does not
+ * interrupt.
+ *
+ * _vbclock and _frclock are TOS's count of the vertical blanks, and a program
+ * that wants to wait for a frame watches one of them change - which is what
+ * TOS's own Vsync does, and what a debugger does before it swaps screens. On a
+ * machine with no interrupts nothing counted them, so a program waiting that
+ * way waited for ever. The video hardware is there whether or not anything
+ * interrupts, so its frames are counted anyway, from the clock and rarely.
+ *
+ * Nothing else about an interrupting machine comes with them. No handler is
+ * called, and the two hundred hertz counter stays where it is: that one is the
+ * MFP's, and on this machine the MFP has no clock behind it.
+ */
+#define FRAMES_TICK_INSTRUCTIONS (65536)
+
+static void count_frames(void)
+{
+    static int frames_countdown;
+    static long long frames_due;
+    long long now;
+
+    if (--frames_countdown > 0)
+        return;
+
+    frames_countdown = FRAMES_TICK_INSTRUCTIONS;
+
+    now = now_ns();
+
+    if (!frames_due)
+        frames_due = now + VBL_PERIOD_NS;
+
+    if (now < frames_due)
+        return;
+
+    vbl_count += (now - frames_due) / VBL_PERIOD_NS + 1;
+    frames_due = now + VBL_PERIOD_NS;
+
+    poke_system_long(SYSVAR_VBCLOCK, (uint32_t)vbl_count);
+    poke_system_long(SYSVAR_FRCLOCK, (uint32_t)vbl_count);
+}
+
 void interrupt_tick(void)
 {
     if (!built)
+    {
+        count_frames();
         return;
+    }
 
     if (--countdown > 0)
         return;
