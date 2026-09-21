@@ -222,7 +222,20 @@ check: all
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
+	# And told to keep the picture up when the screen is handed back, which
+	# is a setting - in the environment, and in a file, which is where
+	# somebody who always wants it would say it.
 	$(RM) video.ppm
+	TOSEMU_PICTURE=keep TOSEMU_SCREENSHOT=video.ppm $(TOSEMU) \
+	  test-c-video keep > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) video.ppm
+	printf '[screen]\npicture = keep\n' > picture.tosemu
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER) TOSEMU_SCREENSHOT=video.ppm \
+	  ../../bin/tosemu -c picture.tosemu test-c-video keep > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) video.ppm picture.tosemu
 	# Reading the console, with somebody typing at it - which is what the
 	# sleeps and the printfs are. Three of these calls have to be able to
 	# wait and three have to be able not to, and getting either wrong is

@@ -22,6 +22,8 @@
 
 #include "video.h"
 
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #include "gem_p.h"
@@ -88,6 +90,36 @@ static void shape(int16_t *width, int16_t *height, int16_t *planes)
     }
 }
 
+/*
+ * Whether the picture stays up when the screen is handed back, which is a
+ * setting - see TOSEMU_PICTURE in settings.c. Worked out once, being asked
+ * about fifty times a second.
+ */
+static int keeps(void)
+{
+    static int decided, keep;
+    const char *said;
+
+    if (decided)
+        return keep;
+
+    decided = 1;
+    said = setting("TOSEMU_PICTURE");
+
+    if (!said || !*said || strcmp(said, "hide") == 0)
+        keep = 0;
+    else if (strcmp(said, "keep") == 0)
+        keep = 1;
+    else
+    {
+        printf("tosemu: picture = %s, which is neither hide nor keep, "
+               "so it is hidden\n", said);
+        keep = 0;
+    }
+
+    return keep;
+}
+
 int video_taken(void)
 {
     return taken;
@@ -147,7 +179,7 @@ long video_settle(void)
 {
     long home;
 
-    if (!showing)
+    if (!showing || keeps())
         return -1;
 
     home = home_for(now_ns());
@@ -208,7 +240,8 @@ void video_frame(void)
         showing = 1;
         changed = 1;
     }
-    else if (showing && home >= HANDED_BACK_MS && gem_has_windows())
+    else if (showing && home >= HANDED_BACK_MS && !keeps()
+             && gem_has_windows())
         step_aside();
 
     if (!showing)

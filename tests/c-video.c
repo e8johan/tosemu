@@ -36,6 +36,10 @@
  * look at. A window is opened to be that something, and what is looked at is
  * the screenshot the next GEM wait takes.
  *
+ * Unless it has been told to keep the picture up, which a person debugging
+ * may want - then it stays for the window too. The run says which, by naming
+ * keep on the command line alongside the setting.
+ *
  * The run says where the screenshot goes and the screen it runs on, and this
  * reads the file through GEMDOS like any other.
  */
@@ -110,8 +114,9 @@ static long colour_of(int pen)
 
 static unsigned short buffer[16000 + 128];
 
-int main(void)
+int main(int argc, char **argv)
 {
+    int keep = (argc > 1 && strcmp(argv[1], "keep") == 0);
     unsigned short *screen;
     unsigned short old_colour = 0;
     long phys = (long)Physbase();
@@ -219,14 +224,20 @@ int main(void)
     check(pixel(0, 0), colour_of(1),
           "the picture stays when the program has nothing else to show");
 
-    /* With a window of the program's, it steps aside for GEM's screen */
+    /* With a window of the program's, it steps aside for GEM's screen - or
+     * stays, when it was told to */
     handle = wind_create(0, 100, 100, 100, 60);
     wind_open(handle, 100, 100, 100, 60);
     evnt_timer(400);
+    Vsync();
     evnt_timer(0);
     read_shot();
-    check(pixel(0, 0), colour_of(0),
-          "and steps aside for a window of the program's once handed back");
+    if (keep)
+        check(pixel(0, 0), colour_of(1),
+              "and stays for a window of the program's when told to keep it");
+    else
+        check(pixel(0, 0), colour_of(0),
+              "and steps aside for a window of the program's once handed back");
 
     /* And it is back when the base moves away again */
     Setscreen(-1L, (void *)screen, -1);

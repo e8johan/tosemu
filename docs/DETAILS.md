@@ -315,6 +315,7 @@ Which is which:
 | `[screen] output`      | `TOSEMU_OUTPUT`      |
 | `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
 | `[screen] decorations` | `TOSEMU_DECORATIONS` |
+| `[screen] picture`     | `TOSEMU_PICTURE`     |
 | `[machine] memory`     | `TOSEMU_MEMORY`      |
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |

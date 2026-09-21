@@ -39,7 +39,8 @@
  * picture steps aside for them, as long as there is something of theirs up to
  * step aside for. It comes back when the base moves away again. A debugger
  * does both every time it starts the program it is debugging and every time
- * the program stops.
+ * the program stops - which somebody using one may not want, so it can be
+ * told to stay up instead; see TOSEMU_PICTURE in settings.c.
  */
 
 /* Brings the picture across now, and shows it if anything changed. Nothing
