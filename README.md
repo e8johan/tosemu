@@ -1,5 +1,7 @@
-TOSEMU
+# TOSEMU
+
 An emulated environment to TOS applications.
+
 Copyright (C) 2014-2026 Johan Toverland Thelin <e8johan@gmail.com>
 
 [![Run all test cases](https://github.com/e8johan/tosemu/actions/workflows/run-tests.yaml/badge.svg)](https://github.com/e8johan/tosemu/actions/workflows/run-tests.yaml)
