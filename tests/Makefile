@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -236,6 +236,10 @@ check: all
 	# from Super standing somewhere else has lost everything it had put on
 	# its own stack, including where it was to return to.
 	$(TOSEMU) test-c-super > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# A handler of the program's own on each of the OS traps, which is
+	# called and whose calls passed on are answered as if it were not there
+	$(TOSEMU) test-c-traphook > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# The line-A, whose one implemented call hands over three addresses a
 	# program then follows. On the default screen and on a colour one,

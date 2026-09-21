@@ -359,6 +359,18 @@ static uint32_t default_vector;
  * one above is an RTE. See where they are written. */
 static uint32_t default_routine;
 
+/* The OS traps - GEMDOS, GEM, BIOS and XBIOS, by the vector each is taken
+ * through - and the handler the machine puts on each. See where they are
+ * written. */
+#define OS_TRAPS (4)
+
+static const uint32_t os_trap_vector[OS_TRAPS] = { 0x21, 0x22, 0x2d, 0x2e };
+static uint32_t trap_stub[OS_TRAPS];
+
+/* Line-F, with the vector in the low byte so that a disassembly says which
+ * one it is */
+#define TRAP_STUB_OPCODE (0xf000)
+
 /*
  * The operating system's own header, which _sysbase points at.
  *
@@ -1118,6 +1130,42 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     }
 
     /*
+     * Except the four OS traps, which get a handler each - the one the
+     * machine's own GEMDOS, GEM, BIOS and XBIOS would be.
+     *
+     * A trap is answered on the host without going near its vector, which is
+     * how every OS call is made. But a program that hangs a handler of its
+     * own there - a debugger watching for the program it is debugging to
+     * finish, a resident program adding a call - saves what the vector held
+     * and passes the calls it is not interested in on to that, and a plain
+     * RTE passed them on to nothing. So each vector points at an instruction
+     * of its own, one the CPU hands back to the host: reaching it is the call
+     * being passed on, and it is made then. While the vector still points
+     * there nobody has hooked it, and the trap is answered directly the way it
+     * always was - see m68k_trap_vectored.
+     *
+     * A line-F opcode rather than a byte that does something when it is read,
+     * the way the ACIA's handler works, because a program that reads this -
+     * a debugger disassembling the handler it is about to chain to - must not
+     * make an OS call by looking.
+     */
+    {
+        int i;
+
+        for (i = 0; i < OS_TRAPS; i++)
+        {
+            trap_stub[i] = bios_static_alloc(2);
+
+            if (trap_stub[i])
+            {
+                m68k_write_memory_16(trap_stub[i],
+                                     TRAP_STUB_OPCODE | os_trap_vector[i]);
+                m68k_write_memory_32(4 * os_trap_vector[i], trap_stub[i]);
+            }
+        }
+    }
+
+    /*
      * The system's own handoff vectors, which are not exception vectors at all
      * and must not hold what those hold.
      *
@@ -1645,6 +1693,29 @@ void m68k_trap(unsigned int vector)
             printf("Invoked unsupported trap 0x%x, this should never happen!\n", vector);
             break;
     }
+}
+
+int m68k_trap_vectored(unsigned int vector)
+{
+    int i;
+
+    for (i = 0; i < OS_TRAPS; i++)
+        if (os_trap_vector[i] == vector)
+            return trap_stub[i]
+                && m68k_read_disassembler_32(4 * vector) != trap_stub[i];
+
+    return 0;
+}
+
+unsigned int m68k_trap_stub(unsigned int address)
+{
+    int i;
+
+    for (i = 0; i < OS_TRAPS; i++)
+        if (trap_stub[i] && trap_stub[i] == address)
+            return os_trap_vector[i];
+
+    return 0;
 }
 
 void halt_execution()
