@@ -467,23 +467,13 @@
   screen; it is not the screen size, it happens at 320x200; it is not GDOS,
   it happens with no ASSIGN.SYS; it is not Write scrolling the screen itself,
   the block Logbase hands out is never written to in a whole session; and it
-  is not Getrez reporting a resolution no ST has, because answering 2 instead
-  changes which path Write takes and leaves the same line behind.
+  is not the resolution Getrez reports, because 8, which is no machine's, and
+  2 take Write down different paths and leave the same line behind.
 
   The next thing to try is the one that cannot be tried from here: what a real
   VDI does with v_gtext in replace mode, since everything above says Write
   expects more of the line to be cleared than a character cell. Worth checking
   against Hatari with a TOS ROM before looking anywhere else in tosemu.
-
-- Microsoft Write in ST high resolution writes to the cartridge port at
-  0xFA0000 and the emulator halts it, so it ends within seconds of starting.
-  None of the other screens does this, and a native mono screen does not
-  either - which has the same single plane and the same Getrez answer, and
-  differs only in being a shape no ST ever had. So what takes Write down that
-  path is recognising the screen it was written for rather than anything it
-  was told about the hardware. What it is looking for at 0xFA0000 has not been
-  established. Since high resolution is the one Write was written for, that is
-  the mode it ought to be watched in.
 
 - Drawing outside a window is not promoted to a window of its own. form_dial
   says a rectangle is being reserved and that gets one, which covers dialogs;

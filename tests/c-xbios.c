@@ -93,9 +93,10 @@ int main(int argc, char **argv)
     long previous;
     int i;
 
-    /* 0x04 Getrez - deliberately not a real ST resolution, so that code
-     * depending on the screen hardware fails loudly rather than misdrawing */
-    check(Getrez(), 8, "Getrez reports a resolution no ST has");
+    /* 0x04 Getrez, on the screen a machine comes up with when nobody says,
+     * which is the ST's high resolution one. test-c-screen asks on the
+     * others. */
+    check(Getrez(), 2, "Getrez reports the ST's high resolution");
 
     /* Screen and video. Nothing reaches a display, but an application that
      * draws needs somewhere to draw and an application that configures the

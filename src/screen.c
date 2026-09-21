@@ -102,16 +102,20 @@ int screen_scale(void)
  * Falcon's is sixteen bits to a pixel rather than planes, and surface.h says
  * why that is not a small change: planes interleaved a word at a time is the
  * shape that lets the VDI be EmuTOS's code rather than a rewrite of it.
+ *
+ * rez is the number Getrez answers for each, the TT's being the ones its
+ * XBIOS gives them - see screen_rez.
  */
 static const struct {
     const char *name;
     int16_t width, height, planes;
+    int16_t rez;
 } modes[] = {
-    { "low",        320, 200, 4 },
-    { "medium",     640, 200, 2 },
-    { "high",       640, 400, 1 },
-    { "tt-medium",  640, 480, 4 },
-    { "tt-high",   1280, 960, 1 },
+    { "low",        320, 200, 4, 0 },
+    { "medium",     640, 200, 2, 1 },
+    { "high",       640, 400, 1, 2 },
+    { "tt-medium",  640, 480, 4, 4 },
+    { "tt-high",   1280, 960, 1, 6 },
 };
 
 #define MODE_DEFAULT (2)    /* high */
@@ -145,6 +149,25 @@ static const struct {
     { "display-mono",  1, 0 },
     { "display-color", 4, 0 },
 };
+
+int16_t screen_rez(int16_t width, int16_t height, int16_t planes)
+{
+    size_t i;
+
+    /*
+     * By shape rather than by name, because the name is not what the machine
+     * ends up with: a daemon can decide on another screen, and a native one
+     * with no display to measure comes out 640x400. That one is an ST's high
+     * resolution screen in every way a program can tell, so it is answered as
+     * one.
+     */
+    for (i = 0; i < sizeof modes / sizeof modes[0]; i++)
+        if (modes[i].width == width && modes[i].height == height
+            && modes[i].planes == planes)
+            return modes[i].rez;
+
+    return -1;
+}
 
 void screen_from_display(int32_t pixels_w, int32_t pixels_h, int32_t out_scale,
                          int16_t *width, int16_t *height)

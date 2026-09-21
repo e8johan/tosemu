@@ -32,10 +32,8 @@
  * sets a colour and reads it again sees its own value rather than one it never
  * chose.
  *
- * What none of it does is take effect. Getrez deliberately reports a
- * resolution no ST has, so that code depending on the screen hardware fails
- * where it can be seen rather than drawing something nobody will look at, and
- * the rest of this file stays consistent with that choice.
+ * What none of it does is take effect. Getrez reports the resolution the
+ * screen really is, and a mode set here does not change it.
  */
 
 #include "xbios.h"
@@ -46,6 +44,9 @@
 #include "console.h"
 #include "cpu.h"
 #include "m68k.h"
+#include "gem_p.h"
+#include "screen.h"
+#include "surface.h"
 
 #include "xbios_p.h"
 
@@ -89,12 +90,38 @@ int xbios_screen_named(uint32_t address)
     return address == screen_phys || address == screen_log;
 }
 
+/*
+ * The resolution, as the number the machine with this screen would have
+ * answered.
+ *
+ * The screen GEM settled on once it has started, since a daemon can decide on
+ * another one than this process asked for, and what the memory map was built
+ * around before that. A shape no Atari had gets 8, which is no machine's
+ * number: a program that looks the answer up in a table of the ones it knows
+ * finds nothing there and says so, which is better than being told it has a
+ * screen it has not.
+ */
+#define REZ_NO_MACHINE (8)
+
 uint32_t XBIOS_Getrez()
 {
+    struct surface *screen = gem_screen_surface();
+    int16_t width, height, planes, rez;
+
     FUNC_TRACE_ENTER
 
-    /* Custom value, to ensure that HW-dependent code fails */
-    return 8;
+    if (screen)
+    {
+        width = (int16_t)surface_width(screen);
+        height = (int16_t)surface_height(screen);
+        planes = (int16_t)surface_planes(screen);
+    }
+    else
+        screen_mode(&width, &height, &planes);
+
+    rez = screen_rez(width, height, planes);
+
+    return rez < 0 ? REZ_NO_MACHINE : (uint32_t)rez;
 }
 
 uint32_t XBIOS_Physbase()
