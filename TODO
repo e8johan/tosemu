@@ -445,6 +445,46 @@
   has to substitute, which is where the metrics warning above stops being
   theoretical.
 
+- Splitting a line in Microsoft Write leaves the tail of the old line on the
+  screen. Put the caret in the middle of a line and press Return: the two new
+  lines are drawn correctly, and whatever the old line had beyond the first
+  character of the split is still sitting there underneath.
+
+  What Write does is not in doubt, and it is the same at every resolution,
+  with GDOS and without, and with every window on a surface of its own or all
+  of them sharing the screen. It redraws each changed line as v_gtext of the
+  line's new text plus one trailing space, in replace mode with clipping
+  turned off, and scrolls the lines below the two it redrew with a screen to
+  screen vro_cpyfm. Three lines of a document with the caret at the start of
+  the second come out as v_gtext " " on line two, v_gtext "BBB " on line
+  three, the copy, and v_gtext "CCC " on line four. One trailing space clears
+  one character cell, which is all that ever gets cleared, and nothing else
+  Write asks for would clear the rest.
+
+  So Write is relying on something to have emptied that line, and what it is
+  has not been found. Ruled out so far: it is not the per window surfaces and
+  not the compositing, the same pixels come out with every window sharing the
+  screen; it is not the screen size, it happens at 320x200; it is not GDOS,
+  it happens with no ASSIGN.SYS; it is not Write scrolling the screen itself,
+  the block Logbase hands out is never written to in a whole session; and it
+  is not Getrez reporting a resolution no ST has, because answering 2 instead
+  changes which path Write takes and leaves the same line behind.
+
+  The next thing to try is the one that cannot be tried from here: what a real
+  VDI does with v_gtext in replace mode, since everything above says Write
+  expects more of the line to be cleared than a character cell. Worth checking
+  against Hatari with a TOS ROM before looking anywhere else in tosemu.
+
+- Microsoft Write in ST high resolution writes to the cartridge port at
+  0xFA0000 and the emulator halts it, so it ends within seconds of starting.
+  None of the other screens does this, and a native mono screen does not
+  either - which has the same single plane and the same Getrez answer, and
+  differs only in being a shape no ST ever had. So what takes Write down that
+  path is recognising the screen it was written for rather than anything it
+  was told about the hardware. What it is looking for at 0xFA0000 has not been
+  established. Since high resolution is the one Write was written for, that is
+  the mode it ought to be watched in.
+
 - Drawing outside a window is not promoted to a window of its own. form_dial
   says a rectangle is being reserved and that gets one, which covers dialogs;
   an application that draws on the desktop beside its window without saying so
