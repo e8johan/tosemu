@@ -120,9 +120,9 @@ uint32_t GEMDOS_Super()
         printf("    0x%x\n", lv0);
     }
 
-    if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
+    if (lv0 == 1) { /* -1 in supervisor mode, nought in user mode - x20_inq */
         if (is_supervisor_mode_enabled()) {
-            res = 1;
+            res = 0xffffffff;
         } else {
             res = 0;
         }

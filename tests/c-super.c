@@ -185,7 +185,7 @@ int main(int argc, char **argv)
 
     check(user_mode, 0, "a program starts in user mode");
     check(inside, before, "Super leaves the caller standing on its own stack");
-    check(super_mode, 1, "and in supervisor mode");
+    check(super_mode, -1, "and in supervisor mode");
     check(bootdev == bootdev, 1, "so the system variables can be read");
     check(after, before, "coming back leaves it on its own stack as well");
     check(back_again, 0, "and in user mode again");
