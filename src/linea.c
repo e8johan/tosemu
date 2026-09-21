@@ -53,6 +53,7 @@
 #include "tossystem.h"
 #include "cpu.h"
 #include "m68k.h"
+#include "emuvdi/emuvdi.h"
 
 /* What the calls are called, for saying which one was asked for. The numbers
  * and the order are the table in 3rdparty/emutos/bios/linea.S. */
@@ -68,6 +69,8 @@ static uint32_t vars;
 static uint32_t fonts;
 static uint32_t routines;
 
+static void system_fonts(int16_t width, int16_t height, int16_t planes);
+
 static void write_word(uint32_t address, int16_t value)
 {
     m68k_write_memory_16(address, (uint16_t)value);
@@ -76,6 +79,106 @@ static void write_word(uint32_t address, int16_t value)
 uint32_t linea_vars(void)
 {
     return vars;
+}
+
+/*
+ * One system font, copied into the machine: the header, the offset table and
+ * the raster, all in the 68000's byte order. Answers the header's address, or
+ * nought when there was no room.
+ */
+static uint32_t copy_font(int which)
+{
+    struct emuvdi_font font;
+    uint32_t header, offsets, raster;
+    uint32_t raster_words;
+    uint32_t i;
+
+    if (!emuvdi_system_font(which, &font))
+        return 0;
+
+    raster_words = (uint32_t)font.form_width * font.form_height / 2;
+
+    header = bios_static_alloc(FONT_HEADER);
+    offsets = bios_static_alloc((uint32_t)font.offset_count * 2);
+    raster = bios_static_alloc(raster_words * 2);
+
+    if (!header || !offsets || !raster)
+        return 0;
+
+    write_word(header + FONT_ID, font.id);
+    write_word(header + FONT_POINT, font.point);
+
+    for (i = 0; i < FONT_NAME_LENGTH && font.name[i]; i++)
+        m68k_write_memory_8(header + FONT_NAME + i, (uint8_t)font.name[i]);
+
+    for (i = 0; i < sizeof font.words / sizeof font.words[0]; i++)
+        m68k_write_memory_16(header + FONT_FIRST_ADE + 2 * i, font.words[i]);
+
+    m68k_write_memory_32(header + FONT_OFF_TABLE, offsets);
+    m68k_write_memory_32(header + FONT_DAT_TABLE, raster);
+    m68k_write_memory_16(header + FONT_FORM_WIDTH, font.form_width);
+    m68k_write_memory_16(header + FONT_FORM_HEIGHT, font.form_height);
+
+    for (i = 0; i < (uint32_t)font.offset_count; i++)
+        m68k_write_memory_16(offsets + 2 * i, font.offsets[i]);
+
+    /* A word at a time, which is what puts the host's words into the
+     * machine's byte order */
+    for (i = 0; i < raster_words; i++)
+        m68k_write_memory_16(raster + 2 * i, font.raster[i]);
+
+    return header;
+}
+
+/*
+ * The three of them, the table $a000 hands out, and the variables that say
+ * which is the console's.
+ */
+static void system_fonts(int16_t width, int16_t height, int16_t planes)
+{
+    uint32_t header[LINEA_FONTS];
+    uint32_t console;
+    int i;
+
+    for (i = 0; i < LINEA_FONTS; i++)
+    {
+        header[i] = copy_font(i);
+        m68k_write_memory_32(fonts + 4 * i, header[i]);
+    }
+
+    /* Only the 8x8 is chained to the 8x16, and the 6x6 to nothing, which is
+     * what the VDI's own copies are - see host_font_init */
+    if (header[1] && header[2])
+        m68k_write_memory_32(header[1] + FONT_NEXT_FONT, header[2]);
+
+    /*
+     * The console's is the 8x16 on a screen four hundred lines tall and the
+     * 8x8 on anything shorter - font_set_default, which is the same choice the
+     * console itself makes. Every system font is eight pixels a character.
+     */
+    console = header[height < 400 ? 1 : 2];
+    if (!console)
+        return;
+
+    {
+        int16_t cell_height = (int16_t)m68k_read_memory_16(console
+                                                           + FONT_FORM_HEIGHT);
+
+        write_word(vars + LINEA_V_CEL_HT, cell_height);
+        write_word(vars + LINEA_V_CEL_MX, width / 8 - 1);
+        write_word(vars + LINEA_V_CEL_MY, height / cell_height - 1);
+        write_word(vars + LINEA_V_CEL_WR, width / 8 * planes * cell_height);
+        write_word(vars + LINEA_V_FNT_WR,
+                   (int16_t)m68k_read_memory_16(console + FONT_FORM_WIDTH));
+        write_word(vars + LINEA_V_FNT_ST,
+                   (int16_t)m68k_read_memory_16(console + FONT_FIRST_ADE));
+        write_word(vars + LINEA_V_FNT_ND,
+                   (int16_t)m68k_read_memory_16(console + FONT_FIRST_ADE + 2));
+        m68k_write_memory_32(vars + LINEA_V_FNT_AD,
+                             m68k_read_memory_32(console + FONT_DAT_TABLE));
+        m68k_write_memory_32(vars + LINEA_V_OFF_AD,
+                             m68k_read_memory_32(console + FONT_OFF_TABLE));
+    }
 }
 
 void linea_init(int16_t width, int16_t height, int16_t planes)
@@ -124,14 +227,15 @@ void linea_init(int16_t width, int16_t height, int16_t planes)
     m68k_write_memory_32(vars + LINEA_PTSOUT, bios_static_alloc(256 * 4));
 
     /*
-     * The system fonts, which are not here. TOS answered $a000 with the three
-     * bitmap fonts the machine had, for a program that draws its own text; the
-     * ones tosemu uses are the host's copies and are at host addresses, which
-     * a 68000 has no way to reach. The table is present and says there are
-     * none - it is read by walking it until a nought - so a program looking
-     * for a font finds no fonts rather than finding a wrong one. See TODO.
+     * The system fonts, which TOS answered $a000 with for a program that draws
+     * its own text: a debugger with a screen of its own is the usual one. The
+     * VDI's are the host's and at host addresses, which a 68000 cannot reach,
+     * so the machine gets copies of the same three in its own memory. The
+     * table ends in a nought, which is how it is walked.
      */
-    fonts = bios_static_alloc(4 * 4);
+    fonts = bios_static_alloc((LINEA_FONTS + 1) * 4);
+    if (fonts)
+        system_fonts(width, height, planes);
 
     /*
      * And the addresses of the routines themselves, for a program that calls

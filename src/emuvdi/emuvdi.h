@@ -32,6 +32,28 @@
  * this is the whole of the surface between them.
  */
 
+/*
+ * One of the three system fonts - 0 is the 6x6, 1 the 8x8 and 2 the 8x16 -
+ * described in types that do not need EmuTOS's headers, for copying into the
+ * machine's memory where a 68000 can read it.
+ *
+ * `words` are the header's sixteen words from first_ade to flags, in the order
+ * the header has them. The offset table and the raster are the font's own,
+ * as words in host order; the raster is form_width bytes by form_height lines.
+ * Answers 0 for a font there is not.
+ */
+struct emuvdi_font {
+    int16_t id, point;
+    const char *name;
+    uint16_t words[16];
+    const uint16_t *offsets;
+    int offset_count;
+    const uint16_t *raster;
+    uint16_t form_width, form_height;
+};
+
+int emuvdi_system_font(int which, struct emuvdi_font *font);
+
 /* Readies the VDI: the system fonts and the tables an open workstation
  * reports. Call once, before anything else here. */
 void emuvdi_init();

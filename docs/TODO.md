@@ -421,13 +421,9 @@
   machine's memory and the VDI here takes them as C arguments on the host,
   so each one wants the block unpacked into a call across the seam.
 
-  The three system fonts are the same seam and are the reason $a000 hands
-  back a table saying there are none. TOS answered with the machine's own
-  bitmap fonts, for a program that draws its own text; the copies here are
-  EmuTOS's, compiled for the host and sitting at host addresses that a 68000
-  cannot reach. Making them real means the header, the offset table and the
-  raster copied into the machine's memory the right way round - which is
-  bounded work, and nothing that has been run here has asked for it yet.
+  The system fonts $a000 hands out are copies in the machine's memory, and
+  the variables that describe the console's font point into them. The rest of
+  the text variables - def_font, font_ring and the cursor - are not filled in.
 
 - Microsoft Write runs now. It was three things in a row, and none of them
   was the fonts: the line-A, which its loader calls once and which nothing
