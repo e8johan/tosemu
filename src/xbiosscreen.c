@@ -158,7 +158,10 @@ uint32_t XBIOS_Setscreen()
 
     /* -1 leaves that part of the setting alone */
     if (lscrn != 0xffffffff)
+    {
         screen_log = lscrn;
+        tos_set_logical_screen(lscrn);
+    }
     if (pscrn != 0xffffffff)
         shifter_set_base(pscrn);
 

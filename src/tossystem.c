@@ -607,6 +607,11 @@ uint32_t tos_screen_base(void)
     return screen_base;
 }
 
+void tos_set_logical_screen(uint32_t address)
+{
+    poke_system_long(0x44e, address);
+}
+
 uint32_t tos_screen_size(void)
 {
     return screen_size;
@@ -1243,6 +1248,19 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * - the header is in the BIOS RAM and _sysbase is a system variable, and
      * neither could be written before the areas above went up */
     build_os_header();
+
+    /*
+     * And where its memory begins and ends, which TOS kept in system variables
+     * for a program that asks the machine rather than GEMDOS: phystop is the
+     * top of the RAM, _membot and _memtop the bottom and top of what programs
+     * are given, and _v_bas_ad the logical screen, which is where _memtop
+     * stops. HiSoft's MonST reads phystop to know which addresses are RAM, and
+     * with nought there no address was, so it would set a breakpoint nowhere.
+     */
+    poke_system_long(0x42e, ramtop);                 /* phystop */
+    poke_system_long(0x432, TOS_LOW_MEMORY_END);     /* _membot */
+    poke_system_long(0x436, screen_base);            /* _memtop */
+    poke_system_long(0x44e, screen_base);            /* _v_bas_ad */
 
     /* And the chips that interrupt, if this machine has any. Here rather than
      * with the other sub-systems because what it adds is memory areas, and

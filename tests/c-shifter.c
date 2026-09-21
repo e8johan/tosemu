@@ -74,6 +74,7 @@ int main(int argc, char **argv)
     long ssp, phys, other;
     long read_base, read_after_setscreen, physbase_after_poke, low_after_hi;
     long rez, sync, colour0, ink, poked, setcolor_after_poke, masked;
+    long v_bas_ad, logbase;
     int ink_index;
     short want_rez;
 
@@ -105,6 +106,12 @@ int main(int argc, char **argv)
     Setscreen(-1L, (void *)other, -1);
     read_after_setscreen = base_registers();
 
+    /* And moving the logical one moves _v_bas_ad, which is where TOS keeps it */
+    logbase = (long)Logbase();
+    Setscreen((void *)other, -1L, -1);
+    v_bas_ad = *(volatile long *)0x44eL;
+    Setscreen((void *)logbase, -1L, -1);
+
     /* And the registers moving it moves what the XBIOS says, which is the
      * way round a debugger goes. An STE clears the low byte when the high one
      * is written, so it is given one first to see it go. */
@@ -132,6 +139,7 @@ int main(int argc, char **argv)
     check(colour0, 0x0fff, "the background starts out white");
     check(ink, 0x0000, "and the ink starts out black");
     check(read_after_setscreen, other, "Setscreen moves the video base");
+    check(v_bas_ad, other, "and the logical screen moves _v_bas_ad");
     check(low_after_hi, 0, "writing the high byte clears the low one");
     check(physbase_after_poke, phys, "and writing the registers moves Physbase");
     check(poked, 0x0123, "Setcolor sets the colour register");

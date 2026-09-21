@@ -230,6 +230,11 @@ uint32_t bios_device_alloc(uint32_t len);
 uint32_t tos_screen_base(void);
 uint32_t tos_screen_size(void);
 
+/* _v_bas_ad, the logical screen, which is a system variable TOS kept in step
+ * with Setscreen - written around the emulated processor's mode, being in the
+ * memory only supervisor mode may touch */
+void tos_set_logical_screen(uint32_t address);
+
 /*
  * Where an exception vector points when nobody has claimed it.
  *

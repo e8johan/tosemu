@@ -157,13 +157,6 @@
   one, and that wants checking against a resource file that has more than one.
 - Investigate how to support non-planar modes (up to 16bpp currently) and 
   planar modes without having to rewrite the entire VDI stack.
-- The system variables that say where memory begins and ends - phystop at
-  0x42e, _membot and _memtop, and v_bas_ad at 0x44e - are all nought, because
-  nothing has ever written them. A program that asks GEMDOS how much memory
-  there is gets the right answer, and one that reads the variables the way a
-  Supexec'd routine of the period does is told the machine has none. It is
-  worth doing now that how much there is can be chosen, since that is the
-  answer they would be carrying.
 - Which window a piece of drawing belongs to is decided by aes_wind_owner, and
   where it says nothing certain it is a guess. GEM never says: an application
   sets a clipping rectangle and draws, and where two windows overlap that

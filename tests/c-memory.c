@@ -49,6 +49,19 @@
 static int n;
 static int fails;
 
+/* The system variables that say where memory begins and ends, which only a
+ * program in supervisor mode may read - so they are read in Supexec and
+ * reported afterwards */
+static long phystop, membot, memtop, v_bas_ad;
+
+static void read_variables(void)
+{
+    phystop = *(volatile long *)0x42eL;
+    membot = *(volatile long *)0x432L;
+    memtop = *(volatile long *)0x436L;
+    v_bas_ad = *(volatile long *)0x44eL;
+}
+
 static void check(long got, long want, const char *name)
 {
     n++;
@@ -169,6 +182,17 @@ int main(int argc, char **argv)
                   "screen");
     check(Malloc(top), 0,
           "and a block the size of the whole machine cannot be had");
+
+    /*
+     * And the same said in the system variables, for a program that asks the
+     * machine rather than GEMDOS: a debugger reads phystop to know which
+     * addresses are RAM, and nought there is a machine with none.
+     */
+    Supexec(read_variables);
+    check(phystop, top, "phystop is the top of the machine's memory");
+    check(memtop, screen, "_memtop is where the screen begins");
+    check(membot, 0x800L, "_membot is where the first program is loaded");
+    check(v_bas_ad, (long)Logbase(), "and _v_bas_ad is the logical screen");
 
     /*
      * Blocks of an odd size, which are whole words once they are handed out.
