@@ -114,10 +114,54 @@ static void deep(void)
     *counter = was;
 }
 
+/*
+ * Going in with a supervisor stack of the caller's own, which is the other
+ * thing Super(0) is not: the argument is the stack to stand on, and only
+ * nought means the one the caller is on already. A debugger does it this way,
+ * because it is about to hang handlers off the machine and wants them standing
+ * somewhere a program being debugged cannot reach.
+ *
+ * In assembly rather than C because the stack changes under the code in the
+ * middle, and compiled code finds its locals from the stack pointer. What it
+ * sees goes into statics, and the user stack is put back by hand at the end:
+ * the six bytes pushed for the first call are on it still, and the way out
+ * carries four more across, so nothing is where the compiler left it.
+ */
+#define OTHER_STACK_LONGS (256)
+
+static long other_stack[OTHER_STACK_LONGS];
+static long stood_on, mode_there;
+
+static void on_a_stack_of_its_own(void)
+{
+    static long ssp, usp;
+
+    __asm__ volatile (
+        "move.l  %%sp,%[usp]\n\t"
+        "move.l  %[top],-(%%sp)\n\t"
+        "move.w  #0x20,-(%%sp)\n\t"
+        "trap    #1\n\t"
+        "move.l  %%d0,%[ssp]\n\t"
+        "move.l  %%sp,%[stood]\n\t"
+        "pea     1.w\n\t"
+        "move.w  #0x20,-(%%sp)\n\t"
+        "trap    #1\n\t"
+        "addq.l  #6,%%sp\n\t"
+        "move.l  %%d0,%[mode]\n\t"
+        "move.l  %[ssp],-(%%sp)\n\t"
+        "move.w  #0x20,-(%%sp)\n\t"
+        "trap    #1\n\t"
+        "move.l  %[usp],%%sp\n\t"
+        : [ssp] "+m" (ssp), [usp] "+m" (usp),
+          [stood] "=m" (stood_on), [mode] "=m" (mode_there)
+        : [top] "r" ((long)(other_stack + OTHER_STACK_LONGS))
+        : "d0", "d1", "d2", "a0", "a1", "a2", "memory", "cc");
+}
+
 int main(int argc, char **argv)
 {
     long before, inside, after;
-    long user_mode, super_mode, back_again;
+    long user_mode, super_mode, back_again, out_by_nought;
     long bootdev;
     long ssp;
 
@@ -145,6 +189,25 @@ int main(int argc, char **argv)
     check(bootdev == bootdev, 1, "so the system variables can be read");
     check(after, before, "coming back leaves it on its own stack as well");
     check(back_again, 0, "and in user mode again");
+
+    on_a_stack_of_its_own();
+    check(mode_there, super_mode,
+          "Super with a stack of its own goes into supervisor mode too");
+    check(stood_on, (long)(other_stack + OTHER_STACK_LONGS),
+          "and stands the caller on that stack");
+    check(Super(1L), 0, "and giving it back comes out again");
+
+    /* And nought from supervisor mode is a way out rather than a way in:
+     * which way Super goes is the mode's to say, not the argument's. Going
+     * in again and giving back what the first call answered is what puts
+     * the machine's own stack back where it was. */
+    ssp = Super(0L);
+    Super(0L);
+    out_by_nought = Super(1L);
+    Super(0L);
+    Super((void *)ssp);
+    check(out_by_nought, 0, "Super(0) from supervisor mode comes out of it");
+    check(Super(1L), 0, "and giving the machine's stack back leaves it there");
 
     Supexec(deep);
     check(marker_survived, 1,
