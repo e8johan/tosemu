@@ -290,11 +290,31 @@ void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h)
 
 int surface_write_ppm(const struct surface *s, const char *path)
 {
-    FILE *f = fopen(path, "wb");
+    /*
+     * Written beside the file and renamed onto it, rather than into it.
+     *
+     * A screenshot is taken every time the application waits, so the file is
+     * being written over and over while somebody is looking at it, and a
+     * rename is the only way the looking never lands in the middle of one.
+     * Without it a picture read at the wrong moment is however much of it had
+     * been written - which looks like the emulator drawing half a screen.
+     */
+    char *temp = malloc(strlen(path) + 3);
+    FILE *f;
     uint16_t x, y;
 
-    if (!f)
+    if (!temp)
         return 0;
+
+    strcpy(temp, path);
+    strcat(temp, ".t");
+
+    f = fopen(temp, "wb");
+    if (!f)
+    {
+        free(temp);
+        return 0;
+    }
 
     fprintf(f, "P6\n%d %d\n255\n", s->width, s->height);
 
@@ -314,6 +334,15 @@ int surface_write_ppm(const struct surface *s, const char *path)
     }
 
     fclose(f);
+
+    if (rename(temp, path) != 0)
+    {
+        remove(temp);
+        free(temp);
+        return 0;
+    }
+
+    free(temp);
 
     return 1;
 }
