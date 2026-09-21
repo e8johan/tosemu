@@ -310,7 +310,6 @@ uint32_t XBIOS_Bioskeys()
 #define XBIOS_VgetMonitor NULL
 #define XBIOS_VsetMask NULL
 #define XBIOS_VsetSync NULL
-#define XBIOS_Vsync NULL
 #define XBIOS_Waveplay NULL
 
 /* What a table entry does when it has no implementation, see bios.c */

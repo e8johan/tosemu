@@ -383,13 +383,14 @@ struct window {
  * is their slot. The menu bar, whichever menu is down and the console get
  * slots of their own after those: the AES does not give them handles, and
  * taking one of the eight would be taking a window an application is entitled
- * to.
+ * to. So does the picture a program shows through the video hardware.
  */
 #define DIALOG   (0)
 #define MENUBAR  (9)
 #define MENU     (10)
 #define CONSOLE  (11)
-#define WINDOWS  (12)
+#define VIDEO    (12)
+#define WINDOWS  (13)
 
 #endif /* NO_WAYLAND */
 
@@ -4186,6 +4187,29 @@ void gfx_console_close(void)
     window_destroy(&w.windows[CONSOLE]);
 }
 
+/*
+ * The picture a program shows through the video hardware, which is a window
+ * in its own right for the reason the console is: it belongs to nothing else,
+ * and a person reads it and types at it.
+ */
+void gfx_video_open(struct surface *shows, int16_t sw, int16_t sh)
+{
+    if (!gfx_showing() || !shows || sw <= 0 || sh <= 0)
+        return;
+
+    if (w.windows[VIDEO].used)
+        return;
+
+    if (!window_create(&w.windows[VIDEO], "Screen", shows, 0, 0, sw, sh,
+                       0, 0))
+        window_destroy(&w.windows[VIDEO]);
+}
+
+void gfx_video_close(void)
+{
+    window_destroy(&w.windows[VIDEO]);
+}
+
 int gfx_fd()
 {
     return w.display ? wl_display_get_fd(w.display) : -1;
@@ -5167,6 +5191,15 @@ void gfx_console_open(struct surface *shows, int16_t sw, int16_t sh)
 }
 
 void gfx_console_close(void)
+{
+}
+
+void gfx_video_open(struct surface *shows, int16_t sw, int16_t sh)
+{
+    (void)shows; (void)sw; (void)sh;
+}
+
+void gfx_video_close(void)
 {
 }
 

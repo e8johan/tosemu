@@ -54,6 +54,7 @@ uint32_t XBIOS_EsetPalette();
 uint32_t XBIOS_EgetPalette();
 uint32_t XBIOS_VsetMode();
 uint32_t XBIOS_VgetSize();
+uint32_t XBIOS_Vsync();
 uint32_t XBIOS_VsetRGB();
 uint32_t XBIOS_VgetRGB();
 

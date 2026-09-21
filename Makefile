@@ -23,7 +23,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               keyboard.c \
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               dongle.c \
-              linea.c shifter.c \
+              linea.c shifter.c video.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files

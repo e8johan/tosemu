@@ -56,6 +56,7 @@
 #include "settings.h"
 #include "surface.h"
 #include "tossystem.h"
+#include "video.h"
 #include "emuvdi/emuvdi.h"
 
 /*
@@ -328,9 +329,15 @@ static void screen_show(int wanted)
     if (!c.shows)
         return;
 
+    /*
+     * Nor when a program has taken the video hardware over and is waiting at
+     * its own picture: the person types at that, and a console with nothing
+     * on it would only be in the way.
+     */
     if (!c.up)
     {
-        if (!wanted && emuvdi_console_written() == c.seen)
+        if ((!wanted || video_showing())
+            && emuvdi_console_written() == c.seen)
             return;
 
         c.up = 1;
@@ -359,7 +366,7 @@ static void screen_show(int wanted)
     {
         const char *shot = setting("TOSEMU_SCREENSHOT");
 
-        if (shot)
+        if (shot && !video_showing())
             surface_write_ppm(c.shows, shot);
     }
 
@@ -743,7 +750,10 @@ static void screen_out(int ch)
  * is what gem_ever_started answers: a GEM application that drops to the
  * console has taken the screen over and the person is looking at the screen,
  * where a .TTP somebody typed the name of is talking to the shell they typed
- * it in and should go on doing so.
+ * it in and should go on doing so. A program that has taken the video
+ * hardware over has the screen as surely as a GEM program has - its picture
+ * is in a window of its own, and that is where the person is looking - so it
+ * counts as one; see video.h.
  *
  * That second half is what makes the two cases this has to serve both work.
  * GenST assembles by running its assembler as a child, and the child never
@@ -782,7 +792,7 @@ static int console_wanted_on_screen(void)
     const char *want = setting("TOSEMU_CONSOLE");
 
     if (!want)
-        return gfx_possible() && gem_ever_started();
+        return gfx_possible() && (gem_ever_started() || video_showing());
 
     if (strcmp(want, "screen") == 0)
         return 1;
@@ -937,6 +947,11 @@ static uint32_t terminal_key(int wait)
 
 uint32_t console_key(int wait)
 {
+    /* The picture a program drew for itself is up to date before anybody is
+     * asked to answer it, the way the console's own is */
+    if (wait)
+        video_frame();
+
     decide();
 
     /* Whatever was written is on the screen before anybody is asked to answer

@@ -47,6 +47,7 @@
 #include "screen.h"
 #include "settings.h"
 #include "gfx.h"
+#include "video.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -570,8 +571,11 @@ void gem_present()
     if (!started)
         return;
 
+    /* A program that has taken the video hardware over has taken the screen
+     * with it, and the picture it shows is what a screenshot is of - see
+     * video_frame, which takes it */
     shot = setting("TOSEMU_SCREENSHOT");
-    if (shot)
+    if (shot && !video_showing())
     {
         /* Whichever is being drawn into. A dialog's surface starts as a copy
          * of the screen and a menu's as a copy of that, so whichever of them

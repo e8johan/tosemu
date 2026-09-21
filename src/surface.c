@@ -288,6 +288,52 @@ void host_surface_damaged(int16_t x, int16_t y, int16_t w, int16_t h)
     surface_damage(selected, x, y, w, h);
 }
 
+/*
+ * Compared as it is copied, so that only the rows that are different are said
+ * to be: a picture is brought across fifty times a second, and most of the
+ * time none of it has changed, or one line of text has.
+ */
+int surface_load_atari(struct surface *s, const uint8_t *bytes)
+{
+    int first = -1, last = -1;
+    int x, y;
+
+    if (!s || !bytes)
+        return 0;
+
+    for (y = 0; y < s->height; y++)
+    {
+        uint16_t *row = s->data + (size_t)y * s->words_per_line;
+        const uint8_t *from = bytes + (size_t)y * s->words_per_line * 2;
+        int changed = 0;
+
+        for (x = 0; x < s->words_per_line; x++)
+        {
+            uint16_t word = (uint16_t)((from[2 * x] << 8) | from[2 * x + 1]);
+
+            if (row[x] != word)
+            {
+                row[x] = word;
+                changed = 1;
+            }
+        }
+
+        if (changed)
+        {
+            if (first < 0)
+                first = y;
+            last = y;
+        }
+    }
+
+    if (first < 0)
+        return 0;
+
+    surface_damage(s, 0, first, s->width, last - first + 1);
+
+    return 1;
+}
+
 int surface_write_ppm(const struct surface *s, const char *path)
 {
     /*

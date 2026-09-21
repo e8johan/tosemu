@@ -49,6 +49,7 @@
 #include "screen.h"
 #include "shifter.h"
 #include "surface.h"
+#include "video.h"
 
 #include "xbios_p.h"
 
@@ -321,6 +322,21 @@ uint32_t XBIOS_VgetSize()
      * has rather than one of the modes it was asked about, and this is how
      * big it is */
     return tos_screen_size();
+}
+
+/*
+ * The end of a frame, which is what a program that draws its own picture says
+ * when it has finished one - so it is where the picture is brought across.
+ * It does not wait for the frame the way an ST did, which is what it always
+ * did here.
+ */
+uint32_t XBIOS_Vsync()
+{
+    FUNC_TRACE_ENTER
+
+    video_frame();
+
+    return XBIOS_E_OK;
 }
 
 uint32_t XBIOS_Cursconf()

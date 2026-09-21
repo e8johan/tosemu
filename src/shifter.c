@@ -48,6 +48,7 @@ static uint32_t base;
 static uint8_t rez;
 static uint8_t sync_mode = SYNC_50HZ;
 static uint16_t palette[SHIFTER_COLOURS];
+static unsigned changes;
 static int powered_up;
 
 /* Everything written to an address with nothing behind it, kept so that it
@@ -130,7 +131,13 @@ void shifter_set_colour(int index, uint16_t colour)
         return;
 
     palette[index] = colour;
+    changes++;
     host_palette_changed();
+}
+
+unsigned shifter_colour_changes(void)
+{
+    return changes;
 }
 
 uint8_t shifter_area_read(struct _memarea *area, uint32_t address)

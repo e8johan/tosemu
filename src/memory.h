@@ -63,6 +63,11 @@ int add_fnct_memory_area(char *name, uint8_t flags, uint32_t base, uint32_t len,
 
 void *tos_mem_to_host_mem(uint32_t address);
 
+/* The same for a run of bytes, for reading a lot of memory at once - a screen
+ * of it. Nought, and nothing said and nothing halted, when the run is not all
+ * inside one area of plain memory. */
+const uint8_t *tos_mem_span(uint32_t address, uint32_t len);
+
 /* Remove memory areas, return 0 on success */
 int remove_memory_area(uint32_t base);
 

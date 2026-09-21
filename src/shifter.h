@@ -71,6 +71,10 @@ int16_t shifter_rez(void);
 uint16_t shifter_colour(int index);
 void shifter_set_colour(int index, uint16_t colour);
 
+/* A number that changes whenever a colour does, for something that keeps a
+ * picture and wants to know whether it has to be shown again */
+unsigned shifter_colour_changes(void);
+
 struct _memarea;
 
 uint8_t shifter_area_read(struct _memarea *area, uint32_t address);
