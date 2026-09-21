@@ -60,6 +60,20 @@ static uint32_t space_above(uint32_t prev_top)
     return mem_allocatable_top - prev_top;
 }
 
+/*
+ * A block's size, as a whole number of words.
+ *
+ * A block starts where the one below it ends, so a block of an odd size puts
+ * the next one on an odd address - and a 68000 cannot read a word there. TOS
+ * rounds every size up to two bytes for that reason, in Malloc and in Mshrink
+ * both; see ffit and xsetblk in EmuTOS's bdos, and malloc_align_stram, which
+ * is two bytes on anything but a Falcon.
+ */
+static uint32_t whole_words(uint32_t size)
+{
+    return (size + 1) & ~(uint32_t)1;
+}
+
 static struct mem_area * find_mem_area(uint32_t base, struct mem_area **prevptr)
 {
     struct mem_area *ptr = mem_list;
@@ -91,6 +105,8 @@ uint32_t GEMDOS_Mshrink()
     ma = find_mem_area(block, 0);
     if (!ma)
         return GEMDOS_EIMBA;
+
+    newsiz = whole_words(newsiz);
     if (ma->len < newsiz)
         return GEMDOS_EGSBF;
     
@@ -160,6 +176,8 @@ uint32_t mem_alloc(uint32_t newsiz)
     
     struct mem_area *prev, *ptr, *n;
     uint32_t prev_top;
+
+    newsiz = whole_words(newsiz);
 
     {
         prev = mem_list;

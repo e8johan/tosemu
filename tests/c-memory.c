@@ -170,6 +170,31 @@ int main(int argc, char **argv)
     check(Malloc(top), 0,
           "and a block the size of the whole machine cannot be had");
 
+    /*
+     * Blocks of an odd size, which are whole words once they are handed out.
+     * Each block starts where the one below it ends, so an odd one puts the
+     * next on an odd address - where a 68000 cannot read a word - and a
+     * program that loads another one into memory it asked for gets a basepage
+     * nothing can use.
+     */
+    {
+        long odd = Malloc(0x4507L);
+        long next = Malloc(0x10L);
+        long shrunk, after;
+
+        check(next & 1, 0, "the block after one of an odd size is on a word");
+
+        shrunk = Malloc(0x100L);
+        Mshrink((void *)shrunk, 0x41L);
+        after = Malloc(0x10L);
+        check(after & 1, 0, "and so is one after a block shrunk to an odd size");
+
+        Mfree((void *)after);
+        Mfree((void *)shrunk);
+        Mfree((void *)next);
+        Mfree((void *)odd);
+    }
+
     printf("1..%d\n", n);
 
     return fails;
