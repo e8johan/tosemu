@@ -29,12 +29,20 @@
  * very last pixel of the screen - points the shifter at them, says a frame is
  * done, and reads back the screenshot the emulator was told to take.
  *
+ * And then hands the screen back. What the machine's own screen stands for is
+ * GEM's windows and the console, so once the base has been back there for a
+ * moment the picture steps aside for them - but only when there is something
+ * of the program's up to step aside for, or there would be nothing left to
+ * look at. A window is opened to be that something, and what is looked at is
+ * the screenshot the next GEM wait takes.
+ *
  * The run says where the screenshot goes and the screen it runs on, and this
  * reads the file through GEMDOS like any other.
  */
 
 #include <stdio.h>
 #include <string.h>
+#include <gem.h>
 #include <mint/osbind.h>
 
 #define SHOT "video.ppm"
@@ -109,6 +117,13 @@ int main(void)
     long phys = (long)Physbase();
     long words, row;
     int pen_8;
+    short handle;
+
+    if (appl_init() < 0)
+    {
+        printf("Bail out! - no AES to talk to\n");
+        return 1;
+    }
 
     switch (Getrez())
     {
@@ -180,17 +195,57 @@ int main(void)
     check(pixel(0, 0), 0xff0000L, "changing a colour shows it at once");
     Setcolor(0, 0x0fff);
 
-    /* And the picture follows the base back, rather than going away */
+    /*
+     * A mark on the machine's own screen, which nothing but a program writing
+     * to it itself ever draws in - so that what is shown of it can be told
+     * apart from GEM's screen, which is the background colour there.
+     */
+    *(unsigned short *)phys = 0x8000;
+
+    /* The picture follows the base back, rather than going away at once */
     Setscreen(-1L, (void *)phys, -1);
     Vsync();
-    check(read_shot(), 1, "moving the base back goes on showing it");
-    check(pixel(8, 0), colour_of(0),
-          "and what it shows is where the base is now");
+    check(read_shot(), 1, "moving the base back goes on showing the picture");
+    check(pixel(0, 0), colour_of(1), "and what it shows is where the base is now");
+    check(pixel(8, 0), colour_of(0), "and nothing of where it was");
+
+    /* With nothing else of the program's up, it stays up. A frame and then a
+     * GEM wait, since either is where it could step aside and the wait is
+     * where GEM's screen would be taken instead if it had. */
+    evnt_timer(400);
+    Vsync();
+    evnt_timer(0);
+    read_shot();
+    check(pixel(0, 0), colour_of(1),
+          "the picture stays when the program has nothing else to show");
+
+    /* With a window of the program's, it steps aside for GEM's screen */
+    handle = wind_create(0, 100, 100, 100, 60);
+    wind_open(handle, 100, 100, 100, 60);
+    evnt_timer(400);
+    evnt_timer(0);
+    read_shot();
+    check(pixel(0, 0), colour_of(0),
+          "and steps aside for a window of the program's once handed back");
+
+    /* And it is back when the base moves away again */
+    Setscreen(-1L, (void *)screen, -1);
+    Vsync();
+    read_shot();
+    check(pixel(8, 0), colour_of(pen_8),
+          "moving the base away again brings the picture back");
+
+    wind_close(handle);
+    wind_delete(handle);
+    *(unsigned short *)phys = 0;
+    Setscreen(-1L, (void *)phys, -1);
 
     if (planes > 1)
         Setcolor(pen_8, old_colour);
 
     printf("1..%d\n", n);
+
+    appl_exit();
 
     return fails;
 }

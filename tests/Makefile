@@ -25,7 +25,7 @@ CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxall
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
-            c-keyboard c-modal c-clock
+            c-keyboard c-modal c-clock c-video
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in

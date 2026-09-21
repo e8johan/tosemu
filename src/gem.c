@@ -137,6 +137,19 @@ int gem_ever_started(void)
     return ever_started;
 }
 
+int gem_has_windows(void)
+{
+    int16_t x, y, w, h;
+
+    if (console_showing())
+        return 1;
+
+    if (!started)
+        return 0;
+
+    return aes_wind_from_back(0, &x, &y, &w, &h) != 0 || aes_menu_shown();
+}
+
 /* The screen this session was asked for, for when there is no daemon to say */
 void gem_default_screen(int16_t *width, int16_t *height, int16_t *planes)
 {
@@ -512,6 +525,7 @@ void gem_forget(void)
 {
     gfx_forget();
     aes_client_forget();
+    video_forget();
 
     /* And the console, which has a surface of its own and possibly a window on
      * the connection that has just been let go of. Here rather than before

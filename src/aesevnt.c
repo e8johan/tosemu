@@ -53,6 +53,7 @@
 #include "gfx.h"
 #include "scrap.h"
 #include "tossystem.h"
+#include "video.h"
 #include "m68k.h"
 
 /* A GEM message is eight words, and the AES never sends anything else */
@@ -597,6 +598,15 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
          */
         {
             long due = gfx_settle();
+
+            if (due >= 0 && (left < 0 || due < left))
+                left = due;
+        }
+
+        /* The same for a picture drawn for the video hardware, which steps
+         * aside a moment after the screen has been handed back - see video.h */
+        {
+            long due = video_settle();
 
             if (due >= 0 && (left < 0 || due < left))
                 left = due;

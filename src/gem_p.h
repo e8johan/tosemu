@@ -89,6 +89,14 @@ int gem_start();
  */
 int gem_ever_started(void);
 
+/*
+ * Whether the application has anything of its own on the desktop besides a
+ * picture it drew for the video hardware: a window, the menu bar, or the
+ * console. Something to look at, and to type at - see video.c, which only
+ * puts the picture away when there is.
+ */
+int gem_has_windows(void);
+
 /* Lets go of everything a child of fork inherited and should not use: the
  * compositor's connection, the daemon's socket, and the parent's screen */
 void gem_forget(void);

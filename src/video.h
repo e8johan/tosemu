@@ -33,10 +33,13 @@
  * a window of its own.
  *
  * It starts the first time a program points the base anywhere other than the
- * screen the machine was built with, and it stays for the rest of the run. A
- * debugger swaps between its own screen and the program's every time it stops
- * and starts it, and a window that came and went with each swap would be worse
- * than one showing the program's screen while the program runs.
+ * screen the machine was built with. When the base goes back there, the screen
+ * has been handed back to whatever that screen stands for - GEM's windows and
+ * the console, which are on the desktop already - and after a moment the
+ * picture steps aside for them, as long as there is something of theirs up to
+ * step aside for. It comes back when the base moves away again. A debugger
+ * does both every time it starts the program it is debugging and every time
+ * the program stops.
  */
 
 /* Brings the picture across now, and shows it if anything changed. Nothing
@@ -48,9 +51,25 @@ void video_frame(void);
  * almost every call is a counter going down. */
 void video_tick(void);
 
-/* Whether a program has taken the video hardware over, in which case the
- * picture is the screen: it is what a screenshot is of, and what a person
- * types at */
+/* Whether a program has taken the video hardware over at all, which is a
+ * program that has the screen the way a GEM program has - its console belongs
+ * on the screen rather than on a terminal */
+int video_taken(void);
+
+/* And whether the picture is up now, in which case it is the screen: it is
+ * what a screenshot is of, and what a person types at */
 int video_showing(void);
+
+/*
+ * For a wait: puts the picture away if the screen has been handed back for
+ * long enough, and otherwise says how many milliseconds until it will have
+ * been, or -1 when nothing is coming. A wait that would sleep past it gives up
+ * early and asks again, the way it does for gfx_settle.
+ */
+long video_settle(void);
+
+/* Lets go of the picture a child of fork inherited, the way gem_forget lets
+ * go of everything else of the parent's */
+void video_forget(void);
 
 #endif /* VIDEO_H */

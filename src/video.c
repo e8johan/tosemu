@@ -40,10 +40,25 @@
 /* A frame, at fifty of them a second */
 #define FRAME_NS (20000000LL)
 
-static int taken;
+/*
+ * How long the base has to be back on the machine's own screen before the
+ * picture steps aside for the program's windows, in milliseconds.
+ *
+ * Long enough that a swap which is over at once never takes it down: a
+ * debugger stepping over a trap hands the screen to the program and takes it
+ * back again, and a program that flips between two screens every frame is on
+ * the machine's own one half the time. Short enough that when the program
+ * really has been handed the screen - it is running, or waiting in its own
+ * windows - they are what is left without anybody having to wait for it.
+ */
+#define HANDED_BACK_MS (250)
+
+static int taken;               /* the video hardware has been taken over */
+static int showing;             /* and the picture is up */
 static int windowed;
 static struct surface *picture;
 static long long last_frame;
+static long long back_since;    /* when the base came home, nought if not */
 static unsigned colours_shown;
 
 static long long now_ns(void)
@@ -73,9 +88,80 @@ static void shape(int16_t *width, int16_t *height, int16_t *planes)
     }
 }
 
-int video_showing(void)
+int video_taken(void)
 {
     return taken;
+}
+
+int video_showing(void)
+{
+    return showing;
+}
+
+void video_forget(void)
+{
+    if (picture)
+        surface_free(picture);
+
+    picture = 0;
+    taken = 0;
+    showing = 0;
+    windowed = 0;
+    back_since = 0;
+    colours_shown = 0;
+}
+
+/*
+ * How long the base has been back on the screen the machine was built with,
+ * in milliseconds, or -1 while it is anywhere else. That screen is the one GEM
+ * and the console stand for, and they are on the desktop already.
+ */
+static long home_for(long long now)
+{
+    if (shifter_base() != tos_screen_base())
+    {
+        back_since = 0;
+        return -1;
+    }
+
+    if (!back_since)
+        back_since = now;
+
+    return (long)((now - back_since) / 1000000LL);
+}
+
+static void step_aside(void)
+{
+    showing = 0;
+
+    if (windowed)
+    {
+        gfx_video_close();
+        gfx_flush();
+    }
+
+    windowed = 0;
+}
+
+long video_settle(void)
+{
+    long home;
+
+    if (!showing)
+        return -1;
+
+    home = home_for(now_ns());
+
+    if (home < 0 || !gem_has_windows())
+        return -1;
+
+    if (home >= HANDED_BACK_MS)
+    {
+        video_frame();
+        return -1;
+    }
+
+    return HANDED_BACK_MS - home;
 }
 
 void video_frame(void)
@@ -83,7 +169,9 @@ void video_frame(void)
     int16_t width, height, planes;
     const uint8_t *bytes;
     const char *shot;
-    int changed;
+    long long now = now_ns();
+    long home;
+    int changed = 0;
 
     if (!taken)
     {
@@ -91,6 +179,7 @@ void video_frame(void)
             return;
 
         taken = 1;
+        showing = 1;
 
         /*
          * A window needs the connection to the compositor, and that is opened
@@ -103,7 +192,27 @@ void video_frame(void)
             gem_start();
     }
 
-    last_frame = now_ns();
+    last_frame = now;
+
+    /*
+     * Handed back, or taken again. The picture only steps aside when the
+     * program has something else of its own up: with nothing, putting it away
+     * would leave nothing on the desktop to look at or to type at, and a
+     * debugger showing the program's screen waits for a key before it takes
+     * its own back.
+     */
+    home = home_for(now);
+
+    if (home < 0 && !showing)
+    {
+        showing = 1;
+        changed = 1;
+    }
+    else if (showing && home >= HANDED_BACK_MS && gem_has_windows())
+        step_aside();
+
+    if (!showing)
+        return;
 
     shape(&width, &height, &planes);
 
@@ -119,8 +228,6 @@ void video_frame(void)
         surface_free(picture);
         picture = 0;
     }
-
-    changed = 0;
 
     if (!picture)
     {

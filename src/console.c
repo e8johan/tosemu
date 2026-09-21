@@ -792,7 +792,7 @@ static int console_wanted_on_screen(void)
     const char *want = setting("TOSEMU_CONSOLE");
 
     if (!want)
-        return gfx_possible() && (gem_ever_started() || video_showing());
+        return gfx_possible() && (gem_ever_started() || video_taken());
 
     if (strcmp(want, "screen") == 0)
         return 1;
@@ -912,9 +912,11 @@ static uint32_t screen_key(int wait)
         waiting.events = POLLIN;
         waiting.revents = 0;
 
-        poll(&waiting, 1, -1);
-
-        gfx_dispatch();
+        /* No longer than until a picture handed back is due to step aside,
+         * which is what a debugger showing the program's screen is doing
+         * while it waits for a key */
+        if (poll(&waiting, 1, (int)video_settle()) > 0)
+            gfx_dispatch();
     }
 }
 
