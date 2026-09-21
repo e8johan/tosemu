@@ -22,10 +22,61 @@
   touching a file at all - and the editor gets back a buffer nothing wrote to.
   It reports no errors and shows an empty document.
 
-  Closing it means the machine's memory being shared rather than copied -
-  MAP_SHARED rather than calloc for te->appmem and the areas beside it - for
-  the modes where the child keeps the machine it inherited. The modes that
-  load a program build one of their own and want no part of it.
+  HiSoft's MonST is the other case, and sharing the memory would not save it.
+  It loads the program to be debugged with mode 3, puts an ILLEGAL on its
+  first instruction and starts it with mode 4. The breakpoint goes off in the
+  forked child, so MonST's own handler runs in the child's copy of MonST,
+  which takes over and waits for keys while the MonST being looked at waits
+  for the child and then says "Programme terminé". With the memory shared the
+  handler would still run in the child, without the parent's window, console
+  or files.
+
+  So modes 4 and 6 should not fork. The child runs on the same processor in
+  the same process, as it did under TOS.
+
+  Starting. Pexec pushes a frame onto a stack of running programs kept on the
+  host - the caller's registers, both stack pointers, status register and the
+  address after the trap, its basepage, the DTA, the current drive and
+  directories, and which handles were open - then sets the child going the
+  way EmuTOS's proc_go does: p_parent is the caller, the stack is at p_hitpa
+  with the basepage at 4(sp), user mode at the caller's interrupt mask, d1-d7
+  and a0-a2 nought, a4, a5 and a6 at the BSS, the data and the stack. It
+  returns into the child rather than to the caller. Mode 6 first makes the
+  child the owner of its basepage and environment, which is all that differs.
+
+  Ending. With a frame on the stack, Pterm, Pterm0 and Ptermres end the child
+  rather than the host process: what it owns goes the way EmuTOS's ixterm
+  takes it - files closed, Fforce undone, memory freed, or kept for good by
+  Ptermres - the frame is popped, and the caller carries on after its Pexec
+  with the exit code in d0. A child that called appl_init and not appl_exit
+  has its application dropped the way gem_reset drops one. etv_term is not
+  called, as it never has been here; calling into the machine from the middle
+  of a termination is a second step.
+
+  Underneath. The allocator's blocks need an owner - the basepage that asked,
+  which mode 6 changes - so that a child's go with it and nobody else's do,
+  and so do the file handles. The DTA, the current drive and each drive's
+  directory become the running program's rather than the host process's.
+  They are per process today only because the fork makes them so.
+
+  Unchanged. Mode 0 and the asynchronous modes go on forking: a GEM
+  application started by another belongs in a process of its own, with its
+  own place in the session, and one started to run alongside its parent has
+  to run alongside it. 104 and 106 keep the problem this entry started with.
+  Mode 0 could later become mode 3 and then mode 6, as it is on TOS, which
+  would also end the entry above about a child getting the whole of memory.
+
+  Checking it. A child run with mode 4 writes into a buffer its parent named
+  and the parent reads it back; the parent's registers survive; mode 6 gives
+  its memory back and mode 4 does not until it is freed; what the child
+  Malloced, opened, Dsetpath'd and Fsetdta'd is gone or put back after it; a
+  grandchild hands both exit codes back up; and a child that runs into an
+  ILLEGAL with its parent's handler on the vector stops in that handler,
+  which is all a debugger is. Then Devpac 3's editor, and MonST by hand -
+  load, run to a breakpoint, run to the end - and with it the Screen window
+  stepping aside for a GEM program being debugged, which could not be watched
+  until now. Single stepping wants the trace exception as well, which is
+  M68K_EMULATE_TRACE and a question of its own about cost.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.
