@@ -1,4 +1,51 @@
-# MIDI for tosemu: an ST MIDI program driving a host USB interface
+MIDI
+====
+
+There is a MIDI port, and it goes wherever the setting says. An application
+sends the way it always did - `Bconout` on device 3 a byte at a time, or
+`Midiws` for a whole message - and the bytes reach whatever is plugged into the
+host.
+
+Nothing is set up by default. Without a word said there is no port, every byte
+written is discarded and nothing ever arrives, which is what an ST with nothing
+in the socket did.
+
+    [midi]
+    device = hw:1,0,0
+
+| in the file            | in the environment  |
+| ---------------------- | ------------------- |
+| `[midi] device`        | `TOSEMU_MIDI`       |
+| `[machine] interrupts` | `TOSEMU_INTERRUPTS` |
+
+How it is spelled picks what kind of port it is, and the prefix is not
+optional:
+
+- `hw:1,0,0` is an ALSA raw device - the interface itself. `aplaymidi -l` lists
+  them. This is the faithful one: an ST's MIDI port was a serial line and so is
+  this, so running status, active sensing and a system exclusive dump of any
+  length all pass through untouched, nothing along the way trying to understand
+  them. A raw device is one program at a time.
+- `seq:20:0`, or `seq:` and a port's name, is the ALSA sequencer. `aconnect -l`
+  lists those. It reaches software synthesisers as readily as hardware and it
+  appears in a patchbay by name. `seq:` on its own makes the port and connects
+  it to nothing, for something else to connect to afterwards.
+- `file:incoming.bin,sent.bin` is neither, and it is not a lesser port. It is
+  how the traffic is looked at without a synthesiser to look at it on - by a
+  test, on a machine with no sound hardware, or by somebody who wants to see
+  what a program actually sent. Either half may be left out.
+
+**The prefix has to be there**, because a sequencer port named rather than
+numbered has nothing in its spelling to mark it as one. Without the rule a
+mistyped `hw:` would quietly become a sequencer port connected to nothing,
+which from the outside is indistinguishable from a working port with a silent
+synthesiser on the end of it.
+
+Built without ALSA - `make NO_ALSA=1`, or on a machine that has no
+`libasound2-dev` - `file:` still works and the other two are refused with a
+line saying why. A build server has no MIDI interface and should not need one.
+
+# Development of MIDI for tosemu: an ST MIDI program driving a host USB interface
 
 > **Status: stages 1 to 7 done, 2026-09-14.** A program can send MIDI and receive
 > it, the machine has a 68901 MFP and two 6850 ACIAs in its memory map, the
