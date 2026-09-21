@@ -256,6 +256,14 @@ characters with `\r` for Return. Clicks are `x,y` to press and release there,
 without pressing anything - which is not a nicety, because a GEM menu opens
 when the pointer arrives among the titles rather than when it is clicked.
 
+The keys that type nothing are written by name in braces: `\{left}`,
+`\{right}`, `\{up}`, `\{down}`, `\{home}`, `\{backspace}`, `\{delete}`,
+`\{insert}`, `\{tab}`, `\{escape}`, `\{return}`, `\{undo}`, `\{help}` and
+`\{f1}` to `\{f10}`. Without them a setting can only add to the end of what it
+has already added - nothing typed forwards moves a caret back - so an editor
+cannot be driven at all, which is why a word processor's redrawing could not
+be reproduced from a test.
+
 `TOSEMU_TRACE_INPUT` says what every wait for the mouse asked for and what it
 was told, and which directories the file selector read. It is there because a
 wait that answers wrongly is invisible from anywhere else: two different waits

@@ -623,19 +623,105 @@ static void key_post(uint16_t key)
 }
 
 /*
+ * The keys a person presses that do not type anything.
+ *
+ * A run of characters says what to write and has no way of saying where to
+ * write it: nothing typed forwards moves a caret back, so an application
+ * driven from a setting could only ever add to the end of what it had already
+ * added. These are the rest of the keyboard, written \{left} and the like,
+ * and without them a word processor cannot be worked at all.
+ *
+ * Named rather than given as scan codes, because a number in a settings file
+ * is unreadable and is wrong in a way nobody would notice - a mistyped scan
+ * code is simply a different key, and the only sign of it is an application
+ * doing something else.
+ *
+ * The codes are the ones scancode_for answers for the same keys. They are
+ * kept apart from that table because it is the desktop's, matching what xkb
+ * reports, and is not built at all where there is no compositor.
+ * http://toshyp.atari.org/en/003007.html
+ */
+static const struct {
+    const char *name;
+    uint16_t scancode;
+} named_keys[] = {
+    { "escape",    0x01 },
+    { "backspace", 0x0e },
+    { "tab",       0x0f },
+    { "return",    0x1c },
+    { "f1",        0x3b },
+    { "f2",        0x3c },
+    { "f3",        0x3d },
+    { "f4",        0x3e },
+    { "f5",        0x3f },
+    { "f6",        0x40 },
+    { "f7",        0x41 },
+    { "f8",        0x42 },
+    { "f9",        0x43 },
+    { "f10",       0x44 },
+    { "home",      0x47 },
+    { "up",        0x48 },
+    { "left",      0x4b },
+    { "right",     0x4d },
+    { "down",      0x50 },
+    { "insert",    0x52 },
+    { "delete",    0x53 },
+    { "undo",      0x61 },
+    { "help",      0x62 },
+    { 0,           0    }
+};
+
+/*
+ * One of those, read from the brace after the backslash. Answers how many
+ * characters it took, which is nought for anything that is not one of these.
+ */
+static int named_key_at(const char *text, uint16_t *scancode)
+{
+    int i, length;
+
+    if (*text != '{')
+        return 0;
+
+    for (length = 0; text[length + 1] && text[length + 1] != '}'; length++)
+        ;
+
+    if (text[length + 1] != '}')
+        return 0;
+
+    for (i = 0; named_keys[i].name; i++)
+        if ((int)strlen(named_keys[i].name) == length
+            && strncmp(named_keys[i].name, text + 1, (size_t)length) == 0)
+        {
+            *scancode = named_keys[i].scancode;
+
+            return length + 2;
+        }
+
+    /* A name nobody has is worth saying out loud. The alternative is a
+     * setting that presses nothing, which from the outside looks exactly
+     * like the application ignoring the key. */
+    printf("tosemu: no key is called %.*s, so nothing was pressed for it\n",
+           length, text + 1);
+    fflush(stdout);
+
+    return length + 2;
+}
+
+/*
  * Keys asked for on the command line, for when nothing is going to be typed.
  *
  * A dialog cannot be tested without something pressing a button in it, and a
  * test suite has nobody to do the pressing. TOSEMU_KEYS is a run of characters
- * to hand over as though they had been, and \r stands for Return, which is
- * what dismisses a dialog by its default button.
+ * to hand over as though they had been, \r stands for Return, which is what
+ * dismisses a dialog by its default button, and the keys above are written by
+ * name.
  *
  * A setting is host text, so it is UTF-8, and it goes through the same
  * conversion a paste does - typing an accented letter is the case worth
  * testing and it cannot be written here otherwise. That drops control
  * characters, which were never writable in a settings file anyway, and turns
- * a character the ST has no byte for into a question mark. The \r escape is
- * two ASCII characters and survives the conversion to be read below.
+ * a character the ST has no byte for into a question mark. The escapes are
+ * ASCII and survive the conversion to be read below.
  */
 static void keys_from_environment(void)
 {
@@ -658,11 +744,30 @@ static void keys_from_environment(void)
         char c = atari[i];
         uint16_t scan = 0;
 
-        if (c == '\\' && atari[i+1] == 'r')
+        if (c == '\\')
         {
-            c = '\r';
-            scan = 0x1c;    /* Return, which a dialog looks at */
-            i++;
+            int took = named_key_at(atari + i + 1, &scan);
+
+            if (took)
+            {
+                /* The word a real press of it makes, which is keyboard.c's
+                 * to say: most of these type nothing of their own, and the
+                 * few that do are the ones answered there */
+                if (scan)
+                    key_post(keyboard_word(scan, 0, 0));
+
+                /* Past the name, the loop stepping over what follows the
+                 * closing brace */
+                i += took;
+                continue;
+            }
+
+            if (atari[i+1] == 'r')
+            {
+                c = '\r';
+                scan = 0x1c;    /* Return, which a dialog looks at */
+                i++;
+            }
         }
 
         key_post((uint16_t)((scan << 8) | (unsigned char)c));
