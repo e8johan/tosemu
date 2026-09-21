@@ -22,18 +22,19 @@
 /*
  * Screen and video functions.
  *
- * tosemu shows nothing on a screen, so there are two jobs here. An application
- * that draws needs somewhere to draw: Physbase and Logbase hand out the block
- * the machine reserved for a screen, which is real, writable, and as large as
- * the screen the machine has - so that painting into it neither crashes nor
- * corrupts anything, however much of it the application paints. An application
- * that configures the video hardware needs its settings to hold: the palette
- * and mode calls remember what was set and report it back, so that code which
- * sets a colour and reads it again sees its own value rather than one it never
- * chose.
+ * There are two jobs here. An application that draws needs somewhere to draw:
+ * Physbase and Logbase hand out the block the machine reserved for a screen,
+ * which is real, writable, and as large as the screen the machine has - so
+ * that painting into it neither crashes nor corrupts anything, however much of
+ * it the application paints. An application that configures the video
+ * hardware needs its settings to hold: the palette and mode calls remember
+ * what was set and report it back, so that code which sets a colour and reads
+ * it again sees its own value rather than one it never chose.
  *
- * What none of it does is take effect. Getrez reports the resolution the
- * screen really is, and a mode set here does not change it.
+ * The physical screen and the colours are the shifter's registers - see
+ * shifter.h - so a program that sets them through the XBIOS and one that
+ * writes the registers are changing the same thing. Getrez reports the
+ * resolution the screen really is, and a mode set here does not change it.
  */
 
 #include "xbios.h"
@@ -46,37 +47,37 @@
 #include "m68k.h"
 #include "gem_p.h"
 #include "screen.h"
+#include "shifter.h"
 #include "surface.h"
 
 #include "xbios_p.h"
 
-#define PALETTE_ENTRIES (256)
+#define PALETTE_ENTRIES (SHIFTER_COLOURS)
 
-static uint32_t screen_phys;
+/* The physical screen is the shifter's video base; the logical one is where
+ * TOS draws, which is only the XBIOS's own idea and has no register */
+static int screen_asked;
 static uint32_t screen_log;
 
-/* The ST palette holds 16 entries, the STE and Falcon extend it to 256. One
- * array covers all three, unset entries read back as black. */
-static uint16_t palette[PALETTE_ENTRIES];
+/* The Falcon's colours, which are a different shape from the shifter's and
+ * are only kept so that what is set reads back */
 static uint32_t palette_rgb[PALETTE_ENTRIES];
 
 static uint32_t video_mode;
 
 void xbios_screen_reset()
 {
-    screen_phys = 0;
+    screen_asked = 0;
     screen_log = 0;
 }
 
-static uint32_t screen_buffer(void)
+static void screen_buffer(void)
 {
-    if (!screen_phys)
+    if (!screen_asked)
     {
-        screen_phys = tos_screen_base();
-        screen_log = screen_phys;
+        screen_asked = 1;
+        screen_log = shifter_base();
     }
-
-    return screen_phys;
 }
 
 int xbios_screen_named(uint32_t address)
@@ -84,10 +85,10 @@ int xbios_screen_named(uint32_t address)
     /* Nothing is the screen until something has asked where it is. Zero is
      * how an MFDB says "the screen" already, so answering yes to it before
      * then would make every bitmap the screen. */
-    if (!screen_phys || !address)
+    if (!screen_asked || !address)
         return 0;
 
-    return address == screen_phys || address == screen_log;
+    return address == shifter_base() || address == screen_log;
 }
 
 /*
@@ -130,7 +131,7 @@ uint32_t XBIOS_Physbase()
 
     screen_buffer();
 
-    return screen_phys;
+    return shifter_base();
 }
 
 uint32_t XBIOS_Logbase()
@@ -158,7 +159,7 @@ uint32_t XBIOS_Setscreen()
     if (lscrn != 0xffffffff)
         screen_log = lscrn;
     if (pscrn != 0xffffffff)
-        screen_phys = pscrn;
+        shifter_set_base(pscrn);
 
     /* The resolution is not ours to change, Getrez keeps its answer */
 
@@ -175,8 +176,8 @@ uint32_t XBIOS_Setpalette()
     }
 
     /* An ST palette is 16 words */
-    for (i = 0; i < 16; ++i)
-        palette[i] = m68k_read_memory_16(palptr + 2*i);
+    for (i = 0; i < SHIFTER_ST_COLOURS; ++i)
+        shifter_set_colour(i, m68k_read_memory_16(palptr + 2*i));
 
     return XBIOS_E_OK;
 }
@@ -194,11 +195,11 @@ uint32_t XBIOS_Setcolor()
     if (colornum >= PALETTE_ENTRIES)
         return XBIOS_E_OK;
 
-    previous = palette[colornum];
+    previous = shifter_colour(colornum);
 
     /* A negative mixture asks for the current colour without setting one */
     if (mixture >= 0)
-        palette[colornum] = mixture;
+        shifter_set_colour(colornum, (uint16_t)mixture);
 
     return previous;
 }
@@ -216,10 +217,10 @@ uint32_t XBIOS_EsetColor()
     if (num >= PALETTE_ENTRIES)
         return XBIOS_E_OK;
 
-    previous = palette[num];
+    previous = shifter_colour(num);
 
     if (val >= 0)
-        palette[num] = val;
+        shifter_set_colour(num, (uint16_t)val);
 
     return previous;
 }
@@ -236,7 +237,7 @@ uint32_t XBIOS_EsetPalette()
     }
 
     for (i = 0; i < count && start + i < PALETTE_ENTRIES; ++i)
-        palette[start + i] = m68k_read_memory_16(ptr + 2*i);
+        shifter_set_colour(start + i, m68k_read_memory_16(ptr + 2*i));
 
     return XBIOS_E_OK;
 }
@@ -253,7 +254,7 @@ uint32_t XBIOS_EgetPalette()
     }
 
     for (i = 0; i < count && start + i < PALETTE_ENTRIES; ++i)
-        m68k_write_memory_16(ptr + 2*i, palette[start + i]);
+        m68k_write_memory_16(ptr + 2*i, shifter_colour(start + i));
 
     return XBIOS_E_OK;
 }

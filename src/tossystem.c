@@ -46,6 +46,7 @@
 #include "midi.h"
 #include "interrupt.h"
 #include "dongle.h"
+#include "shifter.h"
 
 #include "m68k.h"
 
@@ -1190,6 +1191,18 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                              MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
                              CARTRIDGE_BASE_ADDRESS, CARTRIDGE_LENGTH, 0,
                              dongle_area_read, dongle_area_write);
+
+    /*
+     * And the video shifter, looking at this machine's screen. Readable and
+     * writeable in both modes, which is the MFP's departure for the MFP's
+     * reason: an ST bus errors a user mode access, and here refusing one
+     * would halt the emulator instead.
+     */
+    add_fnct_memory_area("shifter",
+                         MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                         SHIFTER_BASE_ADDRESS, SHIFTER_LENGTH, 0,
+                         shifter_area_read, shifter_area_write);
+    shifter_init(screen_base, screen_planes);
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */

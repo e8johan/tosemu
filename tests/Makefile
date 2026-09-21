@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -203,6 +203,14 @@ check: all
 	# about: an application says something to whoever is debugging it, and
 	# tosemu is what there is.
 	grep -q 'Dbmsg: a message for the debugger' out
+	# The video shifter's registers, which the XBIOS screen calls are the
+	# other side of. On each of the ST's screens, because the resolution
+	# register and the colours a machine comes up in are the screen's.
+	for s in low medium high; do \
+	  TOSEMU_SCREEN=$$s $(TOSEMU) test-c-shifter $$s > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
 	# Reading the console, with somebody typing at it - which is what the
 	# sleeps and the printfs are. Three of these calls have to be able to
 	# wait and three have to be able not to, and getting either wrong is
