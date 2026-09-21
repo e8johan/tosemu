@@ -578,7 +578,8 @@ scrap-check: $(BIN)/scraptest
 # directories were read, and that is a setting rather than a variable now.
 $(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(SRC)/emuvdi/hoststubs.c \
                 $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
-                $(OBJ)/printer.o
+                $(OBJ)/printer.o \
+                $(OBJ)/shifter.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
@@ -596,7 +597,8 @@ emuvdi-check: $(BIN)/vditest
 # emulator loads, which is why this is built before tests/ is run.
 $(BIN)/gdostest: $(SRC)/emuvdi/gdostest.c $(SRC)/emuvdi/hoststubs.c \
                  $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
-                 $(OBJ)/printer.o
+                 $(OBJ)/printer.o \
+                 $(OBJ)/shifter.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 

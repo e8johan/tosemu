@@ -22,6 +22,9 @@
 
 #include "shifter.h"
 
+/* For saying that a colour changed, which changes every picture there is */
+#include "emuvdi/emuvdi.h"
+
 /* The registers, as offsets from SHIFTER_BASE_ADDRESS - EmuTOS's
  * bios/screen.h names them */
 #define REG_BASE_HI      (0x01)
@@ -115,10 +118,19 @@ uint16_t shifter_colour(int index)
                                       : palette[index];
 }
 
+/*
+ * A colour changing, which is every picture changing without anything having
+ * been drawn: every pixel already holding that pen is a different colour now,
+ * in every window. Said only when it did change, since a debugger writes the
+ * same colours back every time it swaps screens.
+ */
 void shifter_set_colour(int index, uint16_t colour)
 {
-    if (index >= 0 && index < SHIFTER_COLOURS)
-        palette[index] = colour;
+    if (index < 0 || index >= SHIFTER_COLOURS || palette[index] == colour)
+        return;
+
+    palette[index] = colour;
+    host_palette_changed();
 }
 
 uint8_t shifter_area_read(struct _memarea *area, uint32_t address)
@@ -178,10 +190,11 @@ void shifter_area_write(struct _memarea *area, uint32_t address,
         int index = (int)(offset - REG_PALETTE) / 2;
 
         if (offset & 1)
-            palette[index] = (uint16_t)((palette[index] & 0xff00) | value);
+            shifter_set_colour(index, (uint16_t)((palette[index] & 0xff00)
+                                                 | value));
         else
-            palette[index] = (uint16_t)((palette[index] & 0x00ff)
-                                        | ((uint16_t)value << 8));
+            shifter_set_colour(index, (uint16_t)((palette[index] & 0x00ff)
+                                                 | ((uint16_t)value << 8)));
         return;
     }
 
