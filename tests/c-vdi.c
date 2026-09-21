@@ -347,6 +347,69 @@ int main(int argc, char **argv)
         check((unsigned short)form[0], 0xffff, "and comes back with its bits");
     }
 
+    /*
+     * A copy that runs off the end of the form it is going into.
+     *
+     * Nothing clips a raster operation to the form it names. The VDI clips one
+     * only when the destination is the screen and clipping is on, because on
+     * the machine a form was the application's own memory, and a row that fell
+     * off the end of it landed in whatever the program kept next to it.
+     * Software does it and survives: Microsoft Write copies a hundred and
+     * sixty seven rows into a form which says it is a hundred and sixty six
+     * high, every time a line of a document is redrawn.
+     *
+     * Here the form is brought across into a block of the emulator's own, so
+     * the same row lands in the allocator's bookkeeping instead, and what dies
+     * is the emulator - later, somewhere else, with nothing left to say why.
+     * So the block is made as large as the call can reach.
+     *
+     * Coming back at all is most of what this asks, the way it is above. The
+     * overshoot is made large enough to land well past the end of any block
+     * the form alone would have needed, because a word or two past it may well
+     * fall in the padding and be got away with.
+     */
+    {
+        static short shallow_bits[16 * 4 + 8];  /* the form, and room to tell */
+        MFDB screen_fdb, shallow;
+        short pxy3[8];
+        int i;
+
+        for (i = 0; i < 16 * 4 + 8; i++)
+            shallow_bits[i] = 0x1234;
+
+        screen_fdb.fd_addr = 0L;
+        screen_fdb.fd_w = screens[which].width;
+        screen_fdb.fd_h = screens[which].height;
+        screen_fdb.fd_wdwidth = screens[which].width / 16;
+        screen_fdb.fd_stand = 0;
+        screen_fdb.fd_nplanes = 4;
+
+        shallow.fd_addr = shallow_bits;
+        shallow.fd_w = 16;
+        shallow.fd_h = 16;              /* and forty eight rows are asked for */
+        shallow.fd_wdwidth = 1;
+        shallow.fd_stand = 0;
+        shallow.fd_nplanes = 4;
+
+        pxy3[0] = 64; pxy3[1] = 0;
+        pxy3[2] = 79; pxy3[3] = 47;
+        pxy3[4] = 0;  pxy3[5] = 0;
+        pxy3[6] = 15; pxy3[7] = 47;
+        vro_cpyfm(handle, S_ONLY, pxy3, &screen_fdb, &shallow);
+
+        check(1, 1, "a copy taller than the form it goes into is survived");
+
+        /*
+         * And the part of it that fell off the form stayed off. What the form
+         * declares is what is carried back into the machine: the rows past it
+         * were never part of the picture, and writing them back would be the
+         * emulator scribbling on memory the application never said was a
+         * bitmap.
+         */
+        check((unsigned short)shallow_bits[16 * 4], 0x1234,
+              "and what fell off the end of it was not written back");
+    }
+
     v_clrwk(handle);
     check(pixel(25, 35), 0, "v_clrwk emptied the screen");
 

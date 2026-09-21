@@ -225,14 +225,71 @@ static char *vdi_name(int16_t opcode)
 
 struct bitmap {
     uint32_t data;      /* Where the bitmap is in the machine, 0 for screen */
-    int words;          /* How much of it there is */
+    int words;          /* How much of it there is, which is what travels */
+    int room;           /* And how much was made room for - see bitmap_reach */
     uint16_t *copy;     /* Ours, or null when it is the screen */
 };
 
 static struct bitmap bitmaps[2];
 
+/*
+ * The last word of a form a raster operation can reach, which is not always
+ * one the form has.
+ *
+ * A copy is given a rectangle and a form to put it in, and nothing checks that
+ * the one fits inside the other: EmuTOS clips a raster operation only when the
+ * destination is the screen and clipping is on - see do_clip in vdi_raster.c -
+ * because on the machine a form was the application's own memory and a row
+ * that fell off the end of it landed in whatever came next. Programs do it.
+ * Microsoft Write copies a hundred and sixty seven rows into a form that says
+ * it is a hundred and sixty six high.
+ *
+ * Here the form is copied into a block of the host's, so that row lands in the
+ * allocator's bookkeeping instead and the emulator dies later, somewhere else,
+ * with nothing to connect the two. So the block is made large enough for
+ * wherever the call can reach and the overshoot goes somewhere harmless.
+ *
+ * The address is the VDI's own: a pixel of a form lives in word
+ * (y * wdwidth + x / 16) * planes, planes words to a group. Answering in words
+ * rather than in rows covers a rectangle that runs off the right hand side as
+ * well as one that runs off the bottom, both of which land in the same place.
+ */
+static int bitmap_reach(const int16_t *control, const int16_t *ptsin, int slot,
+                        int wdwidth, int planes)
+{
+    int16_t opcode = control[0];
+    int at = slot * 4;
+    long reach;
+    int x, y;
+
+    /* Only the copies take a rectangle. vr_trnfm turns the whole of a form
+     * over and reaches exactly as far as the form goes. */
+    if (opcode != 109 && opcode != 121)
+        return 0;
+
+    /* And only when the caller passed the four points they are made of */
+    if (control[1] < 4)
+        return 0;
+
+    x = ptsin[at] > ptsin[at + 2] ? ptsin[at] : ptsin[at + 2];
+    y = ptsin[at + 1] > ptsin[at + 3] ? ptsin[at + 1] : ptsin[at + 3];
+
+    if (x < 0 || y < 0)
+        return 0;
+
+    reach = ((long)y * wdwidth + x / 16 + 1) * planes;
+
+    /* A rectangle nobody could have meant, which is the form's own size again
+     * rather than an allocation of gigabytes */
+    if (reach > (long)1 << 24)
+        return 0;
+
+    return (int)reach;
+}
+
 /* Reads the MFDB the control array names and brings its bitmap across */
-static int bitmap_in(int16_t *control, int index, int slot)
+static int bitmap_in(int16_t *control, const int16_t *ptsin, int index,
+                     int slot)
 {
     struct bitmap *b = &bitmaps[slot];
     void *host = emuvdi_mfdb(slot);
@@ -243,6 +300,7 @@ static int bitmap_in(int16_t *control, int index, int slot)
 
     b->data = 0;
     b->words = 0;
+    b->room = 0;
     b->copy = 0;
 
     if (mfdb == 0)
@@ -292,11 +350,25 @@ static int bitmap_in(int16_t *control, int index, int slot)
 
     b->words = h * wdwidth * planes;
 
-    b->copy = calloc((size_t)b->words, sizeof *b->copy);
+    /*
+     * The form is as large as it says it is, and the block holding it is as
+     * large as the call can reach. Only the words the form declares are
+     * carried in and back out: a row that fell off the end was never part of
+     * the picture, and putting it back would write on memory the application
+     * did not say was a bitmap.
+     */
+    b->room = bitmap_reach(control, ptsin, slot, wdwidth, planes);
+
+    if (b->room < b->words)
+        b->room = b->words;
+
+    b->copy = calloc((size_t)b->room, sizeof *b->copy);
     if (!b->copy)
     {
         halt_execution();
         printf("VDI: no room to copy a %dx%d bitmap across\n", w, h);
+        b->words = 0;
+        b->room = 0;
         return 0;
     }
 
@@ -429,7 +501,8 @@ void vdi_trap()
 
     if (names_bitmaps(pb.opcode))
     {
-        if (!bitmap_in(h_control, 7, 0) || !bitmap_in(h_control, 9, 1))
+        if (!bitmap_in(h_control, h_ptsin, 7, 0)
+            || !bitmap_in(h_control, h_ptsin, 9, 1))
         {
             bitmap_done(0);
             bitmap_done(1);
