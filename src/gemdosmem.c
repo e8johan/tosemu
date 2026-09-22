@@ -41,6 +41,12 @@ struct mem_area {
      * and Ptermres, which is the only thing that sets it. */
     int resident;
 
+    /* The basepage of the program the block goes with when it ends. That is
+     * whoever asked for it, except that a program TOS was asked to run as a
+     * process of its own owns the block it was loaded into - see
+     * mem_set_owner, and Pexec mode 6. */
+    uint32_t owner;
+
     struct mem_area *next;
 };
 struct mem_area *mem_list;
@@ -200,6 +206,7 @@ uint32_t mem_alloc(uint32_t newsiz)
                 /* Set base and len */
                 n->base = prev_top;
                 n->len = newsiz;
+                n->owner = tos_current_basepage();
                 
                 /* Insert into list */
                 n->next = ptr;
@@ -229,6 +236,7 @@ uint32_t mem_alloc(uint32_t newsiz)
             /* Set base and len */
             n->base = prev_top;
             n->len = newsiz;
+            n->owner = tos_current_basepage();
             
             /* Insert into list */
             if (prev)
@@ -377,6 +385,7 @@ int mem_claim(uint32_t base, uint32_t len)
     memset(n, 0, sizeof(struct mem_area));
     n->base = base;
     n->len = len;
+    n->owner = base;    /* A program put here is a process of its own */
     n->next = ptr;
 
     if (prev)
@@ -459,6 +468,72 @@ uint32_t mem_keep(uint32_t block, uint32_t keep)
     return (floor + 1) & ~1u;
 }
 
+int32_t mem_set_owner(uint32_t block, uint32_t owner)
+{
+    struct mem_area *ma = find_mem_area(block, 0);
+
+    if (!ma)
+        return GEMDOS_EIMBA;
+
+    ma->owner = owner;
+
+    return 0;
+}
+
+/*
+ * Frees every block a program that has ended owned, which is what TOS does
+ * with them - see free_all_owned in EmuTOS's bdos/proc.c. What it allocated
+ * and forgot about goes with it, and what its caller allocated for it does
+ * not.
+ */
+void mem_free_owned(uint32_t owner)
+{
+    struct mem_area *ptr = mem_list, *prev = 0;
+
+    while (ptr)
+    {
+        struct mem_area *next = ptr->next;
+
+        if (ptr->owner == owner && !ptr->resident)
+        {
+            if (prev)
+                prev->next = next;
+            else
+                mem_list = next;
+
+            free(ptr);
+        }
+        else
+            prev = ptr;
+
+        ptr = next;
+    }
+}
+
+/*
+ * Ptermres for a program running in its caller's machine, which is the case
+ * the call was made for: the caller goes on, and whatever the program
+ * installed goes on being called from where it was left.
+ *
+ * Unlike mem_keep this keeps everything the program owned rather than only its
+ * own block - a RAM disk Mallocs its disk - because there is a machine still
+ * running around it and nothing is going to be loaded across the gaps. That is
+ * what EmuTOS does, see reserve_blocks. The block the program was loaded into
+ * is shrunk whoever owns it, and is only kept for good if the program does:
+ * one run with mode 4 belongs to the caller, which may free it.
+ */
+void mem_keep_owned(uint32_t owner, uint32_t block, uint32_t keep)
+{
+    struct mem_area *ma = find_mem_area(block, 0);
+
+    if (ma && keep < ma->len)
+        ma->len = whole_words(keep);
+
+    for (ma = mem_list; ma; ma = ma->next)
+        if (ma->owner == owner)
+            ma->resident = 1;
+}
+
 void gemdos_mem_init(struct tos_environment *te)
 {
     struct mem_area *ma = malloc(sizeof(struct mem_area));
@@ -468,6 +543,7 @@ void gemdos_mem_init(struct tos_environment *te)
      * base page setup from tossystem */
     ma->base = 0x800;
     ma->len = te->tpa_len; /* What the application was given, basepage and all */
+    ma->owner = 0x800;
     /* The address the memory the emulator has ends at, which is not the same
      * as the top of the initial block: an accessory is given room for itself
      * and the rest of the machine stays free, which is where the stack it

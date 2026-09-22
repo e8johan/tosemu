@@ -337,6 +337,11 @@ uint32_t tos_current_basepage(void)
     return current_basepage;
 }
 
+void tos_set_current_basepage(uint32_t basepage)
+{
+    current_basepage = basepage;
+}
+
 int tos_run_after(void *binary, uint64_t size, const char *cmdlin)
 {
     if (following_count >= FOLLOWING_MOST)

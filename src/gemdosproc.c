@@ -35,6 +35,15 @@
  * its own memory, its own DTA, and its own screen. The current directory a
  * child moves to does not follow back to the parent, which is where this
  * parts with TOS and follows MiNT.
+ *
+ * Except for modes 4 and 6, which run a program the caller has already loaded
+ * into its own memory. Those exist because TOS had one address space, and what
+ * they are used for depends on it: the two programs pass structures back and
+ * forth through memory both can see, and a debugger catches the exceptions of
+ * the program it is debugging in handlers of its own. So they do not fork. The
+ * child runs on the same processor in the same machine, the way EmuTOS's
+ * proc_go starts one, and the caller carries on after its Pexec when the child
+ * ends - see struct caller below.
  */
 
 #include "gemdosproc_p.h"
@@ -52,9 +61,11 @@
 #include "m68k.h"
 #include "cpu.h"
 #include "files.h"
+#include "gem.h"
 #include "tossystem.h"
 
 #include "gemdos_p.h"
+#include "gemdosfile_p.h"
 #include "gemdosmem_p.h"
 
 /* Pexec modes, as named in mint/ostruct.h */
@@ -72,6 +83,15 @@
 /* An environment pointer of -1 asks for a process with no environment at all,
  * where a null one asks to inherit the caller's */
 #define ENV_NONE        (0xFFFFFFFFu)
+
+/* The fields of a basepage this reads and writes */
+#define BP_HITPA        (0x04)
+#define BP_TBASE        (0x08)
+#define BP_DBASE        (0x10)
+#define BP_BBASE        (0x18)
+#define BP_DTA          (0x20)
+#define BP_PARENT       (0x24)
+#define BP_ENV          (0x2c)
 
 /*
  * Where a child reports the value it terminated with.
@@ -112,7 +132,7 @@ static void get_string(char *buf, int size, uint32_t address)
 /* The environment of the application that called us */
 static uint32_t caller_environment(void)
 {
-    return m68k_read_disassembler_32(0x800 + 0x2c); /* p_env */
+    return m68k_read_disassembler_32(tos_current_basepage() + BP_ENV);
 }
 
 /*
@@ -158,6 +178,94 @@ static uint32_t basepage_environment(uint32_t addr)
     return addr;
 }
 
+/*
+ * The programs in this machine waiting for one they ran with mode 4 or 6 to
+ * end, the most recent first.
+ *
+ * Each is what TOS kept in the process descriptor of a program that called
+ * Pexec: where it was and what it had in its registers, and what GEMDOS gives
+ * a process of its own. Everything else - the memory, the vectors, the screen -
+ * belongs to the machine and is shared, which is the point.
+ */
+struct caller {
+    uint32_t d[8], a[7];
+    uint32_t usp, isp, sr;
+    uint32_t pc;                    /* After the trap that called Pexec */
+    uint32_t basepage;
+    uint32_t child;                 /* And the basepage of the one it ran */
+    struct gemdos_files *files;
+    int16_t ap_id;
+    struct caller *next;
+};
+
+static struct caller *callers;
+
+/*
+ * Ends the program the most recent caller ran, and has the caller carry on
+ * after its Pexec, which answers with the value handed back here.
+ *
+ * What the program owned goes the way ixterm in EmuTOS's bdos/proc.c takes it:
+ * its files closed and its memory freed, or kept for good when it stays
+ * resident. etv_term is not called; nothing here has ever called it.
+ */
+static uint32_t child_ends(uint16_t code, int stays, uint32_t keep)
+{
+    struct caller *c = callers;
+    int16_t ap_id;
+    int i;
+
+    callers = c->next;
+
+    gemdos_files_leave(c->files, c->child);
+
+    if (stays)
+        mem_keep_owned(c->child, c->child, keep);
+    else
+        mem_free_owned(c->child);
+
+    /* An application the child introduced to the AES goes with it, and one of
+     * its caller's that it took away on the way out is given back */
+    ap_id = gem_application();
+    if (c->ap_id < 0 && ap_id >= 0)
+        gem_reset();
+    else if (c->ap_id >= 0 && ap_id < 0)
+        gem_application_resume(c->ap_id);
+
+    tos_set_current_basepage(c->basepage);
+
+    m68k_set_reg(M68K_REG_PC, c->pc);
+
+    for (i = 0; i < 8; i++)
+        m68k_set_reg(M68K_REG_D0 + i, c->d[i]);
+    for (i = 0; i < 7; i++)
+        m68k_set_reg(M68K_REG_A0 + i, c->a[i]);
+
+    /* The caller's mode first, with every interrupt held off, so that each
+     * stack pointer lands in the register it belongs in and nothing is
+     * taken on a stack that is about to be replaced. Then the mask it had. */
+    m68k_set_reg(M68K_REG_SR, c->sr | 0x0700);
+    m68k_set_reg(M68K_REG_USP, c->usp);
+    m68k_set_reg(M68K_REG_ISP, c->isp);
+    m68k_set_reg(M68K_REG_SR, c->sr);
+
+    free(c);
+
+    return code;
+}
+
+void gemdos_proc_forget(void)
+{
+    while (callers)
+    {
+        struct caller *next = callers->next;
+
+        gemdos_files_drop(callers->files);
+        free(callers);
+
+        callers = next;
+    }
+}
+
 /* Terminates the application, reporting the value to whoever ran it */
 static void terminate(uint16_t code)
 {
@@ -179,11 +287,16 @@ static void terminate(uint16_t code)
 
 uint32_t GEMDOS_Pterm()
 {
+    uint16_t code = peek_u16(2);
+
     FUNC_TRACE_ENTER_ARGS {
-        printf("    0x%x\n", peek_u16(2));
+        printf("    0x%x\n", code);
     }
 
-    terminate(peek_u16(2));
+    if (callers)
+        return child_ends(code, 0, 0);
+
+    terminate(code);
 
     return 0;
 }
@@ -191,6 +304,9 @@ uint32_t GEMDOS_Pterm()
 uint32_t GEMDOS_Pterm0()
 {
     FUNC_TRACE_ENTER
+
+    if (callers)
+        return child_ends(0, 0, 0);
 
     terminate(0);
 
@@ -207,10 +323,11 @@ uint32_t GEMDOS_Pterm0()
  * the call so much as there being one address space, with the next program
  * loaded above this one and able to see what it installed.
  *
- * So tosemu can only honour it where that is true, which is for the programs
+ * So tosemu can only honour it where that is true: for a program run with
+ * Pexec mode 4 or 6, which is in its caller's machine, and for the programs
  * named on its own command line - see --resident, and RESIDENT.md. A program
- * Pexec'd by another one is a forked host process: anything it keeps is kept in
- * its own copy of the machine, and the copy goes when it exits. There is no
+ * run with any other mode is a forked host process: anything it keeps is kept
+ * in its own copy of the machine, and the copy goes when it exits. There is no
  * arrangement of this call that changes that, so what it does instead is say
  * so, once and plainly, and terminate the way Pterm would.
  */
@@ -223,12 +340,15 @@ uint32_t GEMDOS_Ptermres()
         printf("    keep: %d (0x%x), code: %d\n", keep, keep, code);
     }
 
+    if (callers)
+        return child_ends((uint16_t)code, 1, keep);
+
     /*
-     * From inside Pexec, where staying is not something this can do. Said
-     * rather than done, because the alternative is the parent being told the
-     * program loaded, believing it, and failing later on a call into something
-     * that is not there - which is a far worse failure than this one, and a
-     * much harder one to read.
+     * From a program Pexec started as a process of its own, where staying is
+     * not something this can do. Said rather than done, because the
+     * alternative is the parent being told the program loaded, believing it,
+     * and failing later on a call into something that is not there - which is
+     * a far worse failure than this one, and a much harder one to read.
      */
     if (exit_code_fd >= 0)
     {
@@ -350,6 +470,11 @@ static pid_t start_child(int *codefd)
          */
         gem_forget();
 
+        /* And it is a process of its own, which ends when its program does.
+         * The programs in the parent's machine waiting on a mode 4 are the
+         * parent's to go back to. */
+        gemdos_proc_forget();
+
         return 0;
     }
 
@@ -428,37 +553,83 @@ static uint32_t pexec_loadgo(const char *host_path, const char *cmdlin,
 
 /*
  * Runs a program that another one has already loaded, which is Pexec mode 4,
- * and mode 6 when the memory it was given goes back afterwards.
+ * and mode 6 when the program is to own the memory it was loaded into, so that
+ * it goes when the program does.
+ *
+ * This returns into the program rather than to the caller, which is put aside
+ * until the program ends - see child_ends. The program starts the way EmuTOS's
+ * proc_go starts one: in user mode at the caller's interrupt mask, on a stack
+ * at the top of its memory with its basepage at 4(sp), and with a4, a5 and a6
+ * at its BSS, its data and its stack. Everything else is nought, and a0 being
+ * nought is what tells a program it is not an accessory.
+ *
+ * The environment is not handed over by mode 6. Nothing here copied it for the
+ * basepage - see basepage_environment - so it is still the caller's.
  */
 static uint32_t pexec_go(uint32_t basepage, int release)
 {
-    uint32_t code;
-    int codefd = -1;
-    int terminated;
-    pid_t pid;
+    struct caller *c;
+    uint32_t sp;
+    int i;
 
-    pid = start_child(&codefd);
-    if (pid < 0)
+    c = malloc(sizeof *c);
+    if (c == NULL)
         return GEMDOS_ENSMEM;
 
-    if (pid == 0)
+    c->files = gemdos_files_enter(m68k_read_disassembler_32(basepage + BP_DTA));
+    if (c->files == NULL)
     {
-        /* The program is already in the memory the child inherited, so there
-         * is nothing to load, only somewhere else to point the CPU */
-        exec_tos_basepage(basepage);
-
-        return GEMDOS_E_OK;
+        free(c);
+        return GEMDOS_ENSMEM;
     }
 
-    code = collect_child(pid, codefd, &terminated);
+    for (i = 0; i < 8; i++)
+        c->d[i] = m68k_get_reg(0, M68K_REG_D0 + i);
+    for (i = 0; i < 7; i++)
+        c->a[i] = m68k_get_reg(0, M68K_REG_A0 + i);
+
+    c->usp = m68k_get_reg(0, M68K_REG_USP);
+    c->isp = m68k_get_reg(0, M68K_REG_ISP);
+    c->sr = m68k_get_reg(0, M68K_REG_SR);
+    c->pc = m68k_get_reg(0, M68K_REG_PC);
+    c->basepage = tos_current_basepage();
+    c->child = basepage;
+    c->ap_id = gem_application();
+
+    c->next = callers;
+    callers = c;
 
     if (release)
-        mem_free(basepage);
+        mem_set_owner(basepage, basepage);
 
-    if (!terminated)
-        return GEMDOS_EPLFMT;
+    m68k_write_memory_32(basepage + BP_PARENT, c->basepage);
+    tos_set_current_basepage(basepage);
 
-    return code;
+    /* Two longwords down from the top, the basepage in the upper one at
+     * 4(sp), and even, because a 68000 cannot stand on an odd address */
+    sp = (m68k_read_disassembler_32(basepage + BP_HITPA) - 8) & ~1u;
+    m68k_write_memory_32(sp + 4, basepage);
+
+    m68k_set_reg(M68K_REG_PC, m68k_read_disassembler_32(basepage + BP_TBASE));
+
+    /* d0 is left for the answer to this call, which the program finds there
+     * as nought */
+    for (i = 1; i < 8; i++)
+        m68k_set_reg(M68K_REG_D0 + i, 0);
+    for (i = 0; i < 4; i++)
+        m68k_set_reg(M68K_REG_A0 + i, 0);
+
+    m68k_set_reg(M68K_REG_A4, m68k_read_disassembler_32(basepage + BP_BBASE));
+    m68k_set_reg(M68K_REG_A5, m68k_read_disassembler_32(basepage + BP_DBASE));
+    m68k_set_reg(M68K_REG_A6, sp);
+
+    /* The stack before the mode, so that the one the program stands on is
+     * the one it finds when the mode changes. The supervisor stack is left
+     * where the caller had it, which keeps what the caller has on it. */
+    m68k_set_reg(M68K_REG_USP, sp);
+    m68k_set_reg(M68K_REG_SR, c->sr & 0x0700);
+
+    return GEMDOS_E_OK;
 }
 
 /*
@@ -684,7 +855,8 @@ static uint32_t pexec_load(const char *host_path, const char *cmdlin,
         return GEMDOS_ENSMEM;
     }
 
-    err = place_program(base, len, binary, size, cmdlin, env, 0x800);
+    err = place_program(base, len, binary, size, cmdlin, env,
+                        tos_current_basepage());
 
     if (binary)
         unmap_tos_binary(binary, size);

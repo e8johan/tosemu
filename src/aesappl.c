@@ -42,6 +42,16 @@
  * anything else. */
 static int16_t ap_id = -1;
 
+int16_t gem_application(void)
+{
+    return ap_id;
+}
+
+void gem_application_resume(int16_t id)
+{
+    ap_id = id;
+}
+
 void aes_appl_reset()
 {
     ap_id = -1;

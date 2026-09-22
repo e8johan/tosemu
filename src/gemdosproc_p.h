@@ -35,4 +35,8 @@ uint32_t GEMDOS_Pwait();
 uint32_t GEMDOS_Pwait3();
 uint32_t GEMDOS_Pwaitpid();
 
+/* Lets go of the programs waiting on a Pexec mode 4 or 6, for a process that
+ * is no longer going to run them: a child of fork, or a machine built again */
+void gemdos_proc_forget(void);
+
 #endif /* GEMDOSPROC_P_H */

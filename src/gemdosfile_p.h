@@ -37,6 +37,21 @@ void gemdos_file_reinit(struct tos_environment *);
 
 void gemdos_file_free();
 
+/*
+ * The file state of the program running now, put aside for a child that runs
+ * in the same machine and put back when it ends - see gemdosfile.c. The child
+ * starts with the DTA given here.
+ *
+ * gemdos_files_leave also closes what the child left open, by the basepage it
+ * ran with. gemdos_files_drop lets go of the state without putting it back,
+ * for a process that is no longer going to return to that caller.
+ */
+struct gemdos_files;
+
+struct gemdos_files *gemdos_files_enter(uint32_t dta);
+void gemdos_files_leave(struct gemdos_files *saved, uint32_t basepage);
+void gemdos_files_drop(struct gemdos_files *saved);
+
 uint32_t GEMDOS_Dgetdrv();
 uint32_t GEMDOS_Dsetdrv();
 uint32_t GEMDOS_Dfree();

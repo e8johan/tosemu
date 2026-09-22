@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
@@ -365,6 +365,11 @@ check: all
 	grep -q '^1\.\.' out
 	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
+	# Modes 4 and 6, which run in the caller's machine. The count matters
+	# more than usual: a child that left its Fforce behind takes the rest
+	# of the caller's output with it, count line and all.
+	$(TOSEMU) test-c-pexgo > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given
 	# on the command line

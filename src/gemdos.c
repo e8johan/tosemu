@@ -430,8 +430,10 @@ void gemdos_init(struct tos_environment *te)
 
 void gemdos_reinit(struct tos_environment *te)
 {
-    /* The application that was running took its memory with it */
+    /* The application that was running took its memory with it, and whoever
+     * was waiting for it to end went with the machine they were waiting in */
     gemdos_mem_init(te);
+    gemdos_proc_forget();
 
     gemdos_file_reinit(te);
 }
