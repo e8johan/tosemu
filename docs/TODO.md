@@ -25,16 +25,12 @@
   built without it: M68K_EMULATE_TRACE is off. MonST's step runs the program
   on to its next breakpoint or its end. What turning it on costs every other
   instruction is the question.
-- A program's timer C handler that chains to the system's leaves the channel in
-  service for good. TOS runs the MFP with software end of interrupt, so
-  whoever handles a channel clears its bit in ISRB, and TOS's own timer C
-  handler does. The one tosemu fills the vector with is an RTE and nothing
-  more, and host C only answers a channel nobody has claimed - so a handler
-  that claims it and chains to what was there, which is how every XBRA handler
-  is written, stops timer C after its first tick, and everything below it with
-  it. MonST is one, and gives the screen back to the program it is running
-  forty ticks after starting it, so a GEM program run under MonST stays behind
-  MonST's own picture, with interrupts or without.
+- A machine without interrupts has no timer C, so a handler a program hangs
+  on the system timer is never called, where on an ST it would have been
+  called two hundred times a second whatever else the program asked for.
+  MonST is one: it gives the screen back to the program it is running forty
+  ticks after starting it, so a GEM program run under MonST stays behind
+  MonST's own picture unless interrupts were asked for.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.

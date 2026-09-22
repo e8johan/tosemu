@@ -23,6 +23,7 @@
 #include "interrupt.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <poll.h>
 
@@ -271,6 +272,7 @@ static void acia_area_write(struct _memarea *area, uint32_t address,
 /* Below, with the rest of what the handler is - it needs the code it is
  * made of and the routine its magic byte reaches */
 static void install_acia_handler(void);
+static void install_timerc_handler(void);
 
 void interrupt_init(void)
 {
@@ -321,6 +323,9 @@ void interrupt_init(void)
      * is why this is after that and not before it.
      */
     install_acia_handler();
+
+    /* And the system timer's, for the same reasons */
+    install_timerc_handler();
 
     /*
      * What is still asked for is the clock behind them. The chips answer
@@ -698,6 +703,48 @@ static void acia_handler_write(struct _memarea *area, uint32_t address,
          "machine is in ROM. Nothing was changed.");
 }
 
+/*
+ * TOS's Timer C handler, for a program that chains to it.
+ *
+ * The MFP runs with software end of interrupt, so a channel stays in service,
+ * holding off itself and everything below it, until whoever handled it clears
+ * its bit - and on the system timer that is the system's handler, which ends
+ * with this write. See _int_timerc in EmuTOS's bios/vectors.S. A program that
+ * shares the vector does its own work and then chains to what was there, and
+ * leaves the ending to it. With a bare RTE on the end of the chain the channel
+ * was never finished, and the program's handler was called once.
+ *
+ * The rest of what TOS's handler does is not here. The two hundred hertz
+ * counter is kept by host C whether or not anything runs on the vector, so
+ * counting it here as well would count every tick twice. Until a program
+ * claims the vector this is nobody and host C answers the channel, as for the
+ * ACIA handler.
+ */
+static const uint8_t timerc_handler_code[] = {
+    0x11, 0xfc, 0x00, 0xdf, 0xfa, 0x11, /* move.b  #0xdf,0xfffffa11     */
+    0x4e, 0x73                          /* rte                          */
+};
+
+static uint32_t timerc_handler;
+
+static void install_timerc_handler(void)
+{
+    uint8_t *at;
+
+    timerc_handler = bios_static_alloc(sizeof timerc_handler_code);
+
+    if (!timerc_handler)
+        return;
+
+    at = tos_mem_to_host_mem(timerc_handler);
+    if (!at)
+        return;
+
+    memcpy(at, timerc_handler_code, sizeof timerc_handler_code);
+
+    poke_system_long(VECTOR_ADDRESS(MFP_200HZ), timerc_handler);
+}
+
 static void install_acia_handler(void)
 {
     acia_handler = bios_device_alloc(ACIA_HANDLER_SIZE);
@@ -865,10 +912,10 @@ static void dispatch(int nested)
      * chained to, called into - by the programs that want to see a handler,
      * and those programs put their own address in the vector when they mean to
      * be called. Until one does, this is still nobody, and the byte goes the
-     * short way.
+     * short way. The system timer's handler is the same again.
      */
     if (handler == 0 || handler == tos_default_vector()
-        || handler == acia_handler)
+        || handler == acia_handler || handler == timerc_handler)
     {
         handled_here(channel);
         return;

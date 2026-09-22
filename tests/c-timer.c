@@ -103,6 +103,42 @@ static void __attribute__((interrupt_handler)) timer_handler(void)
     *(volatile unsigned char *)MFP_ISRA = (unsigned char)~(1 << 5);
 }
 
+/*
+ * A handler on the system's own timer, which does its work and then chains to
+ * what was on the vector before it - the way every handler that shares a
+ * vector is written, by pushing the old one and returning into it with the
+ * frame left as it arrived.
+ *
+ * It does not end the interrupt itself. That is the system handler's job,
+ * which is the whole reason for chaining to it rather than returning.
+ */
+#define TIMER_C_VECTOR (0x114L)
+
+volatile long chained_ticks;
+long timer_c_before;
+
+__asm__(
+"       .text\n"
+"       .even\n"
+"       .globl  _chained_timer_c\n"
+"_chained_timer_c:\n"
+"       addq.l  #1,_chained_ticks\n"
+"       move.l  _timer_c_before,-(%sp)\n"
+"       rts\n");
+
+extern void chained_timer_c(void);
+
+static void chain_timer_c(void)
+{
+    timer_c_before = *(volatile long *)TIMER_C_VECTOR;
+    *(volatile long *)TIMER_C_VECTOR = (long)chained_timer_c;
+}
+
+static void unchain_timer_c(void)
+{
+    *(volatile long *)TIMER_C_VECTOR = timer_c_before;
+}
+
 /* Reading the clock, which lives where a program in user mode cannot reach */
 static unsigned long clock_now;
 
@@ -193,6 +229,31 @@ int main(int argc, char **argv)
 
     /* Put it back, so that nothing is left running after this returns */
     Xbtimer(TIMER_A, 0, 0, 0L);
+
+    /*
+     * A handler that shares the system timer with the system, and has it end
+     * the interrupt. If what it chains to does not, the channel stays in
+     * service and this is called once: a fifth of a second of two hundred
+     * hertz is forty.
+     */
+    Supexec(chain_timer_c);
+
+    started = clock_reading();
+
+    for (spins = 0; spins < 200000000L; spins++)
+    {
+        if (clock_reading() - started >= 40)
+            break;
+    }
+
+    Supexec(unchain_timer_c);
+
+    seen = chained_ticks;
+
+    printf("# a handler chained to the system timer's ran %ld times\n", seen);
+
+    check(seen >= 10, 1, "a handler that chains to the system timer's is "
+                         "called again");
 
     printf("1..%d\n", n);
 
