@@ -57,6 +57,9 @@ GEM application opens, one for each dialog, one for the menu bar and one for
 each menu pulled down from it - scaled up by a whole number so that an ST pixel
 stays a square rather than being smoothed into a modern one. `TOSEMU_SCALE`
 says by how much, and three is the default: a 640x400 screen becomes 1920x1200.
+The medium resolution screen is the exception, its pixels having been twice as
+tall as they were wide on the monitor, so it is magnified twice as much down
+as across: 640x200 becomes 1920x1200 as well.
 A GEM application is meant to be part of the desktop it runs on rather than a
 picture of another computer. Set `TOSEMU_NO_WINDOW` to
 keep the screen in memory, which is what the tests do: the emulator runs the

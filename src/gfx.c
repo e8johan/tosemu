@@ -162,6 +162,10 @@ void host_frame_handle(struct surface *into, int16_t width, int16_t height,
  * size of the display is divided by to arrive at a screen that fills it, and
  * those two have to be the same number.
  *
+ * Twice that downwards on a screen whose pixels were tall, which is the ST's
+ * medium resolution: square blocks there would be a picture half the height
+ * the artwork was drawn for. See screen_aspect.
+ *
  * It is kept per window rather than once, because it is a property of how a
  * window is being shown rather than of the machine: two windows of the same
  * application can honestly be shown at different sizes, and one day they will
@@ -202,8 +206,9 @@ struct window {
     /* The part of the screen it shows, in the screen's own pixels */
     int16_t sx, sy, sw, sh;
 
-    /* How much larger than an ST pixel one of this window's is */
-    int scale;
+    /* How much larger than an ST pixel one of this window's is, across and
+     * down */
+    int scale_x, scale_y;
 
     /* And how large that rectangle is once scaled, which is what the
      * compositor sees */
@@ -278,7 +283,7 @@ struct window {
     struct {
         struct surface *shows;
         int16_t sx, sy, sw, sh;
-        int scale, width, height, dragging;
+        int scale_x, scale_y, width, height, dragging;
     } drew;
 
     /* Except for the two that a comparison cannot see: a frame redrawn into
@@ -1476,8 +1481,8 @@ static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
 
     /* Where what the window is showing begins and ends: under whatever strip
      * the window drew for itself, and short of whatever it drew beside it */
-    top = win->frame_h * win->scale;
-    right = win->sw * win->scale;
+    top = win->frame_h * win->scale_y;
+    right = win->sw * win->scale_x;
 
     w.frame_x = wl_fixed_to_int(x);
     w.frame_y = wl_fixed_to_int(y);
@@ -1508,13 +1513,13 @@ static void pointer_at(struct window *win, wl_fixed_t x, wl_fixed_t y)
      */
     if (win == &w.windows[CONSOLE])
     {
-        host_console_motion((int16_t)(w.frame_x / win->scale),
-                            (int16_t)((w.frame_y - top) / win->scale));
+        host_console_motion((int16_t)(w.frame_x / win->scale_x),
+                            (int16_t)((w.frame_y - top) / win->scale_y));
         return;
     }
 
-    w.mouse_x = (int16_t)(win->sx + w.frame_x / win->scale);
-    w.mouse_y = (int16_t)(win->sy + (w.frame_y - top) / win->scale);
+    w.mouse_x = (int16_t)(win->sx + w.frame_x / win->scale_x);
+    w.mouse_y = (int16_t)(win->sy + (w.frame_y - top) / win->scale_y);
     w.mouse_known = 1;
 }
 
@@ -2266,11 +2271,11 @@ static void window_sizes(struct window *win)
     }
 
     xdg_toplevel_set_min_size(win->toplevel,
-                              (least_w + win->frame_w) * win->scale,
-                              (least_h + win->frame_h) * win->scale);
+                              (least_w + win->frame_w) * win->scale_x,
+                              (least_h + win->frame_h) * win->scale_y);
     xdg_toplevel_set_max_size(win->toplevel,
-                              (most_w + win->frame_w) * win->scale,
-                              (most_h + win->frame_h) * win->scale);
+                              (most_w + win->frame_w) * win->scale_x,
+                              (most_h + win->frame_h) * win->scale_y);
 }
 
 /*
@@ -2326,8 +2331,8 @@ static void window_frame_needed(struct window *win, int needed)
 
     window_frame_make(win);
     window_sizes(win);
-    window_rebuffer(win, (win->sw + win->frame_w) * win->scale,
-                    (win->sh + win->frame_h) * win->scale,
+    window_rebuffer(win, (win->sw + win->frame_w) * win->scale_x,
+                    (win->sh + win->frame_h) * win->scale_y,
                     WL_SHM_FORMAT_XRGB8888);
 }
 
@@ -2446,7 +2451,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      */
     if (win == &w.windows[MENUBAR])
     {
-        int16_t shown = (int16_t)(width / win->scale - win->frame_w);
+        int16_t shown = (int16_t)(width / win->scale_x - win->frame_w);
 
         if (width > 0 && shown > 0 && shown != win->sw)
             window_resize(win, shown, win->sh);
@@ -2470,8 +2475,8 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t,
      * off first, that strip being the window's rather than the screen's. */
     if (width > 0 && height > 0 && !maximized)
     {
-        int16_t asked_sw = (int16_t)(width / win->scale);
-        int16_t asked_sh = (int16_t)(height / win->scale - win->frame_h);
+        int16_t asked_sw = (int16_t)(width / win->scale_x);
+        int16_t asked_sh = (int16_t)(height / win->scale_y - win->frame_h);
 
         /*
          * Unless it is the size the window has just stopped being, said by a
@@ -2652,7 +2657,7 @@ static void frame_press(struct window *win, int16_t buttons)
     frame_sizes(&wbox, &hbox);
 
     if (buttons == 1 && !win->frame_w && win->frame_closer
-        && w.frame_x < wbox * win->scale)
+        && w.frame_x < wbox * win->scale_x)
     {
         toplevel_close(win, win->toplevel);
         return;
@@ -2678,7 +2683,7 @@ static void frame_press(struct window *win, int16_t buttons)
      * the edge with a corner drawn on it.
      */
     else if (win->frame_w
-             && w.frame_x >= (win->sw + win->frame_w - wbox) * win->scale)
+             && w.frame_x >= (win->sw + win->frame_w - wbox) * win->scale_x)
         xdg_toplevel_resize(win->toplevel, w.seat, w.press_serial,
                             XDG_TOPLEVEL_RESIZE_EDGE_RIGHT);
     else
@@ -3061,8 +3066,8 @@ static int window_resize(struct window *win, int16_t sw, int16_t sh)
     if ((win->frame_h && sw != old_sw) || (win->frame_w && sh != old_sh))
         window_frame_make(win);
 
-    if (!window_rebuffer(win, (sw + win->frame_w) * win->scale,
-                         (sh + win->frame_h) * win->scale,
+    if (!window_rebuffer(win, (sw + win->frame_w) * win->scale_x,
+                         (sh + win->frame_h) * win->scale_y,
                          WL_SHM_FORMAT_XRGB8888))
     {
         win->sw = old_sw;
@@ -3222,9 +3227,12 @@ static int window_create(struct window *win, const char *title,
     win->sy = sy;
     win->sw = sw;
     win->sh = sh;
-    win->scale = screen_scale();
-    win->width = sw * win->scale;
-    win->height = sh * win->scale;
+    win->scale_x = screen_scale();
+    win->scale_y = win->scale_x * screen_aspect((int16_t)surface_width(shows),
+                                                (int16_t)surface_height(shows),
+                                                (int16_t)surface_planes(shows));
+    win->width = sw * win->scale_x;
+    win->height = sh * win->scale_y;
 
     /* What a title bar of its own would say, if it turns out to need one */
     if (title)
@@ -3365,8 +3373,8 @@ static int window_create(struct window *win, const char *title,
      * make it that big.
      */
     window_frame_make(win);
-    win->width = (sw + win->frame_w) * win->scale;
-    win->height = (sh + win->frame_h) * win->scale;
+    win->width = (sw + win->frame_w) * win->scale_x;
+    win->height = (sh + win->frame_h) * win->scale_y;
     window_sizes(win);
 
     if (!window_buffer(win, WL_SHM_FORMAT_XRGB8888))
@@ -3895,8 +3903,8 @@ void gfx_window_menu(int16_t handle, int16_t x, int16_t y)
         return;
 
     xdg_toplevel_show_window_menu(win->toplevel, w.seat, w.press_serial,
-                                  (x - win->sx) * win->scale,
-                                  (y - win->sy + win->frame_h) * win->scale);
+                                  (x - win->sx) * win->scale_x,
+                                  (y - win->sy + win->frame_h) * win->scale_y);
     wl_display_flush(w.display);
 }
 
@@ -4042,9 +4050,10 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
 
     /* At whatever the bar is shown at: the menu is part of the same bar, and
      * where it goes is said in the bar's own pixels */
-    win->scale = bar->scale;
-    win->width = sw * win->scale;
-    win->height = sh * win->scale;
+    win->scale_x = bar->scale_x;
+    win->scale_y = bar->scale_y;
+    win->width = sw * win->scale_x;
+    win->height = sh * win->scale_y;
 
     win->surface = wl_compositor_create_surface(w.compositor);
     win->xdg_surface = xdg_wm_base_get_xdg_surface(w.wm_base, win->surface);
@@ -4062,8 +4071,8 @@ void gfx_menu_open(struct surface *shows, int16_t x, int16_t y,
      */
     where = xdg_wm_base_create_positioner(w.wm_base);
     xdg_positioner_set_size(where, win->width, win->height);
-    xdg_positioner_set_anchor_rect(where, (x - bar->sx) * bar->scale,
-                                   (y - bar->sy + bar->frame_h) * bar->scale,
+    xdg_positioner_set_anchor_rect(where, (x - bar->sx) * bar->scale_x,
+                                   (y - bar->sy + bar->frame_h) * bar->scale_y,
                                    1, 1);
     xdg_positioner_set_anchor(where, XDG_POSITIONER_ANCHOR_TOP_LEFT);
     xdg_positioner_set_gravity(where, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
@@ -4572,8 +4581,8 @@ static void window_magnify(struct window *win, struct surface *from,
                            int16_t fx, int16_t fy, int16_t fw, int16_t fh,
                            int left, int top)
 {
-    int rows = top + fh * win->scale;
-    int columns = left + fw * win->scale;
+    int rows = top + fh * win->scale_y;
+    int columns = left + fw * win->scale_x;
     int x, y, sx, sy;
 
     if (rows > win->height)
@@ -4583,7 +4592,7 @@ static void window_magnify(struct window *win, struct surface *from,
 
     for (y = 0; y < fh; y++)
     {
-        if (top + y * win->scale >= rows)
+        if (top + y * win->scale_y >= rows)
             break;
 
         for (x = 0; x < fw; x += PENS)
@@ -4592,7 +4601,7 @@ static void window_magnify(struct window *win, struct surface *from,
             int n = fw - x;
             int i;
 
-            if (left + x * win->scale >= columns)
+            if (left + x * win->scale_x >= columns)
                 break;
 
             if (n > PENS)
@@ -4606,7 +4615,7 @@ static void window_magnify(struct window *win, struct surface *from,
 
             for (i = 0; i < n; i++)
             {
-                int at = left + (x + i) * win->scale;
+                int at = left + (x + i) * win->scale_x;
                 uint32_t argb;
 
                 if (at >= columns)
@@ -4615,23 +4624,24 @@ static void window_magnify(struct window *win, struct surface *from,
                 argb = colours[pens[i]];
 
                 /* The two tests ask where a magnified pixel begins, and it is
-                 * scale pixels wide and scale pixels tall. The buffer's size
-                 * is whatever the compositor last sent and owes nothing to the
-                 * scale, so it can end part of the way through one of them -
-                 * and then the rest of that pixel is written past where the
-                 * buffer stops. On the last row that is past the end of the
-                 * mapping, which is a fault rather than a smear. So each of
-                 * them is drawn as far as the buffer reaches and no further. */
+                 * scale_x pixels wide and scale_y pixels tall. The buffer's
+                 * size is whatever the compositor last sent and owes nothing
+                 * to the scale, so it can end part of the way through one of
+                 * them - and then the rest of that pixel is written past where
+                 * the buffer stops. On the last row that is past the end of
+                 * the mapping, which is a fault rather than a smear. So each
+                 * of them is drawn as far as the buffer reaches and no
+                 * further. */
                 for (sy = 0;
-                     sy < win->scale && top + y*win->scale + sy < rows;
+                     sy < win->scale_y && top + y*win->scale_y + sy < rows;
                      sy++)
                 {
                     uint32_t *row = win->pixels
-                                  + (size_t)(top + y*win->scale + sy)
+                                  + (size_t)(top + y*win->scale_y + sy)
                                     * win->width
                                   + at;
 
-                    for (sx = 0; sx < win->scale && at + sx < columns; sx++)
+                    for (sx = 0; sx < win->scale_x && at + sx < columns; sx++)
                         row[sx] = argb;
                 }
             }
@@ -4645,14 +4655,14 @@ static void window_picture(struct window *win)
 
     /* Where what the window shows begins, which is under its own title bar
      * when it has one */
-    int top = win->frame_h * win->scale;
+    int top = win->frame_h * win->scale_y;
 
     /* And where what it shows ends, which is where the menu bar's handle
      * begins when it is that window */
-    int right = win->sw * win->scale;
+    int right = win->sw * win->scale_x;
 
-    int rows = top + win->sh * win->scale;
-    int columns = right + win->frame_w * win->scale;
+    int rows = top + win->sh * win->scale_y;
+    int columns = right + win->frame_w * win->scale_x;
     int x, y;
 
     /* Before anything is looked up in it, and once for the whole picture */
@@ -4714,24 +4724,26 @@ static void window_outline(struct window *win)
     uint32_t black = 0xff000000u;
     uint32_t white = 0xffffffffu;
 
-    int thick = win->scale;
+    int thick_x = win->scale_x;
+    int thick_y = win->scale_y;
     int x, y;
 
     for (y = 0; y < win->height; y++)
     {
         uint32_t *row = win->pixels + (size_t)y * win->width;
-        int edge_row = y < thick || y >= win->height - thick;
+        int edge_row = y < thick_y || y >= win->height - thick_y;
 
         for (x = 0; x < win->width; x++)
         {
-            if (!edge_row && x >= thick && x < win->width - thick)
+            if (!edge_row && x >= thick_x && x < win->width - thick_x)
             {
                 row[x] = 0;             /* nothing at all, so the desktop
                                          * shows through */
                 continue;
             }
 
-            row[x] = ((x / win->scale + y / win->scale) & 1) ? black : white;
+            row[x] = ((x / win->scale_x + y / win->scale_y) & 1) ? black
+                                                                 : white;
         }
     }
 }
@@ -4803,7 +4815,8 @@ static int window_holds_its_picture(const struct window *win)
         && win->drew.shows == win->shows
         && win->drew.sx == win->sx && win->drew.sy == win->sy
         && win->drew.sw == win->sw && win->drew.sh == win->sh
-        && win->drew.scale == win->scale
+        && win->drew.scale_x == win->scale_x
+        && win->drew.scale_y == win->scale_y
         && win->drew.width == win->width
         && win->drew.height == win->height
         && win->drew.dragging == win->dragging;
@@ -4817,7 +4830,8 @@ static void window_remember(struct window *win)
     win->drew.sy = win->sy;
     win->drew.sw = win->sw;
     win->drew.sh = win->sh;
-    win->drew.scale = win->scale;
+    win->drew.scale_x = win->scale_x;
+    win->drew.scale_y = win->scale_y;
     win->drew.width = win->width;
     win->drew.height = win->height;
     win->drew.dragging = win->dragging;
@@ -4898,10 +4912,10 @@ static void window_present(struct window *win)
             return;
         }
 
-        left = (x - win->sx) * win->scale;
-        top = win->frame_h * win->scale + (y - win->sy) * win->scale;
-        wide = (x2 - x) * win->scale;
-        tall = (y2 - y) * win->scale;
+        left = (x - win->sx) * win->scale_x;
+        top = win->frame_h * win->scale_y + (y - win->sy) * win->scale_y;
+        wide = (x2 - x) * win->scale_x;
+        tall = (y2 - y) * win->scale_y;
 
         colours_settle();
         window_magnify(win, win->shows, x, y, (int16_t)(x2 - x),

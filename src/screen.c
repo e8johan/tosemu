@@ -169,6 +169,11 @@ int16_t screen_rez(int16_t width, int16_t height, int16_t planes)
     return -1;
 }
 
+int screen_aspect(int16_t width, int16_t height, int16_t planes)
+{
+    return screen_rez(width, height, planes) == 1 ? 2 : 1;
+}
+
 void screen_from_display(int32_t pixels_w, int32_t pixels_h, int32_t out_scale,
                          int16_t *width, int16_t *height)
 {

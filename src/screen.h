@@ -52,6 +52,14 @@ int16_t screen_rez(int16_t width, int16_t height, int16_t planes);
 int screen_scale(void);
 
 /*
+ * How many times taller than it is wide a pixel of a screen of this shape was
+ * on the monitor, which is what a window showing one magnifies downwards by on
+ * top of the scale: two for the ST's medium resolution, which has half the
+ * lines of the high one on the same glass, and one for everything else.
+ */
+int screen_aspect(int16_t width, int16_t height, int16_t planes);
+
+/*
  * The arithmetic that turns a display into a screen, without the asking.
  *
  * Apart from the asking so that it can be checked: what a compositor says is
