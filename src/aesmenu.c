@@ -273,6 +273,7 @@ void aes_menu_click()
 {
     int16_t title = 0, item = 0;
     int16_t message[8];
+    int16_t chosen;
     void *host;
     int i;
 
@@ -290,9 +291,18 @@ void aes_menu_click()
      * application last did */
     accessories_into_the_menu();
 
-    emuvdi_menu_bar(host, 1);
+    /* Titles highlighted and put back all the way through, and every one of
+     * them on the bar rather than in a window - see drawing_bar in aeswind.c.
+     * The menus themselves have a surface of their own and are not asked
+     * about. */
+    aes_wind_drawing_bar(1);
 
-    if (emuvdi_menu_do(&title, &item))
+    emuvdi_menu_bar(host, 1);
+    chosen = emuvdi_menu_do(&title, &item);
+
+    aes_wind_drawing_bar(0);
+
+    if (chosen)
     {
         int16_t first = emuvdi_menu_first_accessory();
 
@@ -367,7 +377,9 @@ uint32_t AES_menu_bar()
 
             accessories_into_the_menu();
 
+            aes_wind_drawing_bar(1);
             emuvdi_menu_bar(host, 1);
+            aes_wind_drawing_bar(0);
 
             bar_tree = address;
             bar_shown = 1;
@@ -489,7 +501,9 @@ static uint32_t menu_change(uint16_t bit, int16_t set, int16_t draw,
     if (!host)
         return AES_ERROR;
 
+    aes_wind_drawing_bar(1);
     answer = emuvdi_menu_change(host, object, bit, set, draw, only_if_enabled);
+    aes_wind_drawing_bar(0);
 
     aes_tree_out();
     aes_tree_done();
