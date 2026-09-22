@@ -77,6 +77,7 @@ struct fhandle
 {
     struct openfile *of;
     uint32_t flags;
+    uint32_t owner; /* The basepage of the program that opened it */
 };
 
 /* Handles 0-5 are the standard handles every process starts with, and are the
@@ -805,6 +806,7 @@ static int get_handle(struct openfile *of)
             continue;
         handles[i].of = of;
         handles[i].flags = HANDLE_ALLOCATED;
+        handles[i].owner = tos_current_basepage();
         return i;
     }
     return -1;
@@ -1401,6 +1403,105 @@ uint32_t GEMDOS_Fwrite()
 
     free(tmp);
     return n;
+}
+
+/*
+ * What a program Pexec runs in its caller's machine has of its own, and gives
+ * back when it ends.
+ *
+ * On TOS these are fields of the process descriptor: the standard handles,
+ * the DTA, the current drive and a current directory for each drive. Here they
+ * are one set of variables, and the host's own working directory, so they are
+ * put aside when a child starts and put back when it ends. A child starts with
+ * what its caller had, as TOS gives it, except for the DTA, which is the one
+ * its basepage names.
+ *
+ * The files it opened are the other half. A handle remembers which program
+ * opened it, and those still open when that program ends are closed, the way
+ * ixterm in EmuTOS's bdos/proc.c closes them. The ones its caller opened are
+ * not, whatever the child did with them in between.
+ */
+struct gemdos_files
+{
+    struct fhandle std[STD_HANDLES];
+    uint32_t dta;
+    int drive;
+    int cwd;        /* The caller's directory, or -1 if it could not be held */
+};
+
+struct gemdos_files *gemdos_files_enter(uint32_t dta)
+{
+    struct gemdos_files *saved = malloc(sizeof *saved);
+    int i;
+
+    if (saved == NULL)
+        return NULL;
+
+    /* Held as well as remembered, so that the child closing one or forcing
+     * another over it cannot close a file its caller is going to want back */
+    for (i = 0; i < STD_HANDLES; i++)
+    {
+        saved->std[i] = handles[i];
+        if (handles[i].of)
+            handles[i].of->refs++;
+    }
+
+    saved->dta = dta_addr;
+    saved->drive = drive_current();
+
+    /* A descriptor rather than a name, which finds the directory again even if
+     * the child renamed something on the way to it */
+    saved->cwd = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+
+    dta_addr = dta;
+
+    return saved;
+}
+
+void gemdos_files_leave(struct gemdos_files *saved, uint32_t basepage)
+{
+    int i;
+
+    for (i = STD_HANDLES; i < HANDLES; i++)
+        if ((handles[i].flags & HANDLE_ALLOCATED)
+            && handles[i].owner == basepage)
+        {
+            release_stream(handles[i].of);
+            memset(&handles[i], 0, sizeof handles[i]);
+        }
+
+    /* Which also undoes any Fforce the child did */
+    for (i = 0; i < STD_HANDLES; i++)
+    {
+        release_stream(handles[i].of);
+        handles[i] = saved->std[i];
+    }
+
+    dta_addr = saved->dta;
+    drive_set_current(saved->drive);
+
+    if (saved->cwd >= 0)
+    {
+        if (fchdir(saved->cwd) != 0)
+            perror("fchdir");
+
+        close(saved->cwd);
+    }
+
+    free(saved);
+}
+
+void gemdos_files_drop(struct gemdos_files *saved)
+{
+    int i;
+
+    for (i = 0; i < STD_HANDLES; i++)
+        release_stream(saved->std[i].of);
+
+    if (saved->cwd >= 0)
+        close(saved->cwd);
+
+    free(saved);
 }
 
 /* Releases every search the application left running */

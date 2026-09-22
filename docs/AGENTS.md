@@ -211,7 +211,9 @@ The emulated screen is memory. To look at it:
     TOSEMU_NO_WINDOW=1 TOSEMU_SCREENSHOT=/tmp/shot.ppm bin/tosemu prog.prg
 
 It is written every time the application waits, so the file holds the last thing
-that was on screen. Upscale it with nearest-neighbour to read it — and on the ST
+that was on screen. A program that draws its own picture and points the video
+hardware at it - MonST - gets that picture in the file instead, written whenever
+it changes; see `src/video.h`. Upscale it with nearest-neighbour to read it — and on the ST
 medium screen, whose pixels are half as wide as they are tall, scale x2 y4 or
 everything looks wrong in a way that is not the bug you are chasing.
 

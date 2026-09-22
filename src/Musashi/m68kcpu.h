@@ -1732,21 +1732,32 @@ INLINE void m68ki_exception_trap(uint vector)
 /* TOSEMU callback for traps */
 void m68k_trap(uint);
 
+/* TOSEMU: whether a program has put a handler of its own on one of the OS
+ * trap vectors, in which case the trap is taken through it */
+int m68k_trap_vectored(uint vector);
+
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
 INLINE void m68ki_exception_trapN(uint vector)
 {
     uint sr;
-    
-    /* TOSEMU intercepts trap calls and implements them on the host side for OS calls */
+
+    /* TOSEMU intercepts trap calls and implements them on the host side for
+     * OS calls, unless a program has hooked the vector - then the trap is
+     * taken the way the hardware takes it, and reaches the host when the
+     * program's handler chains to the one that was there before it */
     switch(vector)
     {
         case 33:
         case 34:
         case 45:
         case 46:
-            m68k_trap(vector);
-            break;
-            
+            if (!m68k_trap_vectored(vector))
+            {
+                m68k_trap(vector);
+                break;
+            }
+            /* fall through */
+
         default:
             sr = m68ki_init_exception();
             m68ki_stack_frame_0000(REG_PC, sr, vector);
@@ -1831,10 +1842,42 @@ INLINE void m68ki_exception_1010(void)
 	USE_CYCLES(CYC_EXCEPTION[EXCEPTION_1010] - CYC_INSTRUCTION[REG_IR]);
 }
 
+/* TOSEMU callback: which OS trap the handler at this address stands in for,
+ * or 0 when there is none there */
+uint m68k_trap_stub(uint address);
+
 /* Exception for F-Line instructions */
 INLINE void m68ki_exception_1111(void)
 {
 	uint sr;
+	uint vector = m68k_trap_stub(ADDRESS_68K(REG_PPC));
+
+	/*
+	 * TOSEMU: the handler that was on an OS trap vector before a program put
+	 * its own there, reached by that program chaining to it. It is an RTE
+	 * that makes the call on the way: the frame is taken off first, so the
+	 * mode and the stack are the caller's again and the arguments are where
+	 * the host looks for them - on the user stack for a caller in user mode,
+	 * just past the frame for one in supervisor mode, which is where TOS
+	 * looks. The return address goes in before the call, so that a call
+	 * which moves execution elsewhere itself, as Pexec and Pterm do, wins.
+	 *
+	 * The mask is put back without looking for interrupts, which is what the
+	 * trap does when nobody has hooked it: one that a handler held off while
+	 * it ran is taken the next time the interrupts are looked at rather than
+	 * in the middle of the call. A 68000's frame, which is the only one this
+	 * machine makes.
+	 */
+	if (vector && FLAG_S)
+	{
+		uint new_sr = m68ki_pull_16();
+		uint new_pc = m68ki_pull_32();
+
+		m68ki_jump(new_pc);
+		m68ki_set_sr_noint(new_sr);
+		m68k_trap(vector);
+		return;
+	}
 
 #if M68K_LOG_1010_1111 == OPT_ON
 	M68K_DO_LOG_EMU((M68K_LOG_FILEHANDLE "%s at %08x: called 1111 instruction %04x (%s)\n",

@@ -46,6 +46,7 @@
 #include "midi.h"
 #include "interrupt.h"
 #include "dongle.h"
+#include "shifter.h"
 
 #include "m68k.h"
 
@@ -336,6 +337,11 @@ uint32_t tos_current_basepage(void)
     return current_basepage;
 }
 
+void tos_set_current_basepage(uint32_t basepage)
+{
+    current_basepage = basepage;
+}
+
 int tos_run_after(void *binary, uint64_t size, const char *cmdlin)
 {
     if (following_count >= FOLLOWING_MOST)
@@ -358,6 +364,18 @@ static uint32_t default_vector;
  * one above is an RTE. See where they are written. */
 static uint32_t default_routine;
 
+/* The OS traps - GEMDOS, GEM, BIOS and XBIOS, by the vector each is taken
+ * through - and the handler the machine puts on each. See where they are
+ * written. */
+#define OS_TRAPS (4)
+
+static const uint32_t os_trap_vector[OS_TRAPS] = { 0x21, 0x22, 0x2d, 0x2e };
+static uint32_t trap_stub[OS_TRAPS];
+
+/* Line-F, with the vector in the low byte so that a disassembly says which
+ * one it is */
+#define TRAP_STUB_OPCODE (0xf000)
+
 /*
  * The operating system's own header, which _sysbase points at.
  *
@@ -372,6 +390,7 @@ static uint32_t default_routine;
  * and why the version is the one it is.
  */
 static uint32_t os_header;
+static uint32_t reset_handler;
 
 /* Offsets into it. Named rather than counted because the header is a layout
  * somebody else decided and the names are that layout's own. */
@@ -464,15 +483,16 @@ static void poke_system_long(uint32_t address, uint32_t value)
  *
  * What is filled in is what this machine can answer truthfully. The version,
  * because programs branch on it and because tosemu already answers it twice
- * elsewhere. Its own address, because that is what the field is. And where the
+ * elsewhere. Its own address, because that is what the field is. Where the
  * low memory the system keeps ends, which is where the first program loads.
+ * And the reset handler, which is also what the reset vector at address 4
+ * holds - see below.
  *
  * The rest is left at nought deliberately rather than filled with something
- * plausible. There is no reset handler to point at, no GEM memory usage block,
- * and no GEMDOS pool - inventing addresses for them would turn "this machine
- * does not have one" into a pointer somebody follows. The date is nought for
- * the same reason: a date matching the version would be a fact nobody
- * established.
+ * plausible. There is no GEM memory usage block and no GEMDOS pool - inventing
+ * addresses for them would turn "this machine does not have one" into a
+ * pointer somebody follows. The date is nought for the same reason: a date
+ * matching the version would be a fact nobody established.
  *
  * os_run is the one worth filling next. It points at the pointer to the
  * running basepage, which is how a resident program finds out whose memory it
@@ -489,6 +509,33 @@ static void build_os_header(void)
     m68k_write_memory_32(os_header + OSH_END, TOS_LOW_MEMORY_END);
 
     poke_system_long(0x4f2, os_header);
+
+    /*
+     * The reset handler, and the reset vector pointing at it.
+     *
+     * On an ST the first eight bytes of memory read from the ROM, so the long
+     * at address 4 is where TOS starts - and a program that wants to know
+     * where the ROM is reads it. HiSoft's MonST does, to know which memory it
+     * may not set a breakpoint in: with nought there it took the ROM to be the
+     * bottom half megabyte of RAM, and refused every program it loaded with
+     * "En ROM!". So it points into the BIOS RAM, which is where the system's
+     * own code is here and where the ROM would have been.
+     *
+     * What it points at is what a reset can come to on a machine that is the
+     * host: the program that asked ends, there being no machine to start
+     * again. Pterm0, through the trap rather than around it, so that a
+     * debugger watching for the program it is debugging to end sees this one.
+     */
+    reset_handler = bios_static_alloc(4);
+
+    if (reset_handler)
+    {
+        m68k_write_memory_16(reset_handler, 0x4267);     /* clr.w -(sp) */
+        m68k_write_memory_16(reset_handler + 2, 0x4e41); /* trap #1 */
+
+        m68k_write_memory_32(os_header + OSH_RESETH, reset_handler);
+        poke_system_long(0x004, reset_handler);
+    }
 }
 
 /* Where the screen was put in the machine this time round, and how much of it
@@ -563,6 +610,11 @@ static uint32_t screen_bytes(int16_t width, int16_t height, int16_t planes)
 uint32_t tos_screen_base(void)
 {
     return screen_base;
+}
+
+void tos_set_logical_screen(uint32_t address)
+{
+    poke_system_long(0x44e, address);
 }
 
 uint32_t tos_screen_size(void)
@@ -1117,6 +1169,42 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     }
 
     /*
+     * Except the four OS traps, which get a handler each - the one the
+     * machine's own GEMDOS, GEM, BIOS and XBIOS would be.
+     *
+     * A trap is answered on the host without going near its vector, which is
+     * how every OS call is made. But a program that hangs a handler of its
+     * own there - a debugger watching for the program it is debugging to
+     * finish, a resident program adding a call - saves what the vector held
+     * and passes the calls it is not interested in on to that, and a plain
+     * RTE passed them on to nothing. So each vector points at an instruction
+     * of its own, one the CPU hands back to the host: reaching it is the call
+     * being passed on, and it is made then. While the vector still points
+     * there nobody has hooked it, and the trap is answered directly the way it
+     * always was - see m68k_trap_vectored.
+     *
+     * A line-F opcode rather than a byte that does something when it is read,
+     * the way the ACIA's handler works, because a program that reads this -
+     * a debugger disassembling the handler it is about to chain to - must not
+     * make an OS call by looking.
+     */
+    {
+        int i;
+
+        for (i = 0; i < OS_TRAPS; i++)
+        {
+            trap_stub[i] = bios_static_alloc(2);
+
+            if (trap_stub[i])
+            {
+                m68k_write_memory_16(trap_stub[i],
+                                     TRAP_STUB_OPCODE | os_trap_vector[i]);
+                m68k_write_memory_32(4 * os_trap_vector[i], trap_stub[i]);
+            }
+        }
+    }
+
+    /*
      * The system's own handoff vectors, which are not exception vectors at all
      * and must not hold what those hold.
      *
@@ -1166,6 +1254,19 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * neither could be written before the areas above went up */
     build_os_header();
 
+    /*
+     * And where its memory begins and ends, which TOS kept in system variables
+     * for a program that asks the machine rather than GEMDOS: phystop is the
+     * top of the RAM, _membot and _memtop the bottom and top of what programs
+     * are given, and _v_bas_ad the logical screen, which is where _memtop
+     * stops. HiSoft's MonST reads phystop to know which addresses are RAM, and
+     * with nought there no address was, so it would set a breakpoint nowhere.
+     */
+    poke_system_long(0x42e, ramtop);                 /* phystop */
+    poke_system_long(0x432, TOS_LOW_MEMORY_END);     /* _membot */
+    poke_system_long(0x436, screen_base);            /* _memtop */
+    poke_system_long(0x44e, screen_base);            /* _v_bas_ad */
+
     /* And the chips that interrupt, if this machine has any. Here rather than
      * with the other sub-systems because what it adds is memory areas, and
      * because a machine built a second time - which is what Pexec does - needs
@@ -1190,6 +1291,18 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                              MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
                              CARTRIDGE_BASE_ADDRESS, CARTRIDGE_LENGTH, 0,
                              dongle_area_read, dongle_area_write);
+
+    /*
+     * And the video shifter, looking at this machine's screen. Readable and
+     * writeable in both modes, which is the MFP's departure for the MFP's
+     * reason: an ST bus errors a user mode access, and here refusing one
+     * would halt the emulator instead.
+     */
+    add_fnct_memory_area("shifter",
+                         MEMORY_READWRITE | MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                         SHIFTER_BASE_ADDRESS, SHIFTER_LENGTH, 0,
+                         shifter_area_read, shifter_area_write);
+    shifter_init(screen_base, screen_planes);
 
     /* Placing the environment has to wait until the memory areas are
      * registered, as it is written through the emulated memory */
@@ -1298,8 +1411,7 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
     m68k_set_reg(M68K_REG_ISP, te->superstack + SUPERSTACK_SIZE);
 
     /*
-     * And the interrupt mask down to where TOS left it, on a machine that has
-     * anything to be interrupted by.
+     * And the interrupt mask down to where TOS left it.
      *
      * A 68000 comes out of reset with the mask at seven, which is everything
      * blocked, and it is the boot ROM's business to lower it once there is
@@ -1310,12 +1422,13 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
      *
      * Three is what TOS ran applications at: it lets through the vertical
      * blank at four and the MFP at six, and blocks the three levels nothing on
-     * this machine uses. Left alone on a machine with no interrupts, which has
-     * nothing to let through and no reason to differ from what it always did.
+     * this machine uses. On a machine with no interrupts as well, which has
+     * nothing to let through yet: its program can ask for them by putting a
+     * handler on the system timer - see interrupt_tick - and one left at seven
+     * would never hear them.
      */
-    if (interrupt_wanted())
-        m68k_set_reg(M68K_REG_SR,
-                     (m68k_get_reg(0, M68K_REG_SR) & ~0x0700u) | 0x0300u);
+    m68k_set_reg(M68K_REG_SR,
+                 (m68k_get_reg(0, M68K_REG_SR) & ~0x0700u) | 0x0300u);
 
     if (basepage == 0x800)
     {
@@ -1632,6 +1745,29 @@ void m68k_trap(unsigned int vector)
             printf("Invoked unsupported trap 0x%x, this should never happen!\n", vector);
             break;
     }
+}
+
+int m68k_trap_vectored(unsigned int vector)
+{
+    int i;
+
+    for (i = 0; i < OS_TRAPS; i++)
+        if (os_trap_vector[i] == vector)
+            return trap_stub[i]
+                && m68k_read_disassembler_32(4 * vector) != trap_stub[i];
+
+    return 0;
+}
+
+unsigned int m68k_trap_stub(unsigned int address)
+{
+    int i;
+
+    for (i = 0; i < OS_TRAPS; i++)
+        if (trap_stub[i] && trap_stub[i] == address)
+            return os_trap_vector[i];
+
+    return 0;
 }
 
 void halt_execution()

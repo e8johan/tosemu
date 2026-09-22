@@ -41,12 +41,15 @@
  * no interrupts and no chips in the memory map, exactly as before, because the
  * overwhelming majority of TOS programs neither want nor tolerate a machine
  * that interrupts them. It is turned on by asking for a MIDI port - a program
- * given one is a program that will be programming timers - or by saying so.
+ * given one is a program that will be programming timers - or by saying so, or
+ * by a program putting a handler of its own on the system timer, which on an ST
+ * ran whether anybody asked or not.
  */
 
 /*
- * Whether this machine has any of it. Settled once, from the settings, and the
- * same answer for the life of the run.
+ * Whether this machine has any of it. Settled from the settings, and changed
+ * only the one way afterwards: to yes, when the program claims the system
+ * timer - see interrupt_tick.
  */
 int interrupt_wanted(void);
 

@@ -413,6 +413,32 @@ int main(int argc, char **argv)
     v_clrwk(handle);
     check(pixel(25, 35), 0, "v_clrwk emptied the screen");
 
+    /*
+     * The colours, which are the machine's sixteen registers however they are
+     * set: a program that changes the background through the XBIOS changes
+     * the VDI's, and the other way round. Index 0 is pen 0 on every screen,
+     * so neither mapping gets in the way. The VDI's guns run to 1000 and an
+     * STE's to 15.
+     */
+    {
+        short rgb[3];
+        short was = Setcolor(0, -1);
+
+        Setcolor(0, 0x0f00);
+        vq_color(handle, 0, 1, rgb);
+        check(rgb[0] == 1000 && rgb[1] == 0 && rgb[2] == 0, 1,
+              "a colour set through the XBIOS is the VDI's colour");
+
+        rgb[0] = 0;
+        rgb[1] = 1000;
+        rgb[2] = 0;
+        vs_color(handle, 0, rgb);
+        check(Setcolor(0, -1), 0x00f0,
+              "and one set through the VDI is the XBIOS's");
+
+        Setcolor(0, was);
+    }
+
     v_clswk(handle);
 
     printf("1..%d\n", n);

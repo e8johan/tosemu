@@ -32,7 +32,16 @@
  * are the same in 3rdparty/emutos/bios/lineavars.S, which is where the rest of
  * them are written down; these are the ones tosemu has an answer for.
  */
+#define LINEA_V_CEL_HT  (-46)  /* the console font's height */
+#define LINEA_V_CEL_MX  (-44)  /* columns on the screen, less one */
+#define LINEA_V_CEL_MY  (-42)  /* and rows */
+#define LINEA_V_CEL_WR  (-40)  /* bytes from one row of characters to the next */
+#define LINEA_V_FNT_AD  (-22)  /* the console font's raster */
+#define LINEA_V_FNT_ND  (-18)  /* its last character */
+#define LINEA_V_FNT_ST  (-16)  /* and its first */
+#define LINEA_V_FNT_WR  (-14)  /* bytes across its raster */
 #define LINEA_V_REZ_HZ  (-12)  /* the screen's width in pixels */
+#define LINEA_V_OFF_AD  (-10)  /* the console font's offset table */
 #define LINEA_V_REZ_VT   (-4)  /* and its height */
 #define LINEA_BYTES_LIN  (-2)  /* bytes from one line of it to the next */
 #define LINEA_V_PLANES    (0)  /* how many planes it has */
@@ -53,5 +62,24 @@
 /* The sixteen line-A opcodes, $a000 to $a00f. See the table in
  * 3rdparty/emutos/bios/linea.S for what each of them draws. */
 #define LINEA_CALLS      (16)
+
+/* A font header as the machine lays one out, which is struct font_head in
+ * 3rdparty/emutos/include/fonthdr.h with 68000 pointers in it */
+#define FONT_ID          (0)
+#define FONT_POINT       (2)
+#define FONT_NAME        (4)   /* thirty two bytes */
+#define FONT_FIRST_ADE  (36)   /* and fifteen more words after it */
+#define FONT_HOR_TABLE  (68)
+#define FONT_OFF_TABLE  (72)
+#define FONT_DAT_TABLE  (76)
+#define FONT_FORM_WIDTH (80)
+#define FONT_FORM_HEIGHT (82)
+#define FONT_NEXT_FONT  (84)
+#define FONT_HEADER     (90)
+
+#define FONT_NAME_LENGTH (32)
+
+/* The three system fonts, as line-A lists them */
+#define LINEA_FONTS      (3)
 
 #endif /* LINEA_P_H */

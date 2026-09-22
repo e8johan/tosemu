@@ -32,6 +32,7 @@
 #include "settings.h"
 #include "interrupt.h"
 #include "dongle.h"
+#include "video.h"
 #include "config.h"
 
 /* How much was asked for. config.h says what each level is, and is where the
@@ -52,6 +53,7 @@ void cpu_instr_callback()
      * Almost every call is a counter decrement - see the throttle in there.
      */
     interrupt_tick();
+    video_tick();
 
     if (verbose >= VERBOSE_CPU)
     {

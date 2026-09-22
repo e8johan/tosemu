@@ -51,11 +51,13 @@
 #include "config.h"
 #include "gem_p.h"
 #include "gfx.h"
+#include "interrupt.h"
 #include "scrap.h"
 #include "scraptext.h"
 #include "settings.h"
 #include "surface.h"
 #include "tossystem.h"
+#include "video.h"
 #include "emuvdi/emuvdi.h"
 
 /*
@@ -246,6 +248,28 @@ static int terminal_ready(void)
     return terminal_fill();
 }
 
+/*
+ * How long a wait for a key may sleep, which is no longer than until the
+ * machine is due to interrupt itself, or the other limit the caller has - both
+ * in milliseconds, with -1 for no limit.
+ *
+ * A program waiting for a key is a program doing nothing, not a machine that
+ * has stopped. No instruction runs while the emulator is in poll and the
+ * timers are driven from the instruction hook, so without this a handler on a
+ * timer was not called for as long as nobody typed - and the timers came back
+ * so far behind that they said the host had been stopped. The AES's wait does
+ * the same, see evnt_multi.
+ */
+static int key_wait_ms(long limit)
+{
+    long due = interrupt_next_due_ms();
+
+    if (due >= 0 && (limit < 0 || due < limit))
+        limit = due;
+
+    return (int)limit;
+}
+
 /* One byte from the terminal, or -1 when there is nothing and none was to be
  * waited for */
 static int terminal_byte(int wait)
@@ -267,7 +291,10 @@ static int terminal_byte(int wait)
         waiting.events = POLLIN;
         waiting.revents = 0;
 
-        poll(&waiting, 1, -1);
+        poll(&waiting, 1, key_wait_ms(-1));
+
+        /* Whatever came due while it slept */
+        interrupt_service();
     }
 }
 
@@ -328,9 +355,15 @@ static void screen_show(int wanted)
     if (!c.shows)
         return;
 
+    /*
+     * Nor when a program has taken the video hardware over and is waiting at
+     * its own picture: the person types at that, and a console with nothing
+     * on it would only be in the way.
+     */
     if (!c.up)
     {
-        if (!wanted && emuvdi_console_written() == c.seen)
+        if ((!wanted || video_showing())
+            && emuvdi_console_written() == c.seen)
             return;
 
         c.up = 1;
@@ -359,7 +392,7 @@ static void screen_show(int wanted)
     {
         const char *shot = setting("TOSEMU_SCREENSHOT");
 
-        if (shot)
+        if (shot && !video_showing())
             surface_write_ppm(c.shows, shot);
     }
 
@@ -743,7 +776,10 @@ static void screen_out(int ch)
  * is what gem_ever_started answers: a GEM application that drops to the
  * console has taken the screen over and the person is looking at the screen,
  * where a .TTP somebody typed the name of is talking to the shell they typed
- * it in and should go on doing so.
+ * it in and should go on doing so. A program that has taken the video
+ * hardware over has the screen as surely as a GEM program has - its picture
+ * is in a window of its own, and that is where the person is looking - so it
+ * counts as one; see video.h.
  *
  * That second half is what makes the two cases this has to serve both work.
  * GenST assembles by running its assembler as a child, and the child never
@@ -782,7 +818,7 @@ static int console_wanted_on_screen(void)
     const char *want = setting("TOSEMU_CONSOLE");
 
     if (!want)
-        return gfx_possible() && gem_ever_started();
+        return gfx_possible() && (gem_ever_started() || video_taken());
 
     if (strcmp(want, "screen") == 0)
         return 1;
@@ -902,9 +938,13 @@ static uint32_t screen_key(int wait)
         waiting.events = POLLIN;
         waiting.revents = 0;
 
-        poll(&waiting, 1, -1);
+        /* No longer than until a picture handed back is due to step aside,
+         * which is what a debugger showing the program's screen is doing
+         * while it waits for a key */
+        if (poll(&waiting, 1, key_wait_ms(video_settle())) > 0)
+            gfx_dispatch();
 
-        gfx_dispatch();
+        interrupt_service();
     }
 }
 
@@ -937,6 +977,11 @@ static uint32_t terminal_key(int wait)
 
 uint32_t console_key(int wait)
 {
+    /* The picture a program drew for itself is up to date before anybody is
+     * asked to answer it, the way the console's own is */
+    if (wait)
+        video_frame();
+
     decide();
 
     /* Whatever was written is on the screen before anybody is asked to answer

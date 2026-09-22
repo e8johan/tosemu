@@ -35,6 +35,13 @@
 void screen_mode(int16_t *width, int16_t *height, int16_t *planes);
 
 /*
+ * Which of the machines' resolutions a screen of this shape is, as the number
+ * Getrez answers with: 0, 1 and 2 for the ST's three, 4 and 6 for the TT's
+ * medium and high. -1 for a shape no machine had.
+ */
+int16_t screen_rez(int16_t width, int16_t height, int16_t planes);
+
+/*
  * How much larger than an ST pixel one on the desktop is, from TOSEMU_SCALE.
  *
  * It is here rather than in gfx.c because it is now two things at once: what a

@@ -37,8 +37,10 @@
 #include <sys/mman.h>
 #include <stdint.h>
 
-/* For saying that setting a colour changed the picture */
 #include "emuvdi.h"
+
+/* The colour registers the palette is */
+#include "../shifter.h"
 
 /* Describing the surface being drawn into */
 UWORD v_planes;
@@ -357,42 +359,28 @@ void Setscreen(LONG lscrn, LONG pscrn, WORD rez, WORD mode)
 }
 
 /*
- * The palette. On a real machine these are XBIOS calls that write shifter
- * registers; here they are the surface's palette, which the presenter reads
- * when it turns plane words into colours.
+ * The palette, which is the machine's colour registers - the shifter's, see
+ * ../shifter.h. On an ST the VDI's colours and the ones a program sets through
+ * the XBIOS, or by writing the registers, are the same sixteen registers, and
+ * so they are here: whichever way a colour is set, it is the one every picture
+ * is shown in.
  *
  * An entry is 0x0RGB with four bits a gun, the STE layout, because
- * has_ste_shifter above says so.
+ * has_ste_shifter above says so. The shifter says when one changes, since
+ * that is where every way of changing one arrives.
  */
-static UWORD palette[256];
-
 WORD Setcolor(WORD colornum, WORD color)
 {
     WORD old;
 
-    if (colornum < 0 || colornum >= (WORD)(sizeof palette / sizeof palette[0]))
+    if (colornum < 0 || colornum >= SHIFTER_COLOURS)
         return 0;
 
-    old = palette[colornum];
+    old = (WORD)shifter_colour(colornum);
 
     /* A negative colour is a read rather than a write */
     if (color >= 0)
-    {
-        palette[colornum] = color;
-
-        /*
-         * Which changes the picture without anything having been drawn: every
-         * pixel already holding this pen is now a different colour. Nothing
-         * says where those are, and they are in every picture there is - the
-         * screen's, every window's, a dialog's - so all of them are shown
-         * again rather than whichever happened to be selected.
-         *
-         * Here rather than beside the calls, because there are two ways in
-         * and this is where they meet - vs_color through the VDI, and
-         * Setcolor, Setpalette and EsetColor through the XBIOS.
-         */
-        host_palette_changed();
-    }
+        shifter_set_colour(colornum, (UWORD)color);
 
     return old;
 }
@@ -414,10 +402,10 @@ uint32_t emuvdi_palette_argb(int pen)
     UWORD c;
     uint32_t r, g, b;
 
-    if (pen < 0 || pen >= (int)(sizeof palette / sizeof palette[0]))
+    if (pen < 0 || pen >= SHIFTER_COLOURS)
         return 0xff000000;
 
-    c = palette[pen];
+    c = shifter_colour(pen);
 
     r = (c >> 8) & 0xf;
     g = (c >> 4) & 0xf;

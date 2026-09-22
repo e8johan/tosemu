@@ -6,26 +6,25 @@
   it. An application that Mallocs before it Mshrinks gets nothing, where on
   TOS it would get what the parent released. The modes that load a program
   into the caller's memory do carve it out, and do not have this.
-- A child of Pexec has a copy of the machine's memory rather than the same
-  memory, because it is a forked host process, so nothing it writes is ever
-  seen by its parent. TOS had one address space and no fork, and the modes
-  that run a program the caller has already loaded - 4, 6 and their
-  asynchronous twins - are there so that the two can pass structures back and
-  forth through it. Reading works, the child having inherited everything as it
-  stood; it is the answer coming back that is lost.
-
-  Devpac 3 is the case that shows it. Its editor loads GEN.TTP resident with
-  mode 3, asks mode 5 for a basepage, points that basepage's text segment at
-  the resident copy and runs it with mode 4, handing it the address of a
-  structure of its own in an environment variable. The assembler reads the
-  source out of the editor's buffer and writes back what it found rather than
-  touching a file at all - and the editor gets back a buffer nothing wrote to.
-  It reports no errors and shows an empty document.
-
-  Closing it means the machine's memory being shared rather than copied -
-  MAP_SHARED rather than calloc for te->appmem and the areas beside it - for
-  the modes where the child keeps the machine it inherited. The modes that
-  load a program build one of their own and want no part of it.
+- A child of Pexec mode 0 or of the asynchronous modes has a copy of the
+  machine's memory rather than the same memory, because it is a forked host
+  process, so nothing it writes is ever seen by its parent. Modes 4 and 6 run
+  in the caller's machine and do not have this; 104 and 106, their
+  asynchronous twins, still do. Mode 0 could become mode 3 and then mode 6, as
+  it is on TOS, which would also end the entry above about a child getting the
+  whole of memory - but a GEM application started by another belongs in a
+  process of its own, with its own place in the session.
+- What modes 4 and 6 still leave out. etv_term is not called when the child
+  ends, as it never has been here; calling into the machine from the middle of
+  a termination is a step of its own. And modes 3 and 5 give the basepage the
+  caller's environment rather than a copy, so mode 6 has none to hand over,
+  and a caller that frees p_env afterwards, as TOS lets it, is told EIMBA.
+  Devpac 3's editor, which runs GEN.TTP resident with mode 5 and then mode 4
+  and reads the answer out of its own memory, has not been tried since.
+- Single stepping in a debugger, which is the trace exception, and Musashi is
+  built without it: M68K_EMULATE_TRACE is off. MonST's step runs the program
+  on to its next breakpoint or its end. What turning it on costs every other
+  instruction is the question.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.
@@ -40,12 +39,12 @@
 - Ptermres, which has nowhere to stay resident in. Cubase is the case that
   wants it: MROS, the MIDI kernel it loads before it will start, is a TSR, and
   Pexec of it ends on this call. Implementing it alone would not be enough -
-  see the entry above about a child of Pexec having a copy of the machine's
-  memory rather than the same memory. A program that stayed resident would stay
-  resident in the forked child, and whoever Pexec'd it would find nothing
-  there. See RESIDENT.md on the pexec-resident branch, which proposes loading
-  the resident and the program that uses it into one machine from one command
-  line rather than making Pexec share memory.
+  see the entry above about a child of Pexec mode 0 having a copy of the
+  machine's memory rather than the same memory. A program that stayed
+  resident would stay resident in the forked child, and whoever Pexec'd it
+  would find nothing there. See RESIDENT.md on the pexec-resident branch,
+  which proposes loading the resident and the program that uses it into one
+  machine from one command line rather than making Pexec share memory.
 - remove_memory_area never advances its pointer, so it only ever finds the
   first area. reset_memory happens to always ask for that one.
 - The "superram" area at 0x600 is mapped, is five hundred and twelve bytes
@@ -79,9 +78,9 @@
   in it, and the raw backend - the one meant for the USB device somebody
   actually plugs in - has never been opened against a device that exists.
 - There is no way to say no to interrupts once something has implied them. A
-  MIDI port turns them on and so does the key in the cartridge port, and each
-  of those is an or against the setting rather than a default the setting can
-  overrule - so interrupts = no on a command line that also names a port is
+  MIDI port turns them on, so does the key in the cartridge port and so does
+  a program putting its own handler on the system timer, and each of those is
+  an or against the setting rather than a default the setting can overrule - so interrupts = no on a command line that also names a port is
   simply not heard. Nobody has wanted to yet, and the suite depends on the
   present behaviour: c-midi sends bytes on a line that says no to interrupts,
   and they only go out because the port overrode it. What would close it is
@@ -157,13 +156,6 @@
   one, and that wants checking against a resource file that has more than one.
 - Investigate how to support non-planar modes (up to 16bpp currently) and 
   planar modes without having to rewrite the entire VDI stack.
-- The system variables that say where memory begins and ends - phystop at
-  0x42e, _membot and _memtop, and v_bas_ad at 0x44e - are all nought, because
-  nothing has ever written them. A program that asks GEMDOS how much memory
-  there is gets the right answer, and one that reads the variables the way a
-  Supexec'd routine of the period does is told the machine has none. It is
-  worth doing now that how much there is can be chosen, since that is the
-  answer they would be carrying.
 - Which window a piece of drawing belongs to is decided by aes_wind_owner, and
   where it says nothing certain it is a guess. GEM never says: an application
   sets a clipping rectangle and draws, and where two windows overlap that
@@ -421,13 +413,9 @@
   machine's memory and the VDI here takes them as C arguments on the host,
   so each one wants the block unpacked into a call across the seam.
 
-  The three system fonts are the same seam and are the reason $a000 hands
-  back a table saying there are none. TOS answered with the machine's own
-  bitmap fonts, for a program that draws its own text; the copies here are
-  EmuTOS's, compiled for the host and sitting at host addresses that a 68000
-  cannot reach. Making them real means the header, the offset table and the
-  raster copied into the machine's memory the right way round - which is
-  bounded work, and nothing that has been run here has asked for it yet.
+  The system fonts $a000 hands out are copies in the machine's memory, and
+  the variables that describe the console's font point into them. The rest of
+  the text variables - def_font, font_ring and the cursor - are not filled in.
 
 - Microsoft Write runs now. It was three things in a row, and none of them
   was the fonts: the line-A, which its loader calls once and which nothing
@@ -467,23 +455,13 @@
   screen; it is not the screen size, it happens at 320x200; it is not GDOS,
   it happens with no ASSIGN.SYS; it is not Write scrolling the screen itself,
   the block Logbase hands out is never written to in a whole session; and it
-  is not Getrez reporting a resolution no ST has, because answering 2 instead
-  changes which path Write takes and leaves the same line behind.
+  is not the resolution Getrez reports, because 8, which is no machine's, and
+  2 take Write down different paths and leave the same line behind.
 
   The next thing to try is the one that cannot be tried from here: what a real
   VDI does with v_gtext in replace mode, since everything above says Write
   expects more of the line to be cleared than a character cell. Worth checking
   against Hatari with a TOS ROM before looking anywhere else in tosemu.
-
-- Microsoft Write in ST high resolution writes to the cartridge port at
-  0xFA0000 and the emulator halts it, so it ends within seconds of starting.
-  None of the other screens does this, and a native mono screen does not
-  either - which has the same single plane and the same Getrez answer, and
-  differs only in being a shape no ST ever had. So what takes Write down that
-  path is recognising the screen it was written for rather than anything it
-  was told about the hardware. What it is looking for at 0xFA0000 has not been
-  established. Since high resolution is the one Write was written for, that is
-  the mode it ought to be watched in.
 
 - Drawing outside a window is not promoted to a window of its own. form_dial
   says a rectangle is being reserved and that gets one, which covers dialogs;

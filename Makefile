@@ -23,7 +23,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               keyboard.c \
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               dongle.c \
-              linea.c \
+              linea.c shifter.c video.c \
               tossystem.c utils.c memory.c cpu.c
 
 # Hand-written Musashi files
@@ -578,7 +578,8 @@ scrap-check: $(BIN)/scraptest
 # directories were read, and that is a setting rather than a variable now.
 $(BIN)/vditest: $(SRC)/emuvdi/vditest.c $(SRC)/emuvdi/hoststubs.c \
                 $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
-                $(OBJ)/printer.o
+                $(OBJ)/printer.o \
+                $(OBJ)/shifter.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 
@@ -596,7 +597,8 @@ emuvdi-check: $(BIN)/vditest
 # emulator loads, which is why this is built before tests/ is run.
 $(BIN)/gdostest: $(SRC)/emuvdi/gdostest.c $(SRC)/emuvdi/hoststubs.c \
                  $(EMUTOSOBJECTS) $(OBJ)/settings.o $(OBJ)/fontface.o \
-                 $(OBJ)/printer.o
+                 $(OBJ)/printer.o \
+                 $(OBJ)/shifter.o
 	@mkdir -p $(BIN)
 	$(CC) $(EMUTOSFLAGS) $(EMUTOSLDFLAGS) $^ $(FREETYPELIBS) -o $@
 

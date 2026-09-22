@@ -39,6 +39,11 @@ struct surface;
  * That is the point of the whole exercise: a GEM application should be part of
  * the desktop it is running on rather than a picture of another computer.
  *
+ * A program that is not a GEM application at all and draws its own picture -
+ * into memory, with the video hardware pointed at it - is the one exception,
+ * because a picture of another computer is what it is. That picture gets a
+ * window of its own; see video.h.
+ *
  * There is no compositor in a test, and there does not need to be: everything
  * here answers that it is not showing anything, and the emulator runs exactly
  * as it did before with the screen only in memory.
@@ -193,6 +198,14 @@ void gfx_dialog_close();
  */
 void gfx_console_open(struct surface *shows, int16_t w, int16_t h);
 void gfx_console_close(void);
+
+/*
+ * And the picture a program shows through the video hardware rather than
+ * through the VDI - see video.c. A window of its own with the desktop's frame
+ * round it, like the console's.
+ */
+void gfx_video_open(struct surface *shows, int16_t w, int16_t h);
+void gfx_video_close(void);
 
 /*
  * The connection, for the event loop to wait on beside its timer, or -1 when

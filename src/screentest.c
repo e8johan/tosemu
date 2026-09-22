@@ -210,6 +210,21 @@ int main(void)
 
     insets();
 
+    /*
+     * Which resolution a screen is, which is decided by its shape alone. The
+     * two that matter most are the ones that are nearly something: the
+     * colour screen the size of the high one, and a screen the size of a
+     * display.
+     */
+    check(screen_rez(320, 200, 4), 0, "320x200 in sixteen colours is ST low");
+    check(screen_rez(640, 200, 2), 1, "640x200 in four is ST medium");
+    check(screen_rez(640, 400, 1), 2, "640x400 in two is ST high");
+    check(screen_rez(640, 480, 4), 4, "640x480 in sixteen is TT medium");
+    check(screen_rez(1280, 960, 1), 6, "1280x960 in two is TT high");
+    check(screen_rez(640, 400, 4), -1,
+          "640x400 in sixteen colours is no machine's");
+    check(screen_rez(1136, 480, 1), -1, "and nor is a display's size");
+
     printf("1..%d\n", n);
 
     return fails ? 1 : 0;

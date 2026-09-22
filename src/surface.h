@@ -144,6 +144,18 @@ int surface_damage_take(struct surface *s, int16_t *x, int16_t *y,
                         int16_t *w, int16_t *h);
 
 /*
+ * Fills a surface from a picture as it sits in the machine's memory - an
+ * Atari screen, which is this same shape with the bytes of every word the
+ * 68000's way round - and damages the rows that changed. Answers whether any
+ * did.
+ *
+ * The bytes are the whole surface's worth, a row of every plane after
+ * another. This is how a picture a program drew for itself, without the VDI,
+ * is brought across to be shown.
+ */
+int surface_load_atari(struct surface *s, const uint8_t *bytes);
+
+/*
  * Writes the surface out as a portable pixmap, for looking at what was drawn
  * without a compositor in the way. The colours come from the palette, so what
  * lands in the file is what would land on a screen.

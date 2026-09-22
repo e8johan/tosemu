@@ -29,7 +29,10 @@
  *
  * The rest ask whether the block describes the screen the machine was actually
  * given, by working the screen's size out of it two ways and comparing that
- * against what the XBIOS says. The drawing routines are refused rather than
+ * against what the XBIOS says; and whether the system fonts are really there,
+ * in the machine's memory and the machine's byte order, since a program that
+ * draws its own text reads the letters straight out of them - a debugger with
+ * a screen of its own does exactly that. The drawing routines are refused rather than
  * implemented, and the refusal stops the emulator, so it is checked from the
  * Makefile against what the emulator said rather than from in here.
  */
@@ -41,11 +44,38 @@
 
 /* Where the variables are, as offsets from the address $a000 hands back. Half
  * of them are below it, the base being a pointer into the middle of a block. */
+#define V_CEL_HT    (-46)
+#define V_CEL_MX    (-44)
+#define V_CEL_MY    (-42)
+#define V_FNT_AD    (-22)
+#define V_FNT_WR    (-14)
 #define V_REZ_HZ    (-12)
+#define V_OFF_AD    (-10)
 #define V_REZ_VT     (-4)
 #define BYTES_LIN    (-2)
 #define V_PLANES      (0)
 #define V_LIN_WR      (2)
+
+/* And a font header's, which is the same in a font file */
+#define FONT_FIRST_ADE   (36)
+#define FONT_LAST_ADE    (38)
+#define FONT_OFF_TABLE   (72)
+#define FONT_DAT_TABLE   (76)
+#define FONT_FORM_WIDTH  (80)
+#define FONT_FORM_HEIGHT (82)
+#define FONT_NEXT_FONT   (84)
+
+/* The letter A in the 8x8 and the 8x16 system fonts, a row at a time, which
+ * is what fnt_st_8x8.c and fnt_st_8x16.c in EmuTOS have. The 8x8's is the
+ * one that shows the byte order: A is an odd character, so the byte beside it
+ * in the same word is the @ before it. */
+static const unsigned char a_8x8[8] = {
+    0x18, 0x3c, 0x66, 0x66, 0x7e, 0x66, 0x66, 0x00
+};
+static const unsigned char a_8x16[16] = {
+    0x00, 0x00, 0x18, 0x3c, 0x7e, 0x66, 0x66, 0x66,
+    0x7e, 0x7e, 0x66, 0x66, 0x66, 0x66, 0x00, 0x00
+};
 
 /* The sixteen line-A calls, $a000 to $a00f */
 #define LINEA_CALLS  (16)
@@ -109,6 +139,26 @@ static short word_at(long addr)
     return *(volatile short *)addr;
 }
 
+static long long_at(long addr)
+{
+    return *(volatile long *)addr;
+}
+
+/* Whether the letter A reads out of this font as it should */
+static int has_a(long font, const unsigned char *rows, int height)
+{
+    long raster = long_at(font + FONT_DAT_TABLE);
+    long across = word_at(font + FONT_FORM_WIDTH);
+    int row;
+
+    for (row = 0; row < height; row++)
+        if (*(volatile unsigned char *)(raster + row * across + 'A')
+            != rows[row])
+            return 0;
+
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     long planes, width, height, line;
@@ -150,6 +200,42 @@ int main(int argc, char **argv)
     /* Both ways in reach the same routine */
     check(call_routine(*(volatile long *)lv_a2), lv_a0,
           "calling the first through the table is the same as $a000");
+
+    /* The system fonts: the 6x6, the 8x8 and the 8x16, and then a nought */
+    {
+        long f6 = long_at(lv_a1), f8 = long_at(lv_a1 + 4),
+             f16 = long_at(lv_a1 + 8);
+        long console = height < 400 ? f8 : f16;
+
+        check(f6 != 0 && f8 != 0 && f16 != 0, 1,
+              "the font table lists three fonts");
+        check(long_at(lv_a1 + 12), 0, "and ends there");
+        check(word_at(f6 + FONT_FORM_HEIGHT), 6, "the first is six lines tall");
+        check(word_at(f8 + FONT_FORM_HEIGHT), 8, "the second eight");
+        check(word_at(f16 + FONT_FORM_HEIGHT), 16, "and the third sixteen");
+        check(word_at(f8 + FONT_FIRST_ADE) == 0
+              && word_at(f8 + FONT_LAST_ADE) == 255, 1,
+              "each has the whole character set");
+        check(long_at(f8 + FONT_NEXT_FONT), f16,
+              "the 8x8 leads on to the 8x16, the way TOS chains them");
+        check(has_a(f8, a_8x8, 8), 1,
+              "the 8x8's letters are in the machine's byte order");
+        check(has_a(f16, a_8x16, 16), 1, "and so are the 8x16's");
+
+        /* And which of them the console writes in, which the variables say */
+        check(long_at(lv_a0 + V_FNT_AD), long_at(console + FONT_DAT_TABLE),
+              "the console's font is the one that fits this screen");
+        check(long_at(lv_a0 + V_OFF_AD), long_at(console + FONT_OFF_TABLE),
+              "and its offsets are that font's");
+        check(word_at(lv_a0 + V_FNT_WR), word_at(console + FONT_FORM_WIDTH),
+              "and so is how wide its raster is");
+        check(word_at(lv_a0 + V_CEL_HT), height < 400 ? 8 : 16,
+              "a character cell is that font's height");
+        check(word_at(lv_a0 + V_CEL_MX), width / 8 - 1,
+              "and there are as many across as eight pixels fit");
+        check(word_at(lv_a0 + V_CEL_MY), height / (height < 400 ? 8 : 16) - 1,
+              "and as many down as the cell fits");
+    }
 
     printf("# %d checks, %d failed\n", n, fails);
     printf("1..%d\n", n);

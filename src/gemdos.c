@@ -103,6 +103,12 @@ uint32_t GEMDOS_Tgettime()
  * keep its own stack and hand back the address of the one that was displaced,
  * for it to give back when it is done. So the stack pointer is carried across
  * the switch here, and what the switch displaced is what Super answers with.
+ *
+ * Which way it goes is decided by the mode the caller is in, not by the
+ * argument - see _enter in EmuTOS's bdos/rwa.S, which picks x20_usr or x20_sup
+ * on the S bit before it looks at the parameter. From user mode the argument
+ * is the supervisor stack to stand on, with nought meaning the caller's own;
+ * from supervisor mode it is the one to give back.
  */
 uint32_t GEMDOS_Super()
 {
@@ -114,17 +120,23 @@ uint32_t GEMDOS_Super()
         printf("    0x%x\n", lv0);
     }
 
-    if (lv0 == 0) { /* Set CPU in supervisor mode */
-        sp = m68k_get_reg(0, M68K_REG_A7);
-        res = m68k_get_reg(0, M68K_REG_ISP);
-        enable_supervisor_mode();
-        m68k_set_reg(M68K_REG_A7, sp);
-    } else if (lv0 == 1) { /* Return 1 if in supervisor mode, otherwise zero */
+    if (lv0 == 1) { /* -1 in supervisor mode, nought in user mode - x20_inq */
         if (is_supervisor_mode_enabled()) {
-            res = 1;
+            res = 0xffffffff;
         } else {
             res = 0;
         }
+    } else if (!is_supervisor_mode_enabled()) { /* Set CPU in supervisor mode */
+        sp = lv0 ? lv0 : m68k_get_reg(0, M68K_REG_A7);
+        res = m68k_get_reg(0, M68K_REG_ISP);
+        enable_supervisor_mode();
+        m68k_set_reg(M68K_REG_A7, sp);
+    } else if (lv0 == 0) {
+        /* Back to user mode on the stack the caller is standing on, leaving
+         * the supervisor stack where it is - xs_0 in the same file */
+        sp = m68k_get_reg(0, M68K_REG_A7);
+        disable_supervisor_mode();
+        m68k_set_reg(M68K_REG_A7, sp);
     } else { /* Set CPU in user mode, restore the supervisor stack to lv0 */
         /*
          * The user stack pointer is left exactly as it was, and that is the
@@ -418,8 +430,10 @@ void gemdos_init(struct tos_environment *te)
 
 void gemdos_reinit(struct tos_environment *te)
 {
-    /* The application that was running took its memory with it */
+    /* The application that was running took its memory with it, and whoever
+     * was waiting for it to end went with the machine they were waiting in */
     gemdos_mem_init(te);
+    gemdos_proc_forget();
 
     gemdos_file_reinit(te);
 }

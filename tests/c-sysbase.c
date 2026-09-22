@@ -85,24 +85,46 @@ static void check(long got, long want, const char *name)
  */
 static long base;
 static long version;
+static long reseth;
 static long beg;
 static long end;
+static long reset_vector;
 
 static void look(void)
 {
     base = *(volatile long *)SYSBASE;
+    reset_vector = *(volatile long *)0x4L;
 
     if (base)
     {
         version = *(volatile unsigned short *)(base + 0x02);
+        reseth  = *(volatile long *)(base + 0x04);
         beg     = *(volatile long *)(base + 0x08);
         end     = *(volatile long *)(base + 0x0c);
     }
 }
 
+/* Resetting the machine the way a program does it, by jumping to wherever the
+ * reset vector says TOS starts */
+static void reset(void)
+{
+    long to = reset_vector;
+
+    __asm__ volatile ("move.l %0,%%a0\n\tjmp (%%a0)" : : "g" (to) : "a0");
+}
+
 int main(int argc, char **argv)
 {
     Supexec(look);
+
+    /* Run a second time to be reset, which ends it. Anything said after the
+     * jump is the reset having come back. */
+    if (argc > 1 && argv[1][0] == 'R')
+    {
+        reset();
+        printf("not ok - the reset handler returned to the program\n");
+        return 1;
+    }
 
     check(base != 0, 1, "_sysbase points at something");
 
@@ -130,6 +152,31 @@ int main(int argc, char **argv)
     /* And where the low memory the system keeps ends, which is where the first
      * program in a machine is loaded */
     check(end, 0x800L, "and where what the system keeps ends");
+
+    /*
+     * The reset vector, which on an ST is read out of the ROM: it is where TOS
+     * starts, and a program that wants to know where the ROM is - a debugger
+     * deciding where it may not put a breakpoint - reads it. So it is the
+     * header's reset handler, and it is up where the ROM is.
+     */
+    check(reset_vector == reseth && reseth != 0, 1,
+          "the reset vector is the header's reset handler");
+    check((reset_vector & 0xfc0000L) == 0xfc0000L, 1,
+          "and it is in the ROM");
+
+    /*
+     * And what a reset comes to here, which is the program that asked for it
+     * ending: a copy of this one is run to do it. Only when the vector points
+     * into the ROM, since jumping through one that points at nought is a walk
+     * through the whole of memory that never comes back.
+     */
+    fflush(stdout);
+    if ((reset_vector & 0xfc0000L) == 0xfc0000L)
+        check(Pexec(0, "test-c-sysbase", "\001R", 0), 0,
+              "a program that resets the machine ends");
+    else
+        check(0, 1, "a program that resets the machine ends, which there is "
+                    "nowhere to jump to find out");
 
     /*
      * And GEMDOS still answering for itself. Not the version that shipped with

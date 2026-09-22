@@ -49,6 +49,19 @@
 static int n;
 static int fails;
 
+/* The system variables that say where memory begins and ends, which only a
+ * program in supervisor mode may read - so they are read in Supexec and
+ * reported afterwards */
+static long phystop, membot, memtop, v_bas_ad;
+
+static void read_variables(void)
+{
+    phystop = *(volatile long *)0x42eL;
+    membot = *(volatile long *)0x432L;
+    memtop = *(volatile long *)0x436L;
+    v_bas_ad = *(volatile long *)0x44eL;
+}
+
 static void check(long got, long want, const char *name)
 {
     n++;
@@ -169,6 +182,42 @@ int main(int argc, char **argv)
                   "screen");
     check(Malloc(top), 0,
           "and a block the size of the whole machine cannot be had");
+
+    /*
+     * And the same said in the system variables, for a program that asks the
+     * machine rather than GEMDOS: a debugger reads phystop to know which
+     * addresses are RAM, and nought there is a machine with none.
+     */
+    Supexec(read_variables);
+    check(phystop, top, "phystop is the top of the machine's memory");
+    check(memtop, screen, "_memtop is where the screen begins");
+    check(membot, 0x800L, "_membot is where the first program is loaded");
+    check(v_bas_ad, (long)Logbase(), "and _v_bas_ad is the logical screen");
+
+    /*
+     * Blocks of an odd size, which are whole words once they are handed out.
+     * Each block starts where the one below it ends, so an odd one puts the
+     * next on an odd address - where a 68000 cannot read a word - and a
+     * program that loads another one into memory it asked for gets a basepage
+     * nothing can use.
+     */
+    {
+        long odd = Malloc(0x4507L);
+        long next = Malloc(0x10L);
+        long shrunk, after;
+
+        check(next & 1, 0, "the block after one of an odd size is on a word");
+
+        shrunk = Malloc(0x100L);
+        Mshrink((void *)shrunk, 0x41L);
+        after = Malloc(0x10L);
+        check(after & 1, 0, "and so is one after a block shrunk to an odd size");
+
+        Mfree((void *)after);
+        Mfree((void *)shrunk);
+        Mfree((void *)next);
+        Mfree((void *)odd);
+    }
 
     printf("1..%d\n", n);
 

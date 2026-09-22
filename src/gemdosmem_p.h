@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -53,5 +54,14 @@ int mem_claim(uint32_t base, uint32_t len);
 /* And a block the program that owned it has left behind - see Ptermres.
  * Answers where the next program can go, or 0 when there was no such block. */
 uint32_t mem_keep(uint32_t block, uint32_t keep);
+
+/* Every block belongs to a program, by the address of its basepage: the one
+ * running when it was allocated, unless it is handed to another. What a
+ * program owns goes when it ends, or stays for good if it ended with Ptermres.
+ * These are for a program that ran in its caller's machine - see Pexec mode 4
+ * in gemdosproc.c. */
+int32_t mem_set_owner(uint32_t block, uint32_t owner);
+void mem_free_owned(uint32_t owner);
+void mem_keep_owned(uint32_t owner, uint32_t block, uint32_t keep);
 
 #endif /* GEMDOSMEM_H */

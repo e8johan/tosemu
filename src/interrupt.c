@@ -23,6 +23,7 @@
 #include "interrupt.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <poll.h>
 
@@ -271,11 +272,64 @@ static void acia_area_write(struct _memarea *area, uint32_t address,
 /* Below, with the rest of what the handler is - it needs the code it is
  * made of and the routine its magic byte reaches */
 static void install_acia_handler(void);
+static void install_timerc_handler(void);
 
-void interrupt_init(void)
+/*
+ * Sets the clock behind the chips going: the MFP's timers counting down, the
+ * system timer and the MIDI ACIA set up the way TOS left them, and the
+ * vertical blank. Once for a machine that was started with interrupts, and
+ * once, later, for one whose program asked for them - see interrupt_tick.
+ */
+static void start_clock(void)
 {
     int i;
 
+    for (i = 0; i < SOURCES; i++)
+    {
+        sources[i].channel = (i == VBL_SOURCE) ? -1 : mfp_timer_channel(i);
+        sources[i].period_ns = 0;
+        sources[i].due_ns = 0;
+    }
+
+    /*
+     * The system timer, set up the way TOS leaves it: divide the timer clock by
+     * sixty four and count a hundred and ninety two, which is two hundred hertz
+     * exactly. Channel five enabled, because TOS enabled it.
+     *
+     * This is the machine's own clock rather than the program's. A program
+     * reads 0x4BA expecting it to have been counting since the machine was
+     * switched on, and on an ST it had been - so a machine that only started
+     * counting when somebody asked would be one where every measured interval
+     * came out wrong. A program that wants the clock faster reprograms it, and
+     * then this is what it is reprogramming.
+     *
+     * Started later, because the program claimed the timer, it counts from
+     * then. Before that it stood still, so nothing was measuring with it.
+     */
+    mfp_setup_timer(2, 0x50, 192);
+    mfp_enable(MFP_200HZ);
+
+    /*
+     * And the MIDI ACIA, set up the way TOS set it: eight bits, no parity,
+     * one stop bit, the clock divided by sixteen, and an interrupt when a byte
+     * arrives. Its channel enabled for the same reason the timer's is - TOS
+     * enabled it, and a program that never configures the port still expects
+     * bytes to reach the buffer Iorec hands it.
+     */
+    acia_write(ACIA_MIDI, 0, 0x95);
+    mfp_enable(MFP_ACIA);
+
+    built = 1;
+    countdown = 0;
+
+    interrupt_timers_changed();
+
+    sources[VBL_SOURCE].period_ns = VBL_PERIOD_NS;
+    sources[VBL_SOURCE].due_ns = now_ns() + VBL_PERIOD_NS;
+}
+
+void interrupt_init(void)
+{
     mfp_reset();
     acia_reset();
 
@@ -322,58 +376,25 @@ void interrupt_init(void)
      */
     install_acia_handler();
 
+    /* And the system timer's, for the same reasons */
+    install_timerc_handler();
+
     /*
      * What is still asked for is the clock behind them. The chips answer
      * either way, but nothing counts down and nothing is ever raised unless
-     * this machine was started with interrupts - which is what keeps a run
-     * that wants none from reading the host's clock every few thousand
-     * instructions. A program that programs a timer on a machine with no clock
-     * is told once rather than left waiting - see mfp_area_write.
+     * this machine was started with interrupts, or its program asks for them
+     * by claiming the system timer - which is what keeps a run that wants
+     * none from reading the host's clock every few thousand instructions. A
+     * program that programs a timer on a machine with no clock is told once
+     * rather than left waiting - see mfp_area_write.
      */
     if (!interrupt_wanted())
         return;
 
-    for (i = 0; i < SOURCES; i++)
-    {
-        sources[i].channel = (i == VBL_SOURCE) ? -1 : mfp_timer_channel(i);
-        sources[i].period_ns = 0;
-        sources[i].due_ns = 0;
-    }
-
-    /*
-     * The system timer, set up the way TOS leaves it: divide the timer clock by
-     * sixty four and count a hundred and ninety two, which is two hundred hertz
-     * exactly. Channel five enabled, because TOS enabled it.
-     *
-     * This is the machine's own clock rather than the program's. A program
-     * reads 0x4BA expecting it to have been counting since the machine was
-     * switched on, and on an ST it had been - so a machine that only started
-     * counting when somebody asked would be one where every measured interval
-     * came out wrong. A program that wants the clock faster reprograms it, and
-     * then this is what it is reprogramming.
-     */
-    mfp_setup_timer(2, 0x50, 192);
-    mfp_enable(MFP_200HZ);
-
-    /*
-     * And the MIDI ACIA, set up the way TOS set it: eight bits, no parity,
-     * one stop bit, the clock divided by sixteen, and an interrupt when a byte
-     * arrives. Its channel enabled for the same reason the timer's is - TOS
-     * enabled it, and a program that never configures the port still expects
-     * bytes to reach the buffer Iorec hands it.
-     */
-    acia_write(ACIA_MIDI, 0, 0x95);
-    mfp_enable(MFP_ACIA);
-
     hz200_count = 0;
     vbl_count = 0;
-    built = 1;
-    countdown = 0;
 
-    interrupt_timers_changed();
-
-    sources[VBL_SOURCE].period_ns = VBL_PERIOD_NS;
-    sources[VBL_SOURCE].due_ns = now_ns() + VBL_PERIOD_NS;
+    start_clock();
 }
 
 void interrupt_reset(void)
@@ -698,6 +719,48 @@ static void acia_handler_write(struct _memarea *area, uint32_t address,
          "machine is in ROM. Nothing was changed.");
 }
 
+/*
+ * TOS's Timer C handler, for a program that chains to it.
+ *
+ * The MFP runs with software end of interrupt, so a channel stays in service,
+ * holding off itself and everything below it, until whoever handled it clears
+ * its bit - and on the system timer that is the system's handler, which ends
+ * with this write. See _int_timerc in EmuTOS's bios/vectors.S. A program that
+ * shares the vector does its own work and then chains to what was there, and
+ * leaves the ending to it. With a bare RTE on the end of the chain the channel
+ * was never finished, and the program's handler was called once.
+ *
+ * The rest of what TOS's handler does is not here. The two hundred hertz
+ * counter is kept by host C whether or not anything runs on the vector, so
+ * counting it here as well would count every tick twice. Until a program
+ * claims the vector this is nobody and host C answers the channel, as for the
+ * ACIA handler.
+ */
+static const uint8_t timerc_handler_code[] = {
+    0x11, 0xfc, 0x00, 0xdf, 0xfa, 0x11, /* move.b  #0xdf,0xfffffa11     */
+    0x4e, 0x73                          /* rte                          */
+};
+
+static uint32_t timerc_handler;
+
+static void install_timerc_handler(void)
+{
+    uint8_t *at;
+
+    timerc_handler = bios_static_alloc(sizeof timerc_handler_code);
+
+    if (!timerc_handler)
+        return;
+
+    at = tos_mem_to_host_mem(timerc_handler);
+    if (!at)
+        return;
+
+    memcpy(at, timerc_handler_code, sizeof timerc_handler_code);
+
+    poke_system_long(VECTOR_ADDRESS(MFP_200HZ), timerc_handler);
+}
+
 static void install_acia_handler(void)
 {
     acia_handler = bios_device_alloc(ACIA_HANDLER_SIZE);
@@ -865,10 +928,10 @@ static void dispatch(int nested)
      * chained to, called into - by the programs that want to see a handler,
      * and those programs put their own address in the vector when they mean to
      * be called. Until one does, this is still nobody, and the byte goes the
-     * short way.
+     * short way. The system timer's handler is the same again.
      */
     if (handler == 0 || handler == tos_default_vector()
-        || handler == acia_handler)
+        || handler == acia_handler || handler == timerc_handler)
     {
         handled_here(channel);
         return;
@@ -1082,10 +1145,90 @@ void interrupt_wait(void)
     interrupt_service();
 }
 
+/*
+ * The frames the video hardware draws, counted on a machine that does not
+ * interrupt.
+ *
+ * _vbclock and _frclock are TOS's count of the vertical blanks, and a program
+ * that wants to wait for a frame watches one of them change - which is what
+ * TOS's own Vsync does, and what a debugger does before it swaps screens. On a
+ * machine with no interrupts nothing counted them, so a program waiting that
+ * way waited for ever. The video hardware is there whether or not anything
+ * interrupts, so its frames are counted anyway, from the clock and rarely.
+ *
+ * Nothing else about an interrupting machine comes with them. No handler is
+ * called, and the two hundred hertz counter stays where it is: that one is the
+ * MFP's, and on this machine the MFP has no clock behind it - until a program
+ * asks for one, see below.
+ */
+#define FRAMES_TICK_INSTRUCTIONS (65536)
+
+static void count_frames(void)
+{
+    static long long frames_due;
+    long long now;
+
+    now = now_ns();
+
+    if (!frames_due)
+        frames_due = now + VBL_PERIOD_NS;
+
+    if (now < frames_due)
+        return;
+
+    vbl_count += (now - frames_due) / VBL_PERIOD_NS + 1;
+    frames_due = now + VBL_PERIOD_NS;
+
+    poke_system_long(SYSVAR_VBCLOCK, (uint32_t)vbl_count);
+    poke_system_long(SYSVAR_FRCLOCK, (uint32_t)vbl_count);
+}
+
+/*
+ * Whether the program has put a handler of its own on the system timer.
+ *
+ * On an ST that timer ran two hundred times a second whatever else a program
+ * did, so a handler put there was called - a program never had to ask for it,
+ * and none of them did. Doing it is therefore the only way a program has of
+ * asking, and it is asked for the same reason a MIDI port asks for interrupts
+ * in interrupt_wanted: what it is about to do does not work without them.
+ *
+ * Looked for here rather than when the vector is written, because a program
+ * may write it through Setexc or directly, and directly is a store to memory
+ * like any other.
+ */
+static int system_timer_claimed(void)
+{
+    uint32_t handler = m68k_read_disassembler_32(VECTOR_ADDRESS(MFP_200HZ));
+
+    return handler != 0 && handler != tos_default_vector()
+           && handler != timerc_handler;
+}
+
 void interrupt_tick(void)
 {
+    static int quiet_countdown;
+
     if (!built)
+    {
+        if (--quiet_countdown > 0)
+            return;
+
+        quiet_countdown = FRAMES_TICK_INSTRUCTIONS;
+
+        count_frames();
+
+        /* And from then on this is a machine with interrupts, as though it
+         * had been started as one. The counters carry on from where they
+         * are; only the two hundred hertz one has not been counting. */
+        if (system_timer_claimed())
+        {
+            settled = 1;
+            wanted = 1;
+            start_clock();
+        }
+
         return;
+    }
 
     if (--countdown > 0)
         return;

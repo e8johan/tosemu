@@ -36,6 +36,7 @@
 #include "vdi_defs.h"
 #include "lineavars.h"
 #include "font.h"
+#include "emuvdi.h"
 
 /* The fonts themselves, compiled from the submodule */
 extern const Fonthead fnt_st_6x6;
@@ -56,8 +57,9 @@ const Fonthead *font_ring[4];
 const Fonthead *def_font;
 WORD font_count;
 
-/* The array line-A hands out. Nothing reaches line-A yet, but the fonts are
- * the same three either way. */
+/* The array EmuTOS's line-A would hand out. The machine's is a copy in its own
+ * memory, which linea.c makes with emuvdi_system_font below, but the fonts
+ * are the same three either way. */
 const Fonthead *sysfonts[4];
 
 /*
@@ -85,6 +87,51 @@ void host_font_init(void)
 
     /* Builds font_ring and def_font out of the above */
     text_init();
+}
+
+/* For linea.c, which copies these into the machine - see emuvdi.h */
+int emuvdi_system_font(int which, struct emuvdi_font *font)
+{
+    static const Fonthead *const system[] = {
+        &fnt_st_6x6, &fnt_st_8x8, &fnt_st_8x16
+    };
+    const Fonthead *f;
+
+    if (which < 0 || which >= (int)(sizeof system / sizeof system[0]))
+        return 0;
+
+    f = system[which];
+
+    font->id = f->font_id;
+    font->point = f->point;
+    font->name = f->name;
+
+    font->words[0] = f->first_ade;
+    font->words[1] = f->last_ade;
+    font->words[2] = f->top;
+    font->words[3] = f->ascent;
+    font->words[4] = f->half;
+    font->words[5] = f->descent;
+    font->words[6] = f->bottom;
+    font->words[7] = f->max_char_width;
+    font->words[8] = f->max_cell_width;
+    font->words[9] = f->left_offset;
+    font->words[10] = f->right_offset;
+    font->words[11] = f->thicken;
+    font->words[12] = f->ul_size;
+    font->words[13] = f->lighten;
+    font->words[14] = f->skew;
+    font->words[15] = f->flags;
+
+    /* One more offset than there are characters: the last is where the one
+     * after the last character would begin, which is how its width is known */
+    font->offsets = f->off_table;
+    font->offset_count = f->last_ade - f->first_ade + 2;
+    font->raster = f->dat_table;
+    font->form_width = f->form_width;
+    font->form_height = f->form_height;
+
+    return 1;
 }
 
 /*

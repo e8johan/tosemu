@@ -203,6 +203,17 @@ void *tos_mem_to_host_mem(uint32_t address)
 }
 
 
+const uint8_t *tos_mem_span(uint32_t address, uint32_t len)
+{
+    struct _memarea *area = find_memarea(address);
+
+    if (!area || area->read != ptr_read
+        || address - area->base + (uint64_t)len > area->len)
+        return 0;
+
+    return &((const uint8_t *)area->ptr)[address - area->base];
+}
+
 /* These are the real read/write functions */
 
 uint8_t tos_read(uint32_t address)

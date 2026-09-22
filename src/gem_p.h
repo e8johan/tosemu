@@ -89,9 +89,29 @@ int gem_start();
  */
 int gem_ever_started(void);
 
+/*
+ * Whether the application has anything of its own on the desktop besides a
+ * picture it drew for the video hardware: a window, the menu bar, or the
+ * console. Something to look at, and to type at - see video.c, which only
+ * puts the picture away when there is.
+ */
+int gem_has_windows(void);
+
 /* Lets go of everything a child of fork inherited and should not use: the
  * compositor's connection, the daemon's socket, and the parent's screen */
 void gem_forget(void);
+
+/*
+ * The identifier appl_init gave the machine's application, or -1 when there
+ * is none, and putting one back.
+ *
+ * A program Pexec runs in its caller's machine shares its caller's AES, so
+ * one that leaves has to leave that as it found it: an application it
+ * introduced and did not take away is dropped, and one of its caller's that it
+ * said goodbye to on the way out comes back. See child_ends in gemdosproc.c.
+ */
+int16_t gem_application(void);
+void gem_application_resume(int16_t ap_id);
 
 /*
  * Reserves the screen for a dialog and gives it back. A dialog draws into a

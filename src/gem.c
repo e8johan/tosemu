@@ -47,6 +47,7 @@
 #include "screen.h"
 #include "settings.h"
 #include "gfx.h"
+#include "video.h"
 #include "emuvdi/emuvdi.h"
 #include "m68k.h"
 
@@ -134,6 +135,19 @@ static int ever_started;
 int gem_ever_started(void)
 {
     return ever_started;
+}
+
+int gem_has_windows(void)
+{
+    int16_t x, y, w, h;
+
+    if (console_showing())
+        return 1;
+
+    if (!started)
+        return 0;
+
+    return aes_wind_from_back(0, &x, &y, &w, &h) != 0 || aes_menu_shown();
 }
 
 /* The screen this session was asked for, for when there is no daemon to say */
@@ -511,6 +525,7 @@ void gem_forget(void)
 {
     gfx_forget();
     aes_client_forget();
+    video_forget();
 
     /* And the console, which has a surface of its own and possibly a window on
      * the connection that has just been let go of. Here rather than before
@@ -570,8 +585,11 @@ void gem_present()
     if (!started)
         return;
 
+    /* A program that has taken the video hardware over has taken the screen
+     * with it, and the picture it shows is what a screenshot is of - see
+     * video_frame, which takes it */
     shot = setting("TOSEMU_SCREENSHOT");
-    if (shot)
+    if (shot && !video_showing())
     {
         /* Whichever is being drawn into. A dialog's surface starts as a copy
          * of the screen and a menu's as a copy of that, so whichever of them

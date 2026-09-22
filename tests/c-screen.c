@@ -83,12 +83,16 @@ static const struct {
      * is the AES dividing one of those by the other. It is the only place the
      * shape of a pixel is visible without measuring anything. */
     short wbox, hbox;
+
+    /* And what Getrez answers, which is the number the machine with that
+     * screen gave it. 8 is none of theirs. */
+    short rez;
 } modes[] = {
-    { "low",        320, 200,  16, 8,  8, 338, 372, 12, 11 },
-    { "medium",     640, 200,   4, 8,  8, 169, 372, 24, 11 },
-    { "high",       640, 400,   2, 8, 16, 372, 372, 19, 19 },
-    { "tt-medium",  640, 480,  16, 8, 16, 278, 278, 19, 19 },
-    { "tt-high",   1280, 960,   2, 8, 16, 278, 278, 19, 19 },
+    { "low",        320, 200,  16, 8,  8, 338, 372, 12, 11, 0 },
+    { "medium",     640, 200,   4, 8,  8, 169, 372, 24, 11, 1 },
+    { "high",       640, 400,   2, 8, 16, 372, 372, 19, 19, 2 },
+    { "tt-medium",  640, 480,  16, 8, 16, 278, 278, 19, 19, 4 },
+    { "tt-high",   1280, 960,   2, 8, 16, 278, 278, 19, 19, 6 },
 
     /*
      * And the four whose size is a rule rather than a number, as they come out
@@ -102,11 +106,15 @@ static const struct {
      * keeps any of a display that is not there. How large they are when there
      * is one is arithmetic rather than a workstation, and bin/screentest
      * checks that.
+     *
+     * Which is also why the two in black and white are ST high as far as
+     * Getrez is concerned: that is the shape they came out, and the shape is
+     * all a program can tell a screen by. The colour ones are no machine's.
      */
-    { "native-mono",   640, 400,  2, 8, 16, 372, 372, 19, 19 },
-    { "native-color",  640, 400, 16, 8, 16, 372, 372, 19, 19 },
-    { "display-mono",  640, 400,  2, 8, 16, 372, 372, 19, 19 },
-    { "display-color", 640, 400, 16, 8, 16, 372, 372, 19, 19 },
+    { "native-mono",   640, 400,  2, 8, 16, 372, 372, 19, 19, 2 },
+    { "native-color",  640, 400, 16, 8, 16, 372, 372, 19, 19, 8 },
+    { "display-mono",  640, 400,  2, 8, 16, 372, 372, 19, 19, 2 },
+    { "display-color", 640, 400, 16, 8, 16, 372, 372, 19, 19, 8 },
 };
 
 int main(int argc, char **argv)
@@ -160,6 +168,7 @@ int main(int argc, char **argv)
     check(work_out[3], modes[which].wpixel, "its pixels are the right width");
     check(work_out[4], modes[which].hpixel, "and the right height");
     check(work_out[13], modes[which].colours, "with the colours that go with it");
+    check(Getrez(), modes[which].rez, "and Getrez says which resolution it is");
 
     /*
      * And where an application that draws without the VDI is told the screen

@@ -60,6 +60,9 @@
  * cannot reach it */
 #define HZ200 (0x4baL)
 
+/* And the count of frames the video hardware has drawn */
+#define FRCLOCK (0x466L)
+
 #define TIMER_C_CHANNEL (5)
 
 static int n;
@@ -119,6 +122,32 @@ static void watch_the_clock(void)
     clock_moved_by = (long)(clock_after - clock_before);
 }
 
+/*
+ * And the frames, on a machine that does not interrupt: they are the video
+ * hardware's rather than the MFP's, so they go on being counted when nothing
+ * else is. Spun until two have gone by, which is long enough for the two
+ * hundred hertz counter to have moved eight times if it were running.
+ */
+static unsigned long frames_before, frames_after;
+static unsigned long ticks_before, ticks_after;
+
+static void watch_the_frames(void)
+{
+    volatile unsigned long *frames = (volatile unsigned long *)FRCLOCK;
+    volatile unsigned long *ticks = (volatile unsigned long *)HZ200;
+    long spins;
+
+    frames_before = *frames;
+    ticks_before = *ticks;
+
+    for (spins = 0; spins < 5000000L; spins++)
+        if (*frames - frames_before >= 2)
+            break;
+
+    frames_after = *frames;
+    ticks_after = *ticks;
+}
+
 int main(int argc, char **argv)
 {
     int with_interrupts = (argc > 1 && strcmp(argv[1], "on") == 0);
@@ -148,6 +177,12 @@ int main(int argc, char **argv)
          */
         check((peek(MFP_IERB) >> TIMER_C_CHANNEL) & 1, 0,
               "but nothing is enabled, there being no clock behind them");
+
+        Supexec(watch_the_frames);
+        check(frames_after - frames_before >= 2, 1,
+              "the video hardware's frames are counted all the same");
+        check((long)(ticks_after - ticks_before), 0,
+              "and the MFP's clock does not move");
 
         printf("1..%d\n", n);
         return fails;

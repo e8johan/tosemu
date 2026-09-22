@@ -65,6 +65,17 @@ static const struct {
     { "TOSEMU_NO_WINDOW",   "screen",  "window",      1 },
     { "TOSEMU_DECORATIONS", "screen",  "decorations", 0 },
 
+    /*
+     * What becomes of a picture a program drew for the video hardware when it
+     * hands the screen back: `hide` puts it away a moment later, for the
+     * program's own windows, and `keep` leaves it up. Unsaid, it is hidden,
+     * which is what most programs that show a picture of their own want. A
+     * debugger is the one that may not: it hands the screen to the program it
+     * is debugging every time it runs it, and somebody stepping through a
+     * program may rather the debugger's window stayed where it was.
+     */
+    { "TOSEMU_PICTURE",     "screen",  "picture",     0 },
+
     { "TOSEMU_MEMORY",      "machine", "memory",      0 },
 
     { "TOSEMU_KEYS",        "input",   "keys",        0 },

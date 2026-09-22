@@ -19,13 +19,13 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
-            c-keyboard c-modal c-clock
+            c-keyboard c-modal c-clock c-video
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -203,6 +203,39 @@ check: all
 	# about: an application says something to whoever is debugging it, and
 	# tosemu is what there is.
 	grep -q 'Dbmsg: a message for the debugger' out
+	# The video shifter's registers, which the XBIOS screen calls are the
+	# other side of. On each of the ST's screens, because the resolution
+	# register and the colours a machine comes up in are the screen's.
+	for s in low medium high; do \
+	  TOSEMU_SCREEN=$$s $(TOSEMU) test-c-shifter $$s > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
+	# And what the shifter shows: a picture drawn without the VDI, in
+	# memory of the program's own, shown once the video base is pointed at
+	# it. What the program reads back is the screenshot it was told to take,
+	# which is gone before each run so that an old one cannot pass for it.
+	for s in low medium high; do \
+	  $(RM) video.ppm; \
+	  TOSEMU_SCREEN=$$s TOSEMU_SCREENSHOT=video.ppm $(TOSEMU) test-c-video \
+	    > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
+	# And told to keep the picture up when the screen is handed back, which
+	# is a setting - in the environment, and in a file, which is where
+	# somebody who always wants it would say it.
+	$(RM) video.ppm
+	TOSEMU_PICTURE=keep TOSEMU_SCREENSHOT=video.ppm $(TOSEMU) \
+	  test-c-video keep > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) video.ppm
+	printf '[screen]\npicture = keep\n' > picture.tosemu
+	TOSEMU_NO_WINDOW=1 $(NO_DAEMON) $(NO_PRINTER) TOSEMU_SCREENSHOT=video.ppm \
+	  ../../bin/tosemu -c picture.tosemu test-c-video keep > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) video.ppm picture.tosemu
 	# Reading the console, with somebody typing at it - which is what the
 	# sleeps and the printfs are. Three of these calls have to be able to
 	# wait and three have to be able not to, and getting either wrong is
@@ -228,6 +261,10 @@ check: all
 	# from Super standing somewhere else has lost everything it had put on
 	# its own stack, including where it was to return to.
 	$(TOSEMU) test-c-super > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# A handler of the program's own on each of the OS traps, which is
+	# called and whose calls passed on are answered as if it were not there
+	$(TOSEMU) test-c-traphook > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# The line-A, whose one implemented call hands over three addresses a
 	# program then follows. On the default screen and on a colour one,
@@ -328,6 +365,11 @@ check: all
 	grep -q '^1\.\.' out
 	$(RM) out
 	$(TOSEMU) test-c-pexec > out; ! grep -q '^not ok' out
+	# Modes 4 and 6, which run in the caller's machine. The count matters
+	# more than usual: a child that left its Fforce behind takes the rest
+	# of the caller's output with it, count line and all.
+	$(TOSEMU) test-c-pexgo > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
 	# A dialog needs something to press a button in it, and a test has
 	# nobody to do it, so the Return that picks the default button is given
 	# on the command line
@@ -474,6 +516,21 @@ check: all
 	TOSEMU_INTERRUPTS=yes \
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	$(RM) out
+	# And a handler on the system timer on a machine nobody asked to
+	# interrupt, where putting it there is the asking: on an ST that timer
+	# ran whatever anybody said, so no program ever said. Unset rather than
+	# said no, a word said being a different question.
+	env -u TOSEMU_INTERRUPTS \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer system > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
+	# And a timer going off while the program waits at the console for a
+	# key, which the key arriving a second later gives it time to do.
+	(sleep 1; echo x) | TOSEMU_INTERRUPTS=yes TOSEMU_CONSOLE=terminal \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer console > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	! grep -q 'fell so far behind' out
 	$(RM) out
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first

@@ -315,6 +315,7 @@ Which is which:
 | `[screen] output`      | `TOSEMU_OUTPUT`      |
 | `[screen] window`      | `TOSEMU_NO_WINDOW`, the other way round |
 | `[screen] decorations` | `TOSEMU_DECORATIONS` |
+| `[screen] picture`     | `TOSEMU_PICTURE`     |
 | `[machine] memory`     | `TOSEMU_MEMORY`      |
 | `[input] keys`         | `TOSEMU_KEYS`        |
 | `[input] clicks`       | `TOSEMU_CLICKS`      |
@@ -551,12 +552,13 @@ one address space, which is what makes a resident worth having: the program
 that runs next can see what it installed, call it through a vector it left
 behind, and read what it wrote.
 
-**A program `Pexec`d by another one cannot stay**, and this is the one place
-residency has a hole in it. A child is a forked host process with a machine of
-its own, so anything it keeps is kept in that machine and goes when it ends.
-`Ptermres` from a child says so and terminates cleanly, rather than leaving the
+**A program `Pexec`d with mode 0 cannot stay**, and this is the one place
+residency has a hole in it. That child is a forked host process with a machine
+of its own, so anything it keeps is kept in that machine and goes when it ends.
+`Ptermres` from it says so and terminates cleanly, rather than leaving the
 program that started it believing a TSR is there when it is not. What to do
-about it is to name the program with `-r` instead.
+about it is to name the program with `-r` instead. A program run with mode 4
+or 6 is in its caller's machine, and stays there the way it would on TOS.
 
 MIDI
 ====
@@ -661,6 +663,14 @@ the other end - see *The key in the cartridge port* above.
 `[machine] interrupts = yes` turns that on without either, which is how the
 test suite reaches any of it.
 
+And so does a program putting a handler of its own on the system timer, part
+way through a run. On an ST that timer ran whatever anybody asked for, so no
+program ever asked, and a handler put there is the only way one has of saying
+it wants it. A debugger is the usual case - MonST gives the screen back to the
+program it is running forty ticks after starting it. Every program starts at
+the interrupt mask TOS gave it, three, so that one that asks this way hears the
+answer.
+
 It is off otherwise, and that is deliberate rather than cautious: it changes
 what the machine *is* rather than what it is plugged into, and the overwhelming
 majority of TOS programs neither want nor tolerate one that interrupts them.
@@ -670,7 +680,8 @@ its vector, and from then on the routine is called - between the instructions of
 a running program, and while the application is asleep in `evnt_multi`, which is
 where a sequencer spends most of its time. A handler must clear its own
 in-service bit the way every TOS handler does, or the MFP holds its channel off
-and it is called exactly once.
+and it is called exactly once - except one that chains to the system timer's,
+which ends the interrupt for it the way TOS's does.
 
 Bytes arriving go the whole way round: the ACIA says one is there, the MFP
 raises its channel, and whatever is on `midivec` puts it in the buffer `Iorec`
@@ -922,16 +933,24 @@ That also settles what a child inherits, and it lands close to TOS:
   process has its own, as under MiNT.
 - Memory, the DTA and the screen do not carry over at all. The child gets a
   machine of its own, so an address the parent allocated means nothing to it.
-- The modes that run a program the caller has already loaded are the exception,
-  because there the child keeps the machine it inherited and every address in
-  it still means what it did. What it writes there is its own, though: a fork
-  copies memory rather than sharing it, so an answer a child leaves at an
-  agreed address is one the parent never sees. See the `TODO`.
 
 A program returns a word and `Pexec` reports it with the high word clear, which
 is more than the eight bits of a host exit status. The child writes the value
 to a pipe, and the parent reads it once the child is gone. Nothing arriving
 means the child never reached `Pterm`, and `Pexec` answers `EPLFMT`.
+
+Modes 4 and 6, which run a program the caller has already loaded, do not fork.
+They exist because TOS had one address space - two programs pass structures
+back and forth through it, and a debugger catches its program's exceptions in
+handlers of its own - so the child runs on the same processor in the same
+machine, the way EmuTOS's `proc_go` starts one. The caller's registers, where
+it was, its basepage, standard handles, DTA, drive and directory are put aside
+until the child's `Pterm`, and then put back, with the child's value in d0.
+Every block of memory and every file handle belongs to the program that asked
+for it, so what the child allocated or opened and left behind goes with it;
+mode 6 also hands the child the block it was loaded into. An application the
+child introduced to the AES and never took away is dropped. `etv_term` is not
+called.
 
 The modes that load a program without running it, and the ones that make room
 for one, take memory from the same allocator `Malloc` uses and build the
@@ -948,10 +967,11 @@ inside the low word, so only eight bits of it survive where mode 0 reports the
 whole word. A child that outlives its parent is left to the host to reap.
 
 Because the loop has to be able to hand the machine to a different program, it
-lives in `tossystem.c` rather than in `main`. `Pexec` cannot start a program
+lives in `tossystem.c` rather than in `main`. `Pexec` cannot build a machine
 from where it is called - that is inside a trap, and inside Musashi, neither of
 which survives the CPU being reset under it - so it records what to run, stops
-the loop, and lets the trap unwind first.
+the loop, and lets the trap unwind first. Modes 4 and 6 build nothing, and only
+point the processor somewhere else, which a trap can do.
 
 Variable Scope
 --------------
