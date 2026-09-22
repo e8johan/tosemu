@@ -40,6 +40,17 @@
  * to normal on the way out, and that second drawing belongs to the bar rather
  * than to the menu - so a title left inverted says the two were confused.
  *
+ * The third is that the bar and its titles are drawn on the screen at all,
+ * with a window open under them. Each window keeps its own picture, and the
+ * AES draws the bar with no clipping rectangle, which is a drawing that
+ * reaches every window there is - so unless it is known to be the bar's it
+ * lands in a window's picture, outside the part the window shows, and the bar
+ * stays empty. GenST puts its bar up after opening its window and got no
+ * titles at all; Works puts its bar up first and got titles that did not
+ * highlight. So the bar goes up here after the window, and every title that
+ * is asked about is asked about both ways: a title that should be inverted as
+ * well as one that should not, the second being what a lost drawing leaves.
+ *
  * The pointer is moved and the menu picked from by TOSEMU_CLICKS, there being
  * nobody here to do it. A test that stops the emulator prints nothing further,
  * so the count at the end is what says the whole file ran.
@@ -221,14 +232,6 @@ int main(int argc, char **argv)
     menu_y = hbox;
     menu_w = 14 * wchar;
 
-    addrin[0] = (long)menu;
-    intin[0] = 1;                                    /* install it */
-    if (call_aes(30, 1, 1, 1, 0) == 0)               /* menu_bar */
-    {
-        printf("Bail out! - the AES would not take the menu\n");
-        return 1;
-    }
-
     /*
      * A window under the bar, large enough that the menu drops down inside it.
      * That is the whole point of the exercise: on an ST there was nothing
@@ -255,6 +258,25 @@ int main(int argc, char **argv)
     pxy[0] = wx; pxy[1] = wy;
     pxy[2] = wx + ww - 1; pxy[3] = wy + wh - 1;
     v_bar(handle, pxy);
+
+    /*
+     * The bar, put up only now: after a window was opened and asked where its
+     * work area is, which is the order GenST does it in. The work area having
+     * just been asked for is what says the next drawing is that window's, and
+     * the bar is the drawing that has to not be.
+     */
+    addrin[0] = (long)menu;
+    intin[0] = 1;                                    /* install it */
+    if (call_aes(30, 1, 1, 1, 0) == 0)               /* menu_bar */
+    {
+        printf("Bail out! - the AES would not take the menu\n");
+        return 1;
+    }
+
+    /* The line along the bottom of the bar, which the AES draws in black
+     * across the whole screen and which nothing else puts there */
+    check(pixel_at(handle, wide - 2, hbox - 1), 1,
+          "the bar put up over an open window is drawn on the screen");
 
     /*
      * The row of the menu the question is about, worked out rather than
@@ -318,9 +340,15 @@ int main(int argc, char **argv)
 
     /*
      * The title that was chosen from is held open on purpose, and putting it
-     * back is the application's to do. It has to reach the screen as well,
-     * being on the bar rather than on the menu.
+     * back is the application's to do. Held open is inverted, and inverted on
+     * the bar - a title whose highlighting went somewhere else reads as white
+     * here, which is also what the two checks either side of this one want.
      */
+    check(pixel_at(handle, menu_x + 2, 2), 1,
+          "the title that was chosen from is held open on the bar");
+
+    /* It has to reach the screen as well when it is put back, being on the
+     * bar rather than on the menu */
     intin[0] = message[3];
     intin[1] = 1;                                    /* back to normal */
     addrin[0] = (long)menu;

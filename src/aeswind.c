@@ -185,6 +185,25 @@ static int ordered;
  */
 static int16_t drawing_for;
 
+/*
+ * And the AES drawing the menu bar, which is the other drawing whose owner is
+ * known rather than guessed: it is nobody's. The bar is on the screen and is
+ * shown from there.
+ *
+ * It is not left to the guessing because the guessing gets it wrong. The AES
+ * draws the bar and its titles with no clipping rectangle, which is a drawing
+ * that reaches every window there is, so it went to whichever window had just
+ * been asked about or was in front - into that window's picture, above the
+ * part of it the window shows. GenST puts its bar up after opening its window
+ * and showed an empty bar; Works puts its up first and showed titles that did
+ * not highlight.
+ *
+ * It is kept apart from drawing_for rather than being a value of it, because
+ * a menu waits for the pointer between one title and the next, and a wait
+ * forgets drawing_for.
+ */
+static int drawing_bar;
+
 /* Where a window may be put, which is the whole screen below the menu bar */
 static int16_t desk_x, desk_y, desk_w, desk_h;
 
@@ -194,6 +213,7 @@ void aes_wind_reset()
     topped = 0;
     ordered = 0;
     drawing_for = 0;
+    drawing_bar = 0;
 }
 
 static void order_remove(int16_t handle)
@@ -422,13 +442,20 @@ static void draw_frame(struct window *win)
      * window is known rather than guessed, so it is said outright. Anything the
      * application had said about which window it was drawing is put back
      * afterwards: a frame drawn in the middle of a redraw is not the end of it.
+     *
+     * The same goes for a menu that is down. Pressing on the bar takes the
+     * desktop's attention away from the window, which is drawn again as not
+     * the one in use while the AES is still in the middle of the menu.
      */
     {
         int16_t was_for = drawing_for;
+        int was_bar = drawing_bar;
 
         drawing_for = (int16_t)(win - windows) + 1;
+        drawing_bar = 0;
         aes_frame_draw(&frame);
         drawing_for = was_for;
+        drawing_bar = was_bar;
     }
 
     if (was)
@@ -1504,6 +1531,12 @@ void aes_wind_drawing_for(int16_t handle)
     drawing_for = (handle > 0 && window_at(handle)) ? handle : 0;
 }
 
+/* Said by aesmenu.c around everything it draws on the bar - see drawing_bar */
+void aes_wind_drawing_bar(int bar)
+{
+    drawing_bar = bar;
+}
+
 static int holds(const struct window *win, int16_t x, int16_t y,
                  int16_t w, int16_t h)
 {
@@ -1528,6 +1561,9 @@ static int touches(const struct window *win, int16_t x, int16_t y,
  * back the screen is asking what is on it.
  *
  * For drawing, in order:
+ *
+ *   nobody's while the AES is drawing the menu bar, whatever the application
+ *   last said - see drawing_bar;
  *
  *   the window somebody said it was for, as long as the drawing reaches it at
  *   all - a drawing wholly outside the window it was said to be for cannot be
@@ -1554,6 +1590,9 @@ int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
     int i;
 
     if (w <= 0 || h <= 0)
+        return 0;
+
+    if (!reading && drawing_bar)
         return 0;
 
     if (!reading && drawing_for > 0)

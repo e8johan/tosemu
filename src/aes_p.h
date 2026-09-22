@@ -139,10 +139,13 @@ int aes_wind_frame_press(int16_t x, int16_t y, int16_t buttons);
  *
  * aes_wind_drawing_for is the conversation's half of it: a handle when the
  * application has just been handed a message about that window, and 0 when it
- * waits again. aes_wind_from_back walks the open windows from the back to the
- * front, which is the order they are laid on the screen in.
+ * waits again. aes_wind_drawing_bar is the AES's own: true for as long as it
+ * is drawing the menu bar, which belongs to no window. aes_wind_from_back
+ * walks the open windows from the back to the front, which is the order they
+ * are laid on the screen in.
  */
 void aes_wind_drawing_for(int16_t handle);
+void aes_wind_drawing_bar(int bar);
 int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
                        int reading);
 int16_t aes_wind_from_back(int n, int16_t *x, int16_t *y, int16_t *w,
