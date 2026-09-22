@@ -525,6 +525,13 @@ check: all
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer system > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
+	# And a timer going off while the program waits at the console for a
+	# key, which the key arriving a second later gives it time to do.
+	(sleep 1; echo x) | TOSEMU_INTERRUPTS=yes TOSEMU_CONSOLE=terminal \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer console > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	! grep -q 'fell so far behind' out
+	$(RM) out
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a

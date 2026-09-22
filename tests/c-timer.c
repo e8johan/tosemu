@@ -214,6 +214,30 @@ static void system_timer(void)
                          "called again");
 }
 
+/*
+ * A timer going off while the program waits at the console for a key, which
+ * is a program doing nothing and the machine not stopping: on an ST the
+ * handler was called all the way through the wait. The key is sent a second
+ * after the run starts, so a hundred hertz has a second to count in.
+ */
+static void while_waiting(void)
+{
+    long before, during;
+
+    Xbtimer(TIMER_A, TIMER_A_CONTROL, TIMER_A_DATA, timer_handler);
+
+    before = ticks;
+    Bconin(2);
+    during = ticks - before;
+
+    Xbtimer(TIMER_A, 0, 0, 0L);
+
+    printf("# Timer A fired %ld times while waiting for a key\n", during);
+
+    check(during >= 10, 1, "a timer goes off while the program waits for a "
+                           "key");
+}
+
 int main(int argc, char **argv)
 {
     unsigned long started;
@@ -225,6 +249,15 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "system") == 0)
     {
         system_timer();
+
+        printf("1..%d\n", n);
+
+        return fails;
+    }
+
+    if (argc > 1 && strcmp(argv[1], "console") == 0)
+    {
+        while_waiting();
 
         printf("1..%d\n", n);
 

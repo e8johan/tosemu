@@ -51,6 +51,7 @@
 #include "config.h"
 #include "gem_p.h"
 #include "gfx.h"
+#include "interrupt.h"
 #include "scrap.h"
 #include "scraptext.h"
 #include "settings.h"
@@ -247,6 +248,28 @@ static int terminal_ready(void)
     return terminal_fill();
 }
 
+/*
+ * How long a wait for a key may sleep, which is no longer than until the
+ * machine is due to interrupt itself, or the other limit the caller has - both
+ * in milliseconds, with -1 for no limit.
+ *
+ * A program waiting for a key is a program doing nothing, not a machine that
+ * has stopped. No instruction runs while the emulator is in poll and the
+ * timers are driven from the instruction hook, so without this a handler on a
+ * timer was not called for as long as nobody typed - and the timers came back
+ * so far behind that they said the host had been stopped. The AES's wait does
+ * the same, see evnt_multi.
+ */
+static int key_wait_ms(long limit)
+{
+    long due = interrupt_next_due_ms();
+
+    if (due >= 0 && (limit < 0 || due < limit))
+        limit = due;
+
+    return (int)limit;
+}
+
 /* One byte from the terminal, or -1 when there is nothing and none was to be
  * waited for */
 static int terminal_byte(int wait)
@@ -268,7 +291,10 @@ static int terminal_byte(int wait)
         waiting.events = POLLIN;
         waiting.revents = 0;
 
-        poll(&waiting, 1, -1);
+        poll(&waiting, 1, key_wait_ms(-1));
+
+        /* Whatever came due while it slept */
+        interrupt_service();
     }
 }
 
@@ -915,8 +941,10 @@ static uint32_t screen_key(int wait)
         /* No longer than until a picture handed back is due to step aside,
          * which is what a debugger showing the program's screen is doing
          * while it waits for a key */
-        if (poll(&waiting, 1, (int)video_settle()) > 0)
+        if (poll(&waiting, 1, key_wait_ms(video_settle())) > 0)
             gfx_dispatch();
+
+        interrupt_service();
     }
 }
 
