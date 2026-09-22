@@ -105,10 +105,10 @@ These were checked rather than recalled; several contradict the obvious reading.
 
 | Fact | Where it was confirmed |
 |---|---|
-| **Musashi does *not* check interrupts per instruction.** `m68k_execute`'s loop has no `m68ki_check_interrupts()` — `/* ASG: removed per-instruction interrupt checks */`. Only `m68k_set_irq()` and `m68ki_set_sr()` (RTE, MOVE to SR) check. So `m68k_set_irq()` **dispatches synchronously**: it builds the frame and sets PC before returning. | [m68kcpu.c:639-680](tosemu/src/Musashi/m68kcpu.c#L639-L680), [:732-739](tosemu/src/Musashi/m68kcpu.c#L732-L739) |
-| `m68ki_instr_hook()` runs **before** `REG_IR = m68ki_read_imm_16()`, so in `cpu_instr_callback` the PC is the not-yet-executed instruction — the correct safe point to raise an IRQ. | [m68kcpu.c:665-671](tosemu/src/Musashi/m68kcpu.c#L665-L671) |
-| With `M68K_EMULATE_INT_ACK` **on**, `CPU_INT_LEVEL` is no longer auto-cleared. A line left asserted retakes the interrupt for ever. We must call `m68k_set_irq(0)` ourselves. | [m68kcpu.h:1972-1975](tosemu/src/Musashi/m68kcpu.h#L1972-L1975) |
-| A vector of **zero** sends the machine to the uninitialised-interrupt vector, which is also zero here. "Did the program install a handler?" is a safety check, not a nicety. | [m68kcpu.h:1949-1952](tosemu/src/Musashi/m68kcpu.h#L1949-L1952) |
+| **`m68k_set_irq()` does *not* take the interrupt.** It only records the level. `m68k_execute` looks on entry - which for tosemu, calling it one instruction at a time, is before every instruction - and `m68ki_set_sr()` (RTE, MOVE to SR) looks when the mask changes. `musashi_interrupt()` raises the line and looks at once, so it **dispatches synchronously**: it builds the frame and sets PC before returning. | [m68kcpu.c:1054-1063](tosemu/3rdparty/musashi/m68kcpu.c#L1054-L1063), [:974](tosemu/3rdparty/musashi/m68kcpu.c#L974), [musashi.c](tosemu/src/musashi.c) |
+| `m68ki_instr_hook()` runs **before** `REG_IR = m68ki_read_imm_16()`, so in `cpu_instr_callback` the PC is the not-yet-executed instruction — the correct safe point to raise an IRQ. | [m68kcpu.c:995-1006](tosemu/3rdparty/musashi/m68kcpu.c#L995-L1006) |
+| With `M68K_EMULATE_INT_ACK` **on**, `CPU_INT_LEVEL` is no longer auto-cleared. A line left asserted retakes the interrupt for ever. We must call `m68k_set_irq(0)` ourselves. | [m68kcpu.h:2155-2158](tosemu/3rdparty/musashi/m68kcpu.h#L2155-L2158) |
+| A vector of **zero** sends the machine to the uninitialised-interrupt vector, which is also zero here. "Did the program install a handler?" is a safety check, not a nicety. | [m68kcpu.h:2136-2138](tosemu/3rdparty/musashi/m68kcpu.h#L2136-L2138) |
 | **MFP channels 8-15 live in the A registers, 0-7 in the B registers.** Timer A (13) is IERA bit 5; the ACIA (6) is IERB bit 6; Timer C (5) is IERB bit 5. | `disable_mfp_interrupt`, 3rdparty/emutos/bios/mfp.c:38-55 |
 | **IPRA/IPRB/ISRA/ISRB are written with AND semantics** — a written 0 clears, a written 1 leaves alone. Implement as `*reg &= value`. | mfp.c:47 `/* note: IPRA/ISRA ignore '1' bits */`; `move.b #0xbf,0x11(a1)` in aciavecs.S |
 | **GPIP bit 4 is the ACIA IRQ, active low, and TOS spins on it**: `btst.b #4,0x1(a1)` / `jeq int_acia_loop` loops *while the bit is zero*. Without it TOS's handler never exits. | `_int_acia`, bios/aciavecs.S |
@@ -117,7 +117,7 @@ These were checked rather than recalled; several contradict the obvious reading.
 | The VBL is **not** an MFP interrupt: IPL 4, autovectored, vector 28 → 0x70. Turning int-ack on routes every level through the callback, so level 4 must be answered `M68K_INT_ACK_AUTOVECTOR` explicitly. | Musashi `EXCEPTION_INTERRUPT_AUTOVECTOR` |
 | Prescaler 0 = **stopped** (not "÷nothing"); 1-7 = ÷4/10/16/50/64/100/200; 8-15 = event-count/pulse-width; data 0 counts as 256. EmuTOS's own Timer C is `xbtimer(2, 0x50, 192, ...)` → 2457600/64/192 = **200 Hz exactly**. | mfp.c:207 |
 | `midivec` is at offset **0** of `_KBDVECS`. | aciavecs.S:131 |
-| Registers land at 0xFFFA00/0xFFFC00, not 0xFFFFFA00: `ADDRESS_68K` masks with `0x00ffffff` for a 68000. | [m68kcpu.h:259](tosemu/src/Musashi/m68kcpu.h#L259) |
+| Registers land at 0xFFFA00/0xFFFC00, not 0xFFFFFA00: `ADDRESS_68K` masks with `0x00ffffff` for a 68000. | [m68kcpu.h:283](tosemu/3rdparty/musashi/m68kcpu.h#L283), [m68kcpu.c:798](tosemu/3rdparty/musashi/m68kcpu.c#L798) |
 | `pkg-config --cflags alsa` prints nothing and exits 0 — the `&& echo -DHAVE_ALSA` idiom keys off exit status, so it works exactly like dbus. ALSA is present on this machine. | checked directly |
 
 ---
@@ -370,9 +370,9 @@ once and never unregister; only `reset_memory()` is safe.
 
 ### The int-ack
 
-[m68kconf.h:89-90](tosemu/src/m68kconf.h#L89-L90) becomes
-`OPT_SPECIFY_HANDLER` / `tos_int_ack(A)`, matching the shape already used for
-`cpu_instr_callback` at `:131-135`.
+[musashiconf.h:56-57](tosemu/src/musashiconf.h#L56-L57) makes it
+`M68K_OPT_SPECIFY_HANDLER` / `tos_int_ack(A)`, matching the shape used for
+`cpu_instr_callback` at `:63-64`.
 
 ```c
 int tos_int_ack(int level)
@@ -395,11 +395,10 @@ int tos_int_ack(int level)
 }
 ```
 
-`m68k_set_irq(0)` from inside the ack is safe: it sets `CPU_INT_LEVEL = 0` and
-`m68ki_check_interrupts()` then finds nothing above the mask, so there is no
-recursion. The driver re-asserts on the next tick if a channel is still pending —
-which it must, because while `FLAG_INT_MASK` is 6 inside a handler,
-`m68k_set_irq(6)` is a silent no-op.
+`m68k_set_irq(0)` from inside the ack is safe: it only sets `CPU_INT_LEVEL = 0`,
+so there is no recursion. The driver re-asserts on the next tick if a channel is
+still pending — which it must, because while `FLAG_INT_MASK` is 6 inside a
+handler, `musashi_interrupt(6)` takes nothing.
 
 ### The clock and the tick
 
@@ -474,7 +473,7 @@ static void dispatch(void)
         return;
     }
 
-    m68k_set_irq(6);
+    musashi_interrupt(6);
 }
 ```
 
@@ -484,8 +483,8 @@ path; for the timers there is nothing to tell anybody, the counters having moved
 
 ### Running 68000 code from the host
 
-From `cpu_instr_callback` nothing more is needed: `m68k_set_irq(6)` builds the
-frame and sets PC, and the loop fetches from the handler. From inside `wait_for`
+From `cpu_instr_callback` nothing more is needed: `musashi_interrupt(6)` builds
+the frame and sets PC, and the loop fetches from the handler. From inside `wait_for`
 or a blocking `Bconin(3)` we are inside a trap with no `m68k_execute` running, so
 the handler must be run to completion. `interrupt_run_handler()` copies
 `host_userdef_draw` ([aestree.c:751-910](tosemu/src/aestree.c#L751-L910)) and its
@@ -493,7 +492,7 @@ hard-won register discipline:
 
 ```
 save d0-d7, a0-a7, pc, sr, isp;  isp_before = isp
-m68k_set_irq(6)                          /* builds the frame and sets PC */
+musashi_interrupt(6)                     /* builds the frame and sets PC */
 for (steps = 0; steps < INTERRUPT_STEPS; steps++)
 {
     if (m68k_get_reg(0, M68K_REG_ISP) >= isp_before) break;   /* the RTE popped it */

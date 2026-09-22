@@ -1,3 +1,6 @@
 [submodule "3rdparty/emutos"]
 	path = 3rdparty/emutos
 	url = https://github.com/emutos/emutos.git
+[submodule "3rdparty/musashi"]
+	path = 3rdparty/musashi
+	url = https://github.com/kstenerud/Musashi.git

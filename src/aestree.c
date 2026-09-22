@@ -52,6 +52,7 @@
 #include "emuvdi/emuvdi.h"
 #include "tossystem.h"
 #include "cpu.h"
+#include "musashi.h"
 #include "m68k.h"
 
 /* An OBJECT in the machine, and where each field is inside one */
@@ -899,7 +900,7 @@ int16_t host_userdef_draw(const struct host_userdef *call)
      * is put back by hand for the same reason - the machine's own is not where
      * the routine was left standing.
      */
-    m68k_set_reg(M68K_REG_SR, sr);
+    musashi_set_sr(sr);
     m68k_set_reg(M68K_REG_ISP, isp);
     for (i = 0; i < 8; i++)
         m68k_set_reg(M68K_REG_D0 + i, d[i]);

@@ -8,8 +8,7 @@ and it is the same licence as tosemu.
 
 It arrives as a submodule, 3rdparty/emutos, pinned to VERSION_1_4. The
 submodule is read only: nothing in it is edited, and everything that adapts it
-lives here. That is the opposite of how Musashi is carried, which is vendored
-and patched, with the patch invisible in the tree.
+lives here. Musashi is carried the same way, in 3rdparty/musashi.
 
 
 What is used

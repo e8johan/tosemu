@@ -9,8 +9,8 @@ jobs:
     run-tests:
         runs-on: ubuntu-latest
         steps:
-            # The VDI comes from the EmuTOS submodule, which a plain checkout
-            # leaves as an empty directory
+            # The 68000 and the VDI come from the Musashi and EmuTOS
+            # submodules, which a plain checkout leaves as empty directories
             - uses: actions/checkout@v2
               with:
                 submodules: recursive

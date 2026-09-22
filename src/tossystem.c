@@ -47,6 +47,7 @@
 #include "interrupt.h"
 #include "dongle.h"
 #include "shifter.h"
+#include "musashi.h"
 
 #include "m68k.h"
 
@@ -1387,6 +1388,7 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
     int i;
 
     m68k_init();
+    musashi_hook_opcodes();
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
     m68k_pulse_reset();
 
@@ -1427,8 +1429,7 @@ static void start_cpu(struct tos_environment *te, uint32_t basepage)
      * handler on the system timer - see interrupt_tick - and one left at seven
      * would never hear them.
      */
-    m68k_set_reg(M68K_REG_SR,
-                 (m68k_get_reg(0, M68K_REG_SR) & ~0x0700u) | 0x0300u);
+    musashi_set_sr((m68k_get_reg(0, M68K_REG_SR) & ~0x0700u) | 0x0300u);
 
     if (basepage == 0x800)
     {
