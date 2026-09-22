@@ -25,12 +25,6 @@
   built without it: M68K_EMULATE_TRACE is off. MonST's step runs the program
   on to its next breakpoint or its end. What turning it on costs every other
   instruction is the question.
-- A machine without interrupts has no timer C, so a handler a program hangs
-  on the system timer is never called, where on an ST it would have been
-  called two hundred times a second whatever else the program asked for.
-  MonST is one: it gives the screen back to the program it is running forty
-  ticks after starting it, so a GEM program run under MonST stays behind
-  MonST's own picture unless interrupts were asked for.
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.
@@ -84,9 +78,9 @@
   in it, and the raw backend - the one meant for the USB device somebody
   actually plugs in - has never been opened against a device that exists.
 - There is no way to say no to interrupts once something has implied them. A
-  MIDI port turns them on and so does the key in the cartridge port, and each
-  of those is an or against the setting rather than a default the setting can
-  overrule - so interrupts = no on a command line that also names a port is
+  MIDI port turns them on, so does the key in the cartridge port and so does
+  a program putting its own handler on the system timer, and each of those is
+  an or against the setting rather than a default the setting can overrule - so interrupts = no on a command line that also names a port is
   simply not heard. Nobody has wanted to yet, and the suite depends on the
   present behaviour: c-midi sends bytes on a line that says no to interrupts,
   and they only go out because the port overrode it. What would close it is

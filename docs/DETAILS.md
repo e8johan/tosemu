@@ -663,6 +663,14 @@ the other end - see *The key in the cartridge port* above.
 `[machine] interrupts = yes` turns that on without either, which is how the
 test suite reaches any of it.
 
+And so does a program putting a handler of its own on the system timer, part
+way through a run. On an ST that timer ran whatever anybody asked for, so no
+program ever asked, and a handler put there is the only way one has of saying
+it wants it. A debugger is the usual case - MonST gives the screen back to the
+program it is running forty ticks after starting it. Every program starts at
+the interrupt mask TOS gave it, three, so that one that asks this way hears the
+answer.
+
 It is off otherwise, and that is deliberate rather than cautious: it changes
 what the machine *is* rather than what it is plugged into, and the overwhelming
 majority of TOS programs neither want nor tolerate one that interrupts them.
@@ -672,7 +680,8 @@ its vector, and from then on the routine is called - between the instructions of
 a running program, and while the application is asleep in `evnt_multi`, which is
 where a sequencer spends most of its time. A handler must clear its own
 in-service bit the way every TOS handler does, or the MFP holds its channel off
-and it is called exactly once.
+and it is called exactly once - except one that chains to the system timer's,
+which ends the interrupt for it the way TOS's does.
 
 Bytes arriving go the whole way round: the ACIA says one is there, the MFP
 raises its channel, and whatever is on `midivec` puts it in the buffer `Iorec`

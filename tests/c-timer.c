@@ -162,11 +162,74 @@ static void read_the_vector(void)
     vector_before = *(volatile long *)TIMER_A_VECTOR;
 }
 
+/* And the vertical blank's count, which a machine keeps whether or not it
+ * interrupts - the one clock a wait here can be sure of */
+#define FRCLOCK (0x466L)
+
+static unsigned long frames_now;
+
+static void read_the_frames(void)
+{
+    frames_now = *(volatile unsigned long *)FRCLOCK;
+}
+
+static unsigned long frames_reading(void)
+{
+    Supexec(read_the_frames);
+
+    return frames_now;
+}
+
+/*
+ * A handler that shares the system timer with the system, and has it end
+ * the interrupt. If what it chains to does not, the channel stays in service
+ * and this is called once; and on a machine that was started without
+ * interrupts, putting it there is what asks for them. A fifth of a second of
+ * two hundred hertz is forty.
+ *
+ * Bounded by the frames as well as the timer, because on a machine that never
+ * started its clock the timer's count would never move and this would wait
+ * for ever: two seconds of frames is long past a fifth of one.
+ */
+static void system_timer(void)
+{
+    unsigned long started, frames;
+    long seen;
+
+    Supexec(chain_timer_c);
+
+    started = clock_reading();
+    frames = frames_reading();
+
+    while (clock_reading() - started < 40 && frames_reading() - frames < 100)
+        ;
+
+    Supexec(unchain_timer_c);
+
+    seen = chained_ticks;
+
+    printf("# a handler chained to the system timer's ran %ld times\n", seen);
+
+    check(seen >= 10, 1, "a handler that chains to the system timer's is "
+                         "called again");
+}
+
 int main(int argc, char **argv)
 {
     unsigned long started;
     long seen;
     long spins;
+
+    /* The system timer on its own, which is the part that does not need the
+     * machine to have been started with interrupts */
+    if (argc > 1 && strcmp(argv[1], "system") == 0)
+    {
+        system_timer();
+
+        printf("1..%d\n", n);
+
+        return fails;
+    }
 
     /*
      * There is something on the vector before anything is installed, and it is
@@ -230,30 +293,7 @@ int main(int argc, char **argv)
     /* Put it back, so that nothing is left running after this returns */
     Xbtimer(TIMER_A, 0, 0, 0L);
 
-    /*
-     * A handler that shares the system timer with the system, and has it end
-     * the interrupt. If what it chains to does not, the channel stays in
-     * service and this is called once: a fifth of a second of two hundred
-     * hertz is forty.
-     */
-    Supexec(chain_timer_c);
-
-    started = clock_reading();
-
-    for (spins = 0; spins < 200000000L; spins++)
-    {
-        if (clock_reading() - started >= 40)
-            break;
-    }
-
-    Supexec(unchain_timer_c);
-
-    seen = chained_ticks;
-
-    printf("# a handler chained to the system timer's ran %ld times\n", seen);
-
-    check(seen >= 10, 1, "a handler that chains to the system timer's is "
-                         "called again");
+    system_timer();
 
     printf("1..%d\n", n);
 

@@ -517,6 +517,14 @@ check: all
 	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) out
+	# And a handler on the system timer on a machine nobody asked to
+	# interrupt, where putting it there is the asking: on an ST that timer
+	# ran whatever anybody said, so no program ever said. Unset rather than
+	# said no, a word said being a different question.
+	env -u TOSEMU_INTERRUPTS \
+	  $(TOSEMU_WITH_INTERRUPTS) test-c-timer system > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) out
 	# Which screen the machine turned out to have, which an application is
 	# told once and lays everything out for. Every one of them, the first
 	# without asking because that is the default, and then a run where a
