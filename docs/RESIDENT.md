@@ -267,10 +267,10 @@ the TRAP #8, #9 and #10 vectors:
 1c02:  lea %pc@(0x1f74),%a0 ; movel %a0,0xa4     ; trap #9
 ```
 
-Musashi is patched here to intercept traps 1, 2, 13 and 14 only, and those
-only while no program has hooked their vectors
-([m68kcpu.h](src/Musashi/m68kcpu.h)), so a `trap #8` goes through the ordinary
-exception path and lands on whatever the vector holds - which is MROS. Cubase
+tosemu intercepts traps 1, 2, 13 and 14 only, and those only while no program
+has hooked their vectors ([musashi.c](src/musashi.c)), so a `trap #8` goes
+through the ordinary exception path and lands on whatever the vector holds -
+which is MROS. Cubase
 calling into MROS should work with no further emulator support.
 
 Shared-memory `Pexec` therefore stays a `TODO` entry for Devpac 3 rather than

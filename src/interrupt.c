@@ -36,6 +36,7 @@
 #include "tossystem.h"
 #include "cpu.h"
 #include "xbios.h"
+#include "musashi.h"
 #include "m68k.h"
 
 /*
@@ -556,9 +557,8 @@ int tos_int_ack(int level)
      * exactly the arrangement asking to acknowledge turns off - so a line left
      * up is the same interrupt taken again the instant the handler returns.
      *
-     * Safe from in here: it sets the level to nothing and then looks for
-     * something above the mask, and there is nothing above nothing. What is
-     * still pending in the chip is raised again by the next tick.
+     * Safe from in here: it only records the level. What is still pending in
+     * the chip is raised again by the next tick.
      */
     m68k_set_irq(0);
 
@@ -632,7 +632,7 @@ static void run_routine(uint32_t routine, uint32_t d0)
                "returning\n", routine, INTERRUPT_STEPS);
     }
 
-    m68k_set_reg(M68K_REG_SR, sr);
+    musashi_set_sr(sr);
     m68k_set_reg(M68K_REG_ISP, isp);
     for (i = 0; i < 8; i++)
         m68k_set_reg(M68K_REG_D0 + i, d[i]);
@@ -842,7 +842,7 @@ static void run_handler(int channel, uint32_t handler)
 
     /* Masked at the level being serviced, so that a handler is not interrupted
      * by its own channel going off again while it runs */
-    m68k_set_reg(M68K_REG_SR, (sr & ~0x0700u) | 0x0600u | 0x2000u);
+    musashi_set_sr((sr & ~0x0700u) | 0x0600u | 0x2000u);
     m68k_set_reg(M68K_REG_PC, handler);
 
     running = 1;
@@ -876,7 +876,7 @@ static void run_handler(int channel, uint32_t handler)
      * a7 under the wrong one. Then the supervisor stack pointer by hand, the
      * machine's own not being where the handler was left standing.
      */
-    m68k_set_reg(M68K_REG_SR, sr);
+    musashi_set_sr(sr);
     m68k_set_reg(M68K_REG_ISP, isp);
     for (i = 0; i < 8; i++)
         m68k_set_reg(M68K_REG_D0 + i, d[i]);
@@ -945,7 +945,7 @@ static void dispatch(int nested)
          * the hook does, which is to say on the instruction that was about to
          * happen anyway.
          */
-        m68k_set_irq(6);
+        musashi_interrupt(6);
         return;
     }
 

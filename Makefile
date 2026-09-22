@@ -24,16 +24,21 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               dongle.c \
               linea.c shifter.c video.c \
-              tossystem.c utils.c memory.c cpu.c
+              tossystem.c utils.c memory.c cpu.c musashi.c
 
-# Hand-written Musashi files
-MUSASHIFILES = Musashi/m68kcpu.c Musashi/m68kdasm.c
+# The 68000, which comes from Musashi. These are built as they stand, out of
+# the submodule, and everything that adapts them is in src/musashi.c and
+# src/musashiconf.h.
+#
+# The submodule's softfloat/softfloat.c is left out on purpose - see the end of
+# src/musashi.c.
+MUSASHI = 3rdparty/musashi
+MUSASHIFILES = $(MUSASHI)/m68kcpu.c $(MUSASHI)/m68kdasm.c
 
 # Generated Musashi files. They are written rather than kept, so they live
 # under $(GEN) with everything else nobody wrote - the header among them, which
-# is why it is named separately from the sources that become objects.
-MUSASHIGENERATEDSOURCES = $(GEN)/m68kops.c $(GEN)/m68kopac.c $(GEN)/m68kopdm.c \
-                          $(GEN)/m68kopnz.c
+# is why it is named separately from the source that becomes an object.
+MUSASHIGENERATEDSOURCES = $(GEN)/m68kops.c
 MUSASHIGENERATEDFILES = $(MUSASHIGENERATEDSOURCES) $(GEN)/m68kops.h
 
 # The VDI, which comes from EmuTOS. These are built as they stand, out of the
@@ -191,12 +196,29 @@ endif
 # headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
 # - are included by name, and where they were written is the build's business
 # rather than something every source has to know.
-CFLAGS = $(OPT) -I$(GEN) -I$(SRC)/Musashi -I$(SRC) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
+#
+# MUSASHI_CNF is how Musashi is told to read src/musashiconf.h in place of the
+# m68kconf.h beside it. Every source that includes m68k.h wants it.
+MUSASHICNF = -DMUSASHI_CNF='"musashiconf.h"'
+CFLAGS = $(OPT) -I$(GEN) -I$(MUSASHI) -I$(SRC) $(MUSASHICNF) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
 # looks for them
-LIBS = -lc $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS)
+LIBS = -lc -lm $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS)
+
+# Musashi has its own idea of what compiles cleanly too - the opcode handlers
+# m68kmake writes declare variables some of them never use - so it gets flags
+# of its own, without the warnings, the way EmuTOS does below.
+#
+# Every function and every table goes in a section of its own, so that the
+# emulator's link can leave out whatever nothing refers to. m68kcpu.c includes
+# the FPU and the MMU of the later processors, which came from MAME, whatever
+# the configuration says; on a 68000 nothing calls either, and
+# MUSASHILDFLAGS is what drops them.
+MUSASHIFLAGS = $(OPT) -I$(GEN) -I$(MUSASHI) -I$(SRC) $(MUSASHICNF) -fno-pie \
+               -ffunction-sections -fdata-sections
+MUSASHILDFLAGS = -Wl,--gc-sections
 
 # EmuTOS has its own idea of what compiles cleanly, so it gets its own flags.
 #
@@ -261,6 +283,13 @@ $(EMUTOS)/%.c:
 	@echo "    git submodule update --init"
 	@false
 
+# And the same for Musashi's.
+$(MUSASHI)/%.c:
+	@echo "The Musashi submodule is not there, so there is no 68000 to build."
+	@echo "Run:"
+	@echo "    git submodule update --init"
+	@false
+
 # The programs run under the emulator. Their sources are in tests/ and demos/
 # and what is built from them lands under $(BUILD) - see tests/Makefile, which
 # explains why the suite runs there rather than where it is written.
@@ -286,11 +315,13 @@ lattice-tests: $(BIN)/tosemu
 # Every object mirrors the path of the source it was compiled from, under
 # $(OBJ) rather than next to it. The generated sources have no place in src/ to
 # mirror, so they get one of their own under $(OBJ)/gen.
-OBJECTS = $(patsubst %.c,$(OBJ)/%.o,$(SOURCEFILES) $(MUSASHIFILES)) \
-          $(patsubst $(GEN)/%.c,$(OBJ)/gen/%.o,$(MUSASHIGENERATEDSOURCES) $(WAYLANDGENERATED))
-# Objects from the submodule are built outside it. It is a checkout of somebody
+#
+# Objects from a submodule are built outside it. It is a checkout of somebody
 # else's tree, and leaving build output in it means git reports it as dirty for
 # work nobody did.
+OBJECTS = $(patsubst %.c,$(OBJ)/%.o,$(SOURCEFILES)) \
+          $(patsubst $(MUSASHI)/%.c,$(OBJ)/musashi/%.o,$(MUSASHIFILES)) \
+          $(patsubst $(GEN)/%.c,$(OBJ)/gen/%.o,$(MUSASHIGENERATEDSOURCES) $(WAYLANDGENERATED))
 EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,$(OBJ)/emutos/%.o,$(EMUTOSFILES)) \
                 $(patsubst %.c,$(OBJ)/%.o,$(EMUVDIFILES))
 # The daemon's own two, which are none of the emulator's business and so are
@@ -298,7 +329,7 @@ EMUTOSOBJECTS = $(patsubst $(EMUTOS)/%.c,$(OBJ)/emutos/%.o,$(EMUTOSFILES)) \
 # see bin/tosaesd below for why those two and nothing else.
 DAEMONOBJECTS = $(OBJ)/aesd.o $(OBJ)/aesdtray.o
 
-# How each of the four kinds of source is compiled. There is no built-in rule
+# How each of the five kinds of source is compiled. There is no built-in rule
 # to fall back on any more - the built-in one writes the object next to its
 # source, which is the whole of what this file is arranged to stop - so each
 # says so for itself.
@@ -320,6 +351,17 @@ $(OBJ)/%.o: $(SRC)/%.c Makefile
 $(OBJ)/gen/%.o: $(GEN)/%.c Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+# Musashi's, out of the submodule and out of m68kmake, with MUSASHIFLAGS. The
+# generated one is named outright, which is what takes it away from the rule
+# above.
+$(OBJ)/musashi/%.o: $(MUSASHI)/%.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(MUSASHIFLAGS) -MMD -MP -c -o $@ $<
+
+$(OBJ)/gen/m68kops.o: $(GEN)/m68kops.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(MUSASHIFLAGS) -MMD -MP -c -o $@ $<
 
 # The EmuTOS sources and the code adapting them are the only ones built with
 # EMUTOSFLAGS, hence a pair of rules of their own. Which of the two applies is
@@ -401,7 +443,7 @@ $(EMUTOSOBJECTS): $(EMUTOSGENERATED)
 # Main emulator target
 $(BIN)/tosemu: $(OBJECTS) $(EMUTOSOBJECTS)
 	@mkdir -p $(BIN)
-	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
+	$(LD) $(LDFLAGS) $(MUSASHILDFLAGS) $^ $(LIBS) -o $@
 
 # The daemon several emulators have in common. It links none of the emulator's
 # own workings: nothing it does involves a 68000, and everything it says is in
@@ -657,15 +699,15 @@ $(OBJECTS): $(MUSASHIGENERATEDFILES)
 # once at a time.
 $(MUSASHIGENERATEDFILES): $(GEN)/.stamp
 
-$(GEN)/.stamp: $(BIN)/m64kmake $(SRC)/Musashi/m68k_in.c
+$(GEN)/.stamp: $(BIN)/m64kmake $(MUSASHI)/m68k_in.c
 	@mkdir -p $(GEN)
-	$(BIN)/m64kmake $(GEN)/ $(SRC)/Musashi/m68k_in.c > /dev/null
+	$(BIN)/m64kmake $(GEN)/ $(MUSASHI)/m68k_in.c > /dev/null
 	touch $@
 
 # The m64kmake generator. It is a build tool rather than part of tosemu, but
 # it is compiled with the same flags, so it needs the same link option to go
 # with the -fno-pie in them.
-$(BIN)/m64kmake: $(SRC)/Musashi/m68kmake.c
+$(BIN)/m64kmake: $(MUSASHI)/m68kmake.c
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 

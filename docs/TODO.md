@@ -282,14 +282,6 @@
   somewhere. It is a larger piece of work than the two that came before it and
   it is the one that would finish the job.
 
-- m68kmake.c, Musashi's code generator, warns in five places about writing a
-  path into a buffer that a long enough argument would overflow - and above
-  them is the strcpy of argv[1] that would do the overflowing. It cannot happen
-  from the makefile, which hands it build/gen/, and it only shows in a build
-  with OPT set to something without -O, gcc needing the optimiser to see far
-  enough at -O2 to stop worrying. So it is a real hole in a program nobody runs
-  by hand, which is why it is written down rather than fixed.
-
 - Nothing in make check reaches the parts of a window's frame that ask the
   desktop for something: dragging it by the title bar, pulling the size box,
   and the window menu on the other button. All three want the serial of an

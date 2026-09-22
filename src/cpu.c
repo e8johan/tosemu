@@ -22,16 +22,17 @@
 #include "cpu.h"
 
 #include "utils.h"
+#include "musashi.h"
 #include "m68k.h"
 
 void enable_supervisor_mode()
 {
-    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
+    musashi_set_sr(m68k_get_reg(0, M68K_REG_SR) | 0x2000); /* set the CPU in supervisor mode */
 }
 
 void disable_supervisor_mode()
 {
-    m68k_set_reg(M68K_REG_SR, m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in supervisor mode */
+    musashi_set_sr(m68k_get_reg(0, M68K_REG_SR) & (~0x2000)); /* set the CPU in supervisor mode */
 }
 
 int is_supervisor_mode_enabled()

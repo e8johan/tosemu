@@ -58,6 +58,7 @@
 #include <sys/wait.h>
 #include <linux/limits.h>
 
+#include "musashi.h"
 #include "m68k.h"
 #include "cpu.h"
 #include "files.h"
@@ -243,10 +244,10 @@ static uint32_t child_ends(uint16_t code, int stays, uint32_t keep)
     /* The caller's mode first, with every interrupt held off, so that each
      * stack pointer lands in the register it belongs in and nothing is
      * taken on a stack that is about to be replaced. Then the mask it had. */
-    m68k_set_reg(M68K_REG_SR, c->sr | 0x0700);
+    musashi_set_sr(c->sr | 0x0700);
     m68k_set_reg(M68K_REG_USP, c->usp);
     m68k_set_reg(M68K_REG_ISP, c->isp);
-    m68k_set_reg(M68K_REG_SR, c->sr);
+    musashi_set_sr(c->sr);
 
     free(c);
 
@@ -627,7 +628,7 @@ static uint32_t pexec_go(uint32_t basepage, int release)
      * the one it finds when the mode changes. The supervisor stack is left
      * where the caller had it, which keeps what the caller has on it. */
     m68k_set_reg(M68K_REG_USP, sp);
-    m68k_set_reg(M68K_REG_SR, c->sr & 0x0700);
+    musashi_set_sr(c->sr & 0x0700);
 
     return GEMDOS_E_OK;
 }

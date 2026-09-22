@@ -259,7 +259,7 @@ void linea_init(int16_t width, int16_t height, int16_t planes)
 }
 
 /*
- * The line-A exception, called from Musashi in place of taking it.
+ * The line-A exception, called from musashi.c in place of taking it.
  *
  * Returns whether it was dealt with. Anything that is not one of the sixteen
  * is left to the processor, which vectors it the way the hardware would - a

@@ -277,6 +277,19 @@ int tos_stay_resident(uint32_t keep);
 uint32_t tos_current_basepage(void);
 void tos_set_current_basepage(uint32_t basepage);
 
+/*
+ * The four OS traps, answered on the host - see musashi.c, which calls these
+ * from inside the processor.
+ *
+ * m68k_trap makes the call a trap through `vector` asks for. Whether a program
+ * has put a handler of its own on that vector is m68k_trap_vectored, and then
+ * the trap is taken through it. m68k_trap_stub is which OS trap the handler at
+ * `address` stands in for, or 0 when there is none there.
+ */
+void m68k_trap(unsigned int vector);
+int m68k_trap_vectored(unsigned int vector);
+unsigned int m68k_trap_stub(unsigned int address);
+
 void halt_execution();
 
 /* Whether that has happened. The loop that runs the machine reads it for

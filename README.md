@@ -222,14 +222,14 @@ Additional Licenses
 TOSEMU depends on other components available under other licenses than GPLv2. 
 These are listed below:
 
-The contents of the `src/Musashi` subdirectory and `src/m68kconf.h`, derived from 
+The Musashi submodule in `3rdparty/musashi`, from
 https://github.com/kstenerud/Musashi, is subject to the following license:
 
 > MUSASHI
-> Version 3.4
+> Version 4.60
 > 
 > A portable Motorola M680x0 processor emulation engine.
-> Copyright 1998-2001 Karl Stenerud.  All rights reserved.
+> Copyright Karl Stenerud.  All rights reserved.
 > 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal
@@ -240,4 +240,11 @@ https://github.com/kstenerud/Musashi, is subject to the following license:
 > 
 > The above copyright notice and this permission notice shall be included in
 > all copies or substantial portions of the Software.
+
+The submodule also carries code for the later processors that TOSEMU does not
+use, and none of it is in the program that is built. SoftFloat, which their
+FPU calls, is neither compiled nor linked - see `src/musashi.c`. The FPU and
+the MMU themselves, which came from MAME, are compiled as part of `m68kcpu.c`
+but not linked either: nothing on a 68000 calls them, and the link leaves them
+out - see `MUSASHIFLAGS` in the Makefile.
 

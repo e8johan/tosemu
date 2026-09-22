@@ -18,29 +18,28 @@
  *
  */
 
-#ifndef LINEA_H
-#define LINEA_H
-
-#include <stdint.h>
+#ifndef MUSASHI_H
+#define MUSASHI_H
 
 /*
- * Lays out the line-A variables in the machine's memory and fills in what the
- * screen decides. Called once the machine is built, since the block is written
- * through the emulated memory and the screen has to be settled first.
- *
- * The sizes are the ones the memory map was built from, so that what a program
- * reads out of the block describes the screen it was actually given.
+ * Puts tosemu's own handlers in for every line-A and line-F opcode. Called
+ * after m68k_init, which is what builds the table they go into.
  */
-void linea_init(int16_t width, int16_t height, int16_t planes);
+void musashi_hook_opcodes(void);
 
 /*
- * Where the line-A variables begin, as the machine sees it, or zero before
- * linea_init has run. This is the address $a000 answers with.
+ * Raises the interrupt line to `level` and takes the interrupt now if the
+ * mask lets it through, frame built and program counter on the handler before
+ * this returns. Only from between two instructions - the instruction hook.
  */
-uint32_t linea_vars(void);
+void musashi_interrupt(int level);
 
-/* A line-A opcode, answered on the host. Returns whether it was dealt with -
- * see musashi.c, which calls it. */
-int m68k_linea(unsigned int opcode);
+/*
+ * Writes the status register the way the processor does: a change of mode
+ * swaps a7 for the other stack pointer, and an interrupt the new mask lets
+ * through is taken. m68k_set_reg(M68K_REG_SR) does neither - it only files the
+ * bits away - which is never what anything here means by it.
+ */
+void musashi_set_sr(unsigned int value);
 
-#endif /* LINEA_H */
+#endif /* MUSASHI_H */

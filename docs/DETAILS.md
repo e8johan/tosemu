@@ -25,9 +25,9 @@ programs that come out land in `bin/`. So a source directory listing is what
 was written and nothing else, and `make clean` is the deletion of two
 directories rather than a hunt.
 
-The VDI comes from EmuTOS rather than being written again, so the tree is no
-longer self contained: it carries EmuTOS as a submodule in `3rdparty/emutos`.
-Clone with
+The 68000 is Musashi and the VDI comes from EmuTOS rather than being written
+again, so the tree is not self contained: it carries both as submodules, in
+`3rdparty/musashi` and `3rdparty/emutos`. Clone with
 
     git clone --recurse-submodules <url>
 
@@ -35,12 +35,13 @@ or, in a tree that is already checked out,
 
     git submodule update --init
 
-The submodule is never edited. Everything that adapts EmuTOS to a hosted build
-lives in `src/emuvdi/`, which has a README of its own explaining how. The
-`make emuvdi-check` target draws with the ported VDI and compares the result
-against what it should have drawn; unlike the other tests it builds for the
-host rather than for the emulated machine, because what it is checking is the
-port.
+Neither submodule is edited. Everything that adapts Musashi is in
+`src/musashi.c` and `src/musashiconf.h`. Everything that adapts EmuTOS to a
+hosted build lives in `src/emuvdi/`, which has a README of its own explaining
+how. The `make emuvdi-check` target draws with the ported VDI and compares the
+result against what it should have drawn; unlike the other tests it builds for
+the host rather than for the emulated machine, because what it is checking is
+the port.
 
 A few of the files it is built from are generated rather than carried: the
 AES's resource and the mouse forms are kept as a `.rsc` and a `.def` and turned
@@ -1005,14 +1006,14 @@ Additional Licenses
 TOSEMU depends on other components available under other licenses than GPLv2. 
 These are listed below:
 
-The contents of the `src/Musashi` subdirectory and `src/m68kconf.h`, derived from 
+The Musashi submodule in `3rdparty/musashi`, from
 https://github.com/kstenerud/Musashi, is subject to the following license:
 
 > MUSASHI
-> Version 3.4
+> Version 4.60
 > 
 > A portable Motorola M680x0 processor emulation engine.
-> Copyright 1998-2001 Karl Stenerud.  All rights reserved.
+> Copyright Karl Stenerud.  All rights reserved.
 > 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal
@@ -1023,6 +1024,13 @@ https://github.com/kstenerud/Musashi, is subject to the following license:
 > 
 > The above copyright notice and this permission notice shall be included in
 > all copies or substantial portions of the Software.
+
+The submodule also carries code for the later processors that TOSEMU does not
+use, and none of it is in the program that is built. SoftFloat, which their
+FPU calls, is neither compiled nor linked - see `src/musashi.c`. The FPU and
+the MMU themselves, which came from MAME, are compiled as part of `m68kcpu.c`
+but not linked either: nothing on a 68000 calls them, and the link leaves them
+out - see `MUSASHIFLAGS` in the Makefile.
 
 
 Testing it

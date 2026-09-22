@@ -25,8 +25,10 @@ runs through the whole program and most of the interesting bugs live on it.
       screen.c                   which screen the machine has
       settings.c                 everything tosemu can be told, and where from
       aesd.c aesclient.c         the daemon emulators share, and the client
-      Musashi/ rsc/              the 68000 core, and the mark for the panel
-    3rdparty/emutos/             the submodule. Read only. Never edited.
+      musashi.c musashiconf.h    the 68000 core, adapted
+      rsc/                       the mark for the panel
+    3rdparty/musashi/            the 68000 core. A submodule, read only
+    3rdparty/emutos/             the VDI and AES. A submodule, read only
     tests/ demos/                68000 programs run under the emulator
     build/ bin/                  what the build makes of all of it
 
@@ -38,6 +40,11 @@ under `build/`, and the programs come out in `bin/`. See the Makefile.
 Nothing in it is edited — everything that adapts it lives in `src/emuvdi/`. It is
 also the authority on what the AES and VDI are supposed to do: when something
 draws wrongly, read the EmuTOS source for the call before theorising.
+
+`3rdparty/musashi` is the same arrangement, pinned to a commit on Musashi's
+master, which has no tags. Nothing in it is edited either: what its
+configuration cannot say is done from `src/musashi.c`, the one file here that
+includes Musashi's internal `m68kcpu.h`.
 
 ## House style
 
