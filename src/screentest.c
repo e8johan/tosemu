@@ -225,6 +225,13 @@ int main(void)
           "640x400 in sixteen colours is no machine's");
     check(screen_rez(1136, 480, 1), -1, "and nor is a display's size");
 
+    /* And how tall a pixel of one is, which is square but for ST medium */
+    check(screen_aspect(640, 200, 2), 2, "ST medium's pixels are twice as tall");
+    check(screen_aspect(320, 200, 4), 1, "ST low's are square");
+    check(screen_aspect(640, 400, 1), 1, "and so are ST high's");
+    check(screen_aspect(640, 200, 4), 1,
+          "640x200 in sixteen colours is no machine's, and square");
+
     printf("1..%d\n", n);
 
     return fails ? 1 : 0;

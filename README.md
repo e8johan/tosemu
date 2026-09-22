@@ -83,7 +83,7 @@ The table below summarizes the available options:
 | In the file            | In the environment   | What it does
 | ---------------------- | -------------------- | ---------------------------- |
 | `[screen] mode`        | `TOSEMU_SCREEN`      | Pick the screen mode among `low`, `medium`, `high`, `tt-medium`, `tt-high`, `native-mono`, `native-color`, `display-mono`, and `display-color`. The difference between `native-*` and `display-*` is that display uses all of the screen while native attempts to avoid docks and such areas. |
-| `[screen] scale`       | `TOSEMU_SCALE`       | Integer scaling of the graphical contents. |
+| `[screen] scale`       | `TOSEMU_SCALE`       | Integer scaling of the graphical contents, doubled vertically for `medium`. |
 | `[screen] output`      | `TOSEMU_OUTPUT`      | Which output the native screen modes are calculated from, e.g. `DP-1`. Use `wayland-info` to list your available outputs. |
 | `[screen] decorations` | `TOSEMU_DECORATIONS` | Choose between host decorations (e.g. window title bars), `desktop`, or client side decorations, `gem`. |
 | `[screen] picture`     | `TOSEMU_PICTURE`     | `hide` (the default) or `keep` full screen windows, e.g. when a program draws its own screen. |
