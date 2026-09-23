@@ -236,6 +236,15 @@ check: all
 	  ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) video.ppm picture.tosemu
+	# And told to show it always, which is the screen the machine came with
+	# on the glass from the start - what a program that draws there and
+	# never moves the base needs, there being no moment where it says it
+	# has taken the hardware over.
+	$(RM) video.ppm
+	TOSEMU_PICTURE=always TOSEMU_SCREENSHOT=video.ppm $(TOSEMU) \
+	  test-c-video always > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	$(RM) video.ppm
 	# Reading the console, with somebody typing at it - which is what the
 	# sleeps and the printfs are. Three of these calls have to be able to
 	# wait and three have to be able not to, and getting either wrong is

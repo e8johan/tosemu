@@ -29,6 +29,7 @@
 #include "gem_p.h"
 #include "gfx.h"
 #include "memory.h"
+#include "screen.h"
 #include "settings.h"
 #include "shifter.h"
 #include "surface.h"
@@ -76,6 +77,23 @@ static long long now_ns(void)
  * value is not a mode, and an ST showed it as the high one. */
 static void shape(int16_t *width, int16_t *height, int16_t *planes)
 {
+    /*
+     * Except on the screen the machine was built with, which is whatever shape
+     * it was asked for and need not be one the register can say - a TT screen
+     * is described by its plane count alone, see shifter_init. The base being
+     * there is the picture showing that screen, which is what `always` is for.
+     */
+    if (shifter_base() == tos_screen_base())
+    {
+        static int16_t was_w, was_h, was_p;
+
+        if (!was_w)
+            screen_mode(&was_w, &was_h, &was_p);
+
+        *width = was_w, *height = was_h, *planes = was_p;
+        return;
+    }
+
     switch (shifter_rez())
     {
     case 0:
@@ -90,34 +108,40 @@ static void shape(int16_t *width, int16_t *height, int16_t *planes)
     }
 }
 
-/*
- * Whether the picture stays up when the screen is handed back, which is a
- * setting - see TOSEMU_PICTURE in settings.c. Worked out once, being asked
- * about fifty times a second.
- */
-static int keeps(void)
+/* What the picture does, which is a setting - see TOSEMU_PICTURE in
+ * settings.c */
+enum {
+    HIDE,       /* steps aside when the screen is handed back */
+    KEEP,       /* stays up once a program has taken the hardware over */
+    ALWAYS      /* is up from the start, whoever the screen belongs to */
+};
+
+/* Worked out once, being asked about fifty times a second */
+static int wanted(void)
 {
-    static int decided, keep;
+    static int decided, mode;
     const char *said;
 
     if (decided)
-        return keep;
+        return mode;
 
     decided = 1;
     said = setting("TOSEMU_PICTURE");
 
     if (!said || !*said || strcmp(said, "hide") == 0)
-        keep = 0;
+        mode = HIDE;
     else if (strcmp(said, "keep") == 0)
-        keep = 1;
+        mode = KEEP;
+    else if (strcmp(said, "always") == 0)
+        mode = ALWAYS;
     else
     {
-        printf("tosemu: picture = %s, which is neither hide nor keep, "
+        printf("tosemu: picture = %s, which is none of hide, keep and always, "
                "so it is hidden\n", said);
-        keep = 0;
+        mode = HIDE;
     }
 
-    return keep;
+    return mode;
 }
 
 int video_taken(void)
@@ -179,7 +203,7 @@ long video_settle(void)
 {
     long home;
 
-    if (!showing || keeps())
+    if (!showing || wanted() != HIDE)
         return -1;
 
     home = home_for(now_ns());
@@ -207,7 +231,14 @@ void video_frame(void)
 
     if (!taken)
     {
-        if (shifter_base() == tos_screen_base())
+        /*
+         * Nothing until a program points the base somewhere of its own -
+         * unless the picture is to be up whatever the base says, which is what
+         * `always` is: a program that draws on the screen the machine came
+         * with, as every program that is not a GEM one does, is then shown
+         * doing it rather than drawing where nobody can see.
+         */
+        if (shifter_base() == tos_screen_base() && wanted() != ALWAYS)
             return;
 
         taken = 1;
@@ -240,7 +271,7 @@ void video_frame(void)
         showing = 1;
         changed = 1;
     }
-    else if (showing && home >= HANDED_BACK_MS && !keeps()
+    else if (showing && home >= HANDED_BACK_MS && wanted() == HIDE
              && gem_has_windows())
         step_aside();
 
@@ -278,7 +309,7 @@ void video_frame(void)
      * stays up, which is what the glass would have gone on showing.
      */
     bytes = tos_mem_span(shifter_base(),
-                         (uint32_t)width / 16 * planes * 2 * height);
+                         ((uint32_t)width + 15) / 16 * 2 * planes * height);
     if (!bytes)
         return;
 
@@ -318,7 +349,7 @@ void video_tick(void)
 
     countdown = TICK_INSTRUCTIONS;
 
-    if (!taken && shifter_base() == tos_screen_base())
+    if (!taken && shifter_base() == tos_screen_base() && wanted() != ALWAYS)
         return;
 
     if (now_ns() - last_frame < FRAME_NS)

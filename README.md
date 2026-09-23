@@ -86,7 +86,7 @@ The table below summarizes the available options:
 | `[screen] scale`       | `TOSEMU_SCALE`       | Integer scaling of the graphical contents, doubled vertically for `medium`. |
 | `[screen] output`      | `TOSEMU_OUTPUT`      | Which output the native screen modes are calculated from, e.g. `DP-1`. Use `wayland-info` to list your available outputs. |
 | `[screen] decorations` | `TOSEMU_DECORATIONS` | Choose between host decorations (e.g. window title bars), `desktop`, or client side decorations, `gem`. |
-| `[screen] picture`     | `TOSEMU_PICTURE`     | `hide` (the default) or `keep` full screen windows, e.g. when a program draws its own screen. |
+| `[screen] picture`     | `TOSEMU_PICTURE`     | `hide` (the default) or `keep` full screen windows, e.g. when a program draws its own screen, or show the screen memory. For programs that only show the full screen, use `always`. |
 | `[machine] memory`     | `TOSEMU_MEMORY`      | System memory, e.g. `512k`, `1m` or `max`, where max is the maximum memory the memory map can accomodate. |
 | `[console] output`     | `TOSEMU_CONSOLE`     | Use `screen` to output the console to the TOS screen, or `terminal` to output it to the host terminal. |
 | `[files] base`         | `TOS_BASE_PATH`      | The root of the `C:` drive, as TOS sees it. |

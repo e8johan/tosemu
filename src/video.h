@@ -41,6 +41,12 @@
  * does both every time it starts the program it is debugging and every time
  * the program stops - which somebody using one may not want, so it can be
  * told to stay up instead; see TOSEMU_PICTURE in settings.c.
+ *
+ * Or to be up from the start, which is the other program that draws for
+ * itself: one that never moves the base at all, because the screen the machine
+ * came with is the screen it draws on. There is no moment there where it says
+ * it has taken the hardware over - it just writes where Physbase pointed - so
+ * nothing but being told shows it, and being told is what `always` is.
  */
 
 /* Brings the picture across now, and shows it if anything changed. Nothing
@@ -54,7 +60,8 @@ void video_tick(void);
 
 /* Whether a program has taken the video hardware over at all, which is a
  * program that has the screen the way a GEM program has - its console belongs
- * on the screen rather than on a terminal */
+ * on the screen rather than on a terminal. With `always` that is every program
+ * from the start, the picture being the screen from the start */
 int video_taken(void);
 
 /* And whether the picture is up now, in which case it is the screen: it is

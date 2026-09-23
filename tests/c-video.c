@@ -40,6 +40,12 @@
  * may want - then it stays for the window too. The run says which, by naming
  * keep on the command line alongside the setting.
  *
+ * Or to show it always, which is for a program that never moves the base at
+ * all: what it draws on the screen the machine came with is then shown the way
+ * a machine showed it, rather than nothing being shown until the base moves.
+ * That run says always, and the picture is up before anything has been moved
+ * and stays up for everything the keep run stays up for.
+ *
  * The run says where the screenshot goes and the screen it runs on, and this
  * reads the file through GEMDOS like any other.
  */
@@ -116,7 +122,8 @@ static unsigned short buffer[16000 + 128];
 
 int main(int argc, char **argv)
 {
-    int keep = (argc > 1 && strcmp(argv[1], "keep") == 0);
+    int always = (argc > 1 && strcmp(argv[1], "always") == 0);
+    int keep = always || (argc > 1 && strcmp(argv[1], "keep") == 0);
     unsigned short *screen;
     unsigned short old_colour = 0;
     long phys = (long)Physbase();
@@ -146,10 +153,30 @@ int main(int argc, char **argv)
     words = (long)width / 16 * planes * height;
     row = (long)width / 16 * planes;
 
-    /* Nothing is shown of a machine whose screen nobody has moved: its
-     * pictures are the VDI's, and this program has drawn none */
+    /*
+     * Nothing is shown of a machine whose screen nobody has moved: its
+     * pictures are the VDI's, and this program has drawn none.
+     *
+     * Told to show the picture always, what is shown is that screen - so a
+     * mark written into it is on the glass without the base having moved
+     * anywhere, which is the whole of what a program that never moves it
+     * needs. The mark is the one the handing back below looks for, and it
+     * stays there until the end.
+     */
+    if (always)
+        *(unsigned short *)phys = 0x8000;
+
     Vsync();
-    check(read_shot(), 0, "nothing is shown before the video base moves");
+
+    if (always)
+    {
+        check(read_shot(), 1, "the machine's own screen is shown from the start");
+        check(pixel(0, 0), colour_of(1), "and a mark written into it is on it");
+        check(pixel(width - 1, height - 1), colour_of(0),
+              "with the rest of it as it was");
+    }
+    else
+        check(read_shot(), 0, "nothing is shown before the video base moves");
 
     /* On the boundary an ST needed */
     screen = (unsigned short *)(((long)buffer + 255) & ~255L);
