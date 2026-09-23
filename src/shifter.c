@@ -46,6 +46,7 @@
 
 static uint32_t base;
 static uint8_t rez;
+static int rez_set;
 static uint8_t sync_mode = SYNC_50HZ;
 static uint16_t palette[SHIFTER_COLOURS];
 static unsigned changes;
@@ -74,6 +75,10 @@ void shifter_init(uint32_t screen, int16_t planes)
      * some other shape is described by how many planes it has - the one
      * thing the shifter's mode decides that a program reading it acts on */
     rez = (planes >= 4) ? 0 : ((planes == 2) ? 1 : 2);
+
+    /* Which is the machine saying what it is rather than a program asking for
+     * something, so it leaves the mode unset - see shifter_set_rez */
+    rez_set = 0;
 
     if (powered_up)
         return;
@@ -108,6 +113,17 @@ void shifter_set_base(uint32_t address)
 int16_t shifter_rez(void)
 {
     return rez;
+}
+
+void shifter_set_rez(int16_t mode)
+{
+    rez = (uint8_t)(mode & 0x03);
+    rez_set = 1;
+}
+
+int shifter_rez_set(void)
+{
+    return rez_set;
 }
 
 uint16_t shifter_colour(int index)
@@ -233,7 +249,7 @@ void shifter_area_write(struct _memarea *area, uint32_t address,
         sync_mode = value;
         break;
     case REG_REZ:
-        rez = value & 0x03;
+        shifter_set_rez((int16_t)(value & 0x03));
         break;
     default:
         other[offset] = value;

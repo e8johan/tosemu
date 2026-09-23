@@ -19,13 +19,13 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
-            c-keyboard c-modal c-clock c-video
+            c-keyboard c-modal c-clock c-video c-rez
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -222,6 +222,18 @@ check: all
 	  ! grep -q '^not ok' out || exit 1; \
 	  grep -q '^1\.\.' out || exit 1; \
 	done
+	# And the resolution, which moves that picture and leaves GEM's screen
+	# where it was. On each of the ST's three, since what it does is go to
+	# one of the others and come back, and the machine's own is whichever
+	# one it started on.
+	for s in low medium high; do \
+	  $(RM) rez.ppm; \
+	  TOSEMU_SCREEN=$$s TOSEMU_SCREENSHOT=rez.ppm $(TOSEMU) test-c-rez \
+	    > out || exit 1; \
+	  ! grep -q '^not ok' out || exit 1; \
+	  grep -q '^1\.\.' out || exit 1; \
+	done
+	$(RM) rez.ppm
 	# And told to keep the picture up when the screen is handed back, which
 	# is a setting - in the environment, and in a file, which is where
 	# somebody who always wants it would say it.

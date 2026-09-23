@@ -32,15 +32,26 @@
  * memory is brought across onto a surface of the shifter's shape and shown in
  * a window of its own.
  *
- * It starts the first time a program points the base anywhere other than the
- * screen the machine was built with. When the base goes back there, the screen
- * has been handed back to whatever that screen stands for - GEM's windows and
- * the console, which are on the desktop already - and after a moment the
- * picture steps aside for them, as long as there is something of theirs up to
- * step aside for. It comes back when the base moves away again. A debugger
- * does both every time it starts the program it is debugging and every time
- * the program stops - which somebody using one may not want, so it can be
+ * It starts the first time a program takes the video hardware over, which it
+ * does by pointing the base anywhere other than the screen the machine was
+ * built with, or by setting the resolution. When the base goes back there, the
+ * screen has been handed back to whatever that screen stands for - GEM's
+ * windows and the console, which are on the desktop already - and after a
+ * moment the picture steps aside for them, as long as there is something of
+ * theirs up to step aside for. It comes back when the base moves away again. A
+ * debugger does both every time it starts the program it is debugging and every
+ * time the program stops - which somebody using one may not want, so it can be
  * told to stay up instead; see TOSEMU_PICTURE in settings.c.
+ *
+ * The resolution is the other half of what the hardware shows, and it moves
+ * this picture and nothing else. GEM's screen is a surface made once when GEM
+ * starts and is never reshaped, so an application's windows, its dialogs and
+ * the workstation the VDI opens for it all go on being the size they were, and
+ * Getrez goes on answering for that screen rather than for the mode register -
+ * see the note at the top of xbiosscreen.c for why those are answered apart.
+ * Setting the mode cannot be undone the way moving the base can, so a program
+ * that has set it keeps the picture for the rest of the run; hardware_taken_over
+ * in video.c says why.
  *
  * Or to be up from the start, which is the other program that draws for
  * itself: one that never moves the base at all, because the screen the machine

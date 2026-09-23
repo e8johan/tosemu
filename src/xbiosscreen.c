@@ -33,8 +33,20 @@
  *
  * The physical screen and the colours are the shifter's registers - see
  * shifter.h - so a program that sets them through the XBIOS and one that
- * writes the registers are changing the same thing. Getrez reports the
- * resolution the screen really is, and a mode set here does not change it.
+ * writes the registers are changing the same thing. The resolution is one of
+ * those registers too, and setting it changes the picture the video hardware
+ * shows and nothing else.
+ *
+ * Which is worth saying plainly, because it means there are two screens here
+ * and a program can be looking at both at once. The video hardware's screen is
+ * emulated memory read at whatever shape the mode register says. GEM's screen
+ * is a host surface of its own, made once when GEM starts and never reshaped -
+ * see gem.c. They share no memory and no size, and a resolution set here moves
+ * the first without the second hearing about it. So Getrez goes on answering
+ * for GEM's screen however the mode is set: it is what an application's windows
+ * and dialogs are laid out in, it is what the VDI opens a workstation on, and
+ * an application told it had shrunk to 320x200 would lay itself out for a
+ * screen that is not the one it is drawing on.
  */
 
 #include "xbios.h"
@@ -98,7 +110,9 @@ int xbios_screen_named(uint32_t address)
  *
  * The screen GEM settled on once it has started, since a daemon can decide on
  * another one than this process asked for, and what the memory map was built
- * around before that. A shape no Atari had gets 8, which is no machine's
+ * around before that. Not the mode register, which Setscreen above writes and
+ * which is the other screen - the note at the top of this file says why the
+ * two are answered apart. A shape no Atari had gets 8, which is no machine's
  * number: a program that looks the answer up in a table of the ones it knows
  * finds nothing there and says so, which is better than being told it has a
  * screen it has not.
@@ -165,7 +179,15 @@ uint32_t XBIOS_Setscreen()
     if (pscrn != 0xffffffff)
         shifter_set_base(pscrn);
 
-    /* The resolution is not ours to change, Getrez keeps its answer */
+    /*
+     * And the resolution, which is the mode register and so is the picture.
+     * Only the ST's three: the register holds two bits, and the modes the
+     * machines had beyond them are the ones surface.h and screen.c say are
+     * not here. A program asking for one of those is left in the mode it was
+     * in, which is what it would read back.
+     */
+    if (rez >= 0 && rez <= 2)
+        shifter_set_rez(rez);
 
     return XBIOS_E_OK;
 }

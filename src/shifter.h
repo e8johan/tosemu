@@ -64,6 +64,21 @@ void shifter_set_base(uint32_t base);
 int16_t shifter_rez(void);
 
 /*
+ * Setting it, which is what Setscreen does and what a program writing 0xFF8260
+ * itself does.
+ *
+ * Whether anything has set it is a separate question from what it holds, and
+ * both are needed. The machine's own screen need not be a shape the register
+ * can say - shifter_init describes a TT screen by its plane count alone - so a
+ * mode of 2 means both "an ST high resolution screen" and "nobody has said
+ * anything", and the two cannot be told apart from the value. What tells the
+ * picture that the program has taken the video hardware over is that the
+ * question was asked at all.
+ */
+void shifter_set_rez(int16_t rez);
+int shifter_rez_set(void);
+
+/*
  * A colour, 0x0RGB with four bits a gun. What is set is kept whole and what
  * is read of the first sixteen is only the twelve bits a register has, which
  * is what EmuTOS's Setcolor does too.

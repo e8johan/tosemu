@@ -73,17 +73,49 @@ static long long now_ns(void)
     return (long long)t.tv_sec * 1000000000LL + t.tv_nsec;
 }
 
+/*
+ * Whether the video hardware is the program's rather than the machine's.
+ *
+ * Two ways of taking it over and either will do. Pointing the base at memory
+ * of its own is one, and is what a program with a picture to show does. Setting
+ * the mode is the other: a program that means to draw on the screen TOS handed
+ * it, in a resolution of its own choosing, never moves the base anywhere - and
+ * before the mode counted, that program was indistinguishable from one which
+ * had done nothing at all.
+ *
+ * This is one question and not two because everything below turns on it: which
+ * shape the picture is, whether there is a picture at all, and whether the
+ * screen has been handed back. A program that has taken the hardware over by
+ * either route has taken it over for all three.
+ *
+ * The mode is the one of the two that cannot be given back. Moving the base
+ * home again is a program saying it has finished with the hardware; setting the
+ * mode back to what the machine came up in is not the same statement, and
+ * cannot be read as one - on a TT screen the register already says 2, so a
+ * program asking for the ST's high resolution would be indistinguishable from
+ * one undoing itself. So a program that has set the mode keeps the picture for
+ * the rest of the run. Which is the right way round: it has shown that it draws
+ * for itself, and the thing it would be handing back to is a GEM screen it is
+ * not using.
+ */
+static int hardware_taken_over(void)
+{
+    return shifter_base() != tos_screen_base() || shifter_rez_set();
+}
+
 /* The shape the shifter's mode register says the picture is. The fourth
  * value is not a mode, and an ST showed it as the high one. */
 static void shape(int16_t *width, int16_t *height, int16_t *planes)
 {
     /*
-     * Except on the screen the machine was built with, which is whatever shape
-     * it was asked for and need not be one the register can say - a TT screen
-     * is described by its plane count alone, see shifter_init. The base being
-     * there is the picture showing that screen, which is what `always` is for.
+     * Except on the screen the machine was built with, while it is still in
+     * the mode the machine came up in. That screen is whatever shape it was
+     * asked for and need not be one the register can say - a TT screen is
+     * described by its plane count alone, see shifter_init - so the register
+     * cannot be what describes it, and the picture showing it is what `always`
+     * is for.
      */
-    if (shifter_base() == tos_screen_base())
+    if (!hardware_taken_over())
     {
         static int16_t was_w, was_h, was_p;
 
@@ -168,13 +200,15 @@ void video_forget(void)
 }
 
 /*
- * How long the base has been back on the screen the machine was built with,
- * in milliseconds, or -1 while it is anywhere else. That screen is the one GEM
- * and the console stand for, and they are on the desktop already.
+ * How long the video hardware has been the machine's again, in milliseconds, or
+ * -1 while the program still has it. That means the base back on the screen the
+ * machine was built with and the mode never having been set - see
+ * hardware_taken_over. That screen is the one GEM and the console stand for,
+ * and they are on the desktop already.
  */
 static long home_for(long long now)
 {
-    if (shifter_base() != tos_screen_base())
+    if (hardware_taken_over())
     {
         back_since = 0;
         return -1;
@@ -226,19 +260,20 @@ void video_frame(void)
     const uint8_t *bytes;
     const char *shot;
     long long now = now_ns();
+    uint32_t wants;
     long home;
     int changed = 0;
 
     if (!taken)
     {
         /*
-         * Nothing until a program points the base somewhere of its own -
-         * unless the picture is to be up whatever the base says, which is what
-         * `always` is: a program that draws on the screen the machine came
-         * with, as every program that is not a GEM one does, is then shown
-         * doing it rather than drawing where nobody can see.
+         * Nothing until a program takes the video hardware over - unless the
+         * picture is to be up whatever it has done, which is what `always` is:
+         * a program that draws on the screen the machine came with and leaves
+         * the mode alone, as every program that is not a GEM one may, is then
+         * shown doing it rather than drawing where nobody can see.
          */
-        if (shifter_base() == tos_screen_base() && wanted() != ALWAYS)
+        if (!hardware_taken_over() && wanted() != ALWAYS)
             return;
 
         taken = 1;
@@ -308,10 +343,35 @@ void video_frame(void)
      * the middle of setting it up a byte at a time can do. The last picture
      * stays up, which is what the glass would have gone on showing.
      */
-    bytes = tos_mem_span(shifter_base(),
-                         ((uint32_t)width + 15) / 16 * 2 * planes * height);
+    wants = ((uint32_t)width + 15) / 16 * 2 * planes * height;
+
+    bytes = tos_mem_span(shifter_base(), wants);
     if (!bytes)
+    {
+        /*
+         * Unless the mode is what made it too large, which is not a moment in
+         * the middle of anything and will not come right on its own. A screen
+         * as large as a modern display in a single plane can be smaller than
+         * the 32000 bytes every one of the ST's modes reads, so a program that
+         * asks for one of them on such a machine points the hardware at more
+         * memory than the machine set aside for a screen - and a picture that
+         * silently stopped changing is the hardest thing here to diagnose.
+         * Said once, this being asked fifty times a second.
+         */
+        static int said;
+
+        if (shifter_rez_set() && !said)
+        {
+            said = 1;
+            printf("tosemu: resolution %d reads %u bytes and there is not that "
+                   "much memory at 0x%x, so it cannot be shown\n",
+                   (int)shifter_rez(), (unsigned)wants,
+                   (unsigned)shifter_base());
+            fflush(stdout);
+        }
+
         return;
+    }
 
     changed |= surface_load_atari(picture, bytes);
 
@@ -349,7 +409,7 @@ void video_tick(void)
 
     countdown = TICK_INSTRUCTIONS;
 
-    if (!taken && shifter_base() == tos_screen_base() && wanted() != ALWAYS)
+    if (!taken && !hardware_taken_over() && wanted() != ALWAYS)
         return;
 
     if (now_ns() - last_frame < FRAME_NS)
