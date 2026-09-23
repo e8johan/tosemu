@@ -389,11 +389,13 @@
   reason the fonts from files are the ones worth getting exactly right, those
   being what a document of the period was actually set in.
 
-- The line-A answers $a000 and refuses the other fifteen. Refusing stops the
-  emulator and names the call, which is what an unimplemented GEMDOS call
-  does, and it is a great deal better than the nought vector that was there
-  before - a program executing one of these used to jump to address nought
-  and walk through the whole of memory. But a program that really draws
+- The line-A answers $a000, does nothing for the two that show and hide the
+  mouse pointer - there being no pointer in the screen memory to take out, the
+  same as v_show_c and v_hide_c - and refuses the thirteen that draw. Refusing
+  stops the emulator and names the call, which is what an unimplemented GEMDOS
+  call does, and it is a great deal better than the nought vector that was
+  there before - a program executing one of these used to jump to address
+  nought and walk through the whole of memory. But a program that really draws
   through the line-A still does not work, and there were plenty: it was the
   fast way to put a pixel on the screen, and every demo and half the games
   used it in preference to the VDI.
