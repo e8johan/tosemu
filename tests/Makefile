@@ -275,11 +275,11 @@ check: all
 	# called and whose calls passed on are answered as if it were not there
 	$(TOSEMU) test-c-traphook > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
-	# The line-A, whose one implemented call hands over three addresses a
-	# program then follows. On the default screen and on a colour one,
-	# because what the block describes is the screen the machine was built
-	# around and a block written from some other one still looks like a
-	# block.
+	# The line-A, whose $a000 hands over three addresses a program then
+	# follows, and whose two mouse pointer calls do nothing and come back.
+	# On the default screen and on a colour one, because what the block
+	# describes is the screen the machine was built around and a block
+	# written from some other one still looks like a block.
 	$(TOSEMU) test-c-linea > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	TOSEMU_SCREEN=low $(TOSEMU) test-c-linea > out; ! grep -q '^not ok' out

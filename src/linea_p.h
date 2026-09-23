@@ -63,6 +63,11 @@
  * 3rdparty/emutos/bios/linea.S for what each of them draws. */
 #define LINEA_CALLS      (16)
 
+/* The two of them that are about the mouse pointer rather than about drawing,
+ * and which are answered by doing nothing - see m68k_linea */
+#define LINEA_SHOW_MOUSE  (9)
+#define LINEA_HIDE_MOUSE (10)
+
 /* A font header as the machine lays one out, which is struct font_head in
  * 3rdparty/emutos/include/fonthdr.h with 68000 pointers in it */
 #define FONT_ID          (0)

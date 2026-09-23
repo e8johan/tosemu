@@ -21,11 +21,16 @@
 /* The line-A, which is a graphics interface reached by executing an
  * instruction a 68000 does not have rather than by trapping.
  *
- * Only $a000 is answered, and this is what it has to answer with. What the
- * checks are really guarding is that none of the three addresses it hands back
+ * $a000 is the one that answers with something, and most of this is about what
+ * it has to answer with. What those checks are really guarding is that none of the three addresses it hands back
  * is nought: a program follows all of them, and following a nought here means
  * reading or jumping into the exception vectors at the bottom of memory, which
  * is a failure that shows up somewhere else entirely.
+ *
+ * Showing and hiding the mouse pointer are answered too, by doing nothing, and
+ * what is checked about them is that the program is still running afterwards:
+ * a program hides the pointer around drawing it does by other means, and a
+ * refusal there would stop it between the hiding and the drawing.
  *
  * The rest ask whether the block describes the screen the machine was actually
  * given, by working the screen's size out of it two ways and comparing that
@@ -236,6 +241,26 @@ int main(int argc, char **argv)
         check(word_at(lv_a0 + V_CEL_MY), height / (height < 400 ? 8 : 16) - 1,
               "and as many down as the cell fits");
     }
+
+    /*
+     * Showing and hiding the pointer, which are the two that do nothing and
+     * come back. Reaching the check after them is the whole of what is asked:
+     * a call that is refused stops the emulator, so a line-A that does not
+     * answer these prints nothing more and has no count line at the end.
+     */
+    __asm__ volatile (".word 0xa009"
+                      : : : "d0", "d1", "a0", "a1", "a2", "cc", "memory");
+    __asm__ volatile (".word 0xa00a"
+                      : : : "d0", "d1", "a0", "a1", "a2", "cc", "memory");
+
+    check(1, 1, "showing and hiding the mouse pointer carries on");
+
+    /* And by their addresses, which is the other way a program reaches them */
+    call_routine(*(volatile long *)(lv_a2 + 9 * 4));
+    call_routine(*(volatile long *)(lv_a2 + 10 * 4));
+
+    check(word_at(lv_a0 + V_PLANES), planes,
+          "and through the routine table, leaving the variables alone");
 
     printf("# %d checks, %d failed\n", n, fails);
     printf("1..%d\n", n);

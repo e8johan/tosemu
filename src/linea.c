@@ -37,8 +37,9 @@
  * so the processor jumped to address nought and walked through the whole of
  * memory executing the zeroes it found there.
  *
- * So $a000 is answered and the fifteen drawing routines are refused, in the
- * way an unimplemented GEMDOS call is refused: with the emulator stopping and
+ * So $a000 is answered, the two that show and hide the mouse pointer are
+ * answered by doing nothing, and the thirteen that draw are refused, in the way
+ * an unimplemented GEMDOS call is refused: with the emulator stopping and
  * saying which one it was. That is the honest state of it - a program that
  * really draws through the line-A does not work here - and it is worth far
  * more than a routine that quietly does nothing, because what it leaves is a
@@ -276,6 +277,26 @@ int m68k_linea(unsigned int opcode)
     FUNC_TRACE_ENTER_ARGS {
         printf("    $%04x, line-A %s\n", opcode, linea_names[call]);
     }
+
+    /*
+     * Showing and hiding the pointer, which is nothing to do for the same
+     * reason v_show_c and v_hide_c are nothing to do - see the note above
+     * vdimouse_init in emuvdi/hostvars.c. On an ST the pointer is drawn into
+     * the screen by the machine, so a program about to draw where it sits has
+     * to have it taken out first and put back after; here it belongs to the
+     * compositor and was never in the screen memory at all, so there is nothing
+     * to take out.
+     *
+     * These are the two of the fifteen where doing nothing is the right answer
+     * rather than a quiet failure, and they are also the two that a program
+     * which does not draw through the line-A at all still calls: hiding the
+     * pointer is what you do around drawing by any other means, the VDI's
+     * included, and this was the cheaper way to ask for it than v_hide_c. So
+     * refusing them stopped programs over something that need not have
+     * happened.
+     */
+    if (call == LINEA_SHOW_MOUSE || call == LINEA_HIDE_MOUSE)
+        return 1;
 
     if (call != 0)
     {
