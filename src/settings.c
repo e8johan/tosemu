@@ -73,6 +73,13 @@ static const struct {
      * debugger is the one that may not: it hands the screen to the program it
      * is debugging every time it runs it, and somebody stepping through a
      * program may rather the debugger's window stayed where it was.
+     *
+     * `always` answers a different question: the picture is up from the start,
+     * whether or not the base was ever moved anywhere. That is for a program
+     * which draws on the screen the machine came with and so never says
+     * anything about the hardware at all - it just writes where Physbase
+     * pointed, and without this nobody sees it. Its console goes on the screen
+     * along with it, the way a GEM program's does.
      */
     { "TOSEMU_PICTURE",     "screen",  "picture",     0 },
 
