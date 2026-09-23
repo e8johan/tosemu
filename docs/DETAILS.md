@@ -260,6 +260,48 @@ Set `TOSEMU_SCREENSHOT` to a path and the screen is written there as a
 portable pixmap every time an application waits, which is how to look at what
 was drawn from a terminal, or from a test, or without a desktop at all.
 
+Changing the resolution moves one screen and not the other, and it is worth
+being plain about that, because there are two screens here and an application
+can be looking at both at once.
+
+GEM's screen is the one described above: a surface of the host's, made once when
+GEM starts, as large as `TOSEMU_SCREEN` or the daemon decided. The AES lays
+windows out in it and the VDI draws into it. It never changes shape. The video
+hardware's screen is emulated memory, read at whatever shape the shifter's mode
+register says and shown as a picture — see `src/video.h`. They share no memory
+and no size.
+
+`Setscreen`'s resolution, and a program writing 0xFF8260 itself, set the mode
+register. So the picture changes shape and GEM's screen does not, and `Getrez`
+goes on answering for GEM's screen however the mode is set. That is deliberate
+rather than an omission. `Getrez` is what an application measures itself
+against: it picks a resource for it, lays its dialogs out in it and opens a
+workstation on it. An application told it had shrunk to 320x200 would lay itself
+out for a screen it is not drawing on, and the result is a dialog centred off
+the edge with nothing to say why — which is worse than not being able to change
+resolution at all. On a real ST `Getrez` *is* a read of that register, so this
+is a departure, and the trade is deliberate: the programs that change resolution
+are the ones that have taken the machine over and are not asking the AES
+anything, and the programs that ask the AES never touch the register.
+
+Setting the mode is one of the two ways of taking the video hardware over, the
+other being to point the base at memory of one's own. Either brings the picture
+up, and either stops `TOSEMU_PICTURE=hide` from putting it away — a program that
+draws on the screen TOS handed it, in a resolution of its own choosing, never
+moves the base anywhere. Unlike the base, the mode cannot be given back: setting
+it to what the machine came up in is not a program saying it has finished, and
+on a TT screen could not be told from one asking for the ST's high resolution.
+So a program that has set the mode keeps the picture for the rest of the run.
+
+Only the ST's three, because the register holds two bits. A program asking for
+anything else is left in the mode it was in. One case says so out loud: every ST
+mode reads 32000 bytes, and a screen as large as a modern display in a single
+plane can be smaller than that, so a program asking for one of them on such a
+machine points the hardware at more memory than the machine set aside for a
+screen. Nothing is shown in that mode, and the emulator says which mode it was
+and how much it wanted — a picture that silently stopped changing is the hardest
+thing here to diagnose.
+
 
 Settings
 ========
