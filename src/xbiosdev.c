@@ -24,10 +24,11 @@
  * keyboard controller, and the MFP that interrupts on their behalf.
  *
  * The console and MIDI have somewhere to go on the host, so the rest divide
- * into two. Settings, such as the serial configuration or the keyboard repeat
- * rate, are remembered and reported back, so that an application which
- * configures a device and reads the configuration sees its own value. Traffic
- * with nowhere to go, such as bytes written to the printer, is discarded.
+ * into two. Settings, such as the serial configuration, are remembered and
+ * reported back, so that an application which configures a device and reads
+ * the configuration sees its own value. Traffic with nowhere to go, such as
+ * bytes written to the printer, is discarded. The keyboard repeat rate is the
+ * exception, being used as well as kept - see keyboard.h.
  *
  * Whether anything here interrupts depends on the machine. On the ordinary one
  * nothing does, and Mfpint, Jenabint, Jdisint and Xbtimer accept what they are
@@ -48,6 +49,7 @@
 #include "interrupt.h"
 #include "mfp.h"
 #include "iorec.h"
+#include "keyboard.h"
 #include "memory.h"
 
 #include "xbios_p.h"
@@ -462,20 +464,12 @@ uint32_t XBIOS_Kbrate()
 {
     int16_t delay = peek_s16(2);
     int16_t rate = peek_s16(4);
-    static uint32_t kb_delay = 25; /* The TOS defaults */
-    static uint32_t kb_rate = 5;
-    uint32_t previous = (kb_delay << 8) | kb_rate;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    delay: %d, rate: %d\n", delay, rate);
     }
 
-    if (delay >= 0)
-        kb_delay = delay & 0xff;
-    if (rate >= 0)
-        kb_rate = rate & 0xff;
-
-    return previous;
+    return keyboard_rate(delay, rate);
 }
 
 /* Interrupts ****************************************************************/

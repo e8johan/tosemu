@@ -315,6 +315,11 @@ int gfx_key_take(uint16_t *key);
  * and Bconstat ask whether a key is there and must not swallow it. */
 int gfx_key_ready(void);
 
+/* Milliseconds until a key held down types again, or -1 when none is. A wait
+ * for a key sleeps no longer than this, the repeat having nothing of its own
+ * to wake it - see keyboard.h. */
+long gfx_key_due(void);
+
 /* As of the last change taken off the queue, which is what a wait wants: it
  * considers each change where that change happened */
 void gfx_mouse(int16_t *x, int16_t *y, int16_t *buttons);

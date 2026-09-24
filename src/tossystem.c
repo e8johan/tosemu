@@ -48,6 +48,7 @@
 #include "dongle.h"
 #include "shifter.h"
 #include "musashi.h"
+#include "emuvdi/emuvdi.h"
 
 #include "m68k.h"
 
@@ -454,6 +455,35 @@ static uint32_t reset_handler;
 uint32_t tos_default_vector(void)
 {
     return default_vector;
+}
+
+/*
+ * conterm, the byte that says whether a key clicks, whether it repeats and
+ * whether the bell rings.
+ *
+ * It is not kept in the machine's memory with the others, because the ones
+ * who act on it are not in the machine: the console's bell and the key repeat
+ * are both the host's, and they read it where the console keeps it. So the
+ * address is the console's variable, and a program that clears bit 1 has
+ * stopped a key repeating. Kept for as long as the process is, rather than
+ * for as long as one machine: Pexec builds another, and on an ST a program
+ * started from one that turned the bell off does not find it on again.
+ */
+#define SYSVAR_CONTERM (0x484)
+
+static uint8_t conterm_read(struct _memarea *area, uint32_t address)
+{
+    (void)area; (void)address;
+
+    return emuvdi_conterm();
+}
+
+static void conterm_write(struct _memarea *area, uint32_t address,
+                          uint8_t value)
+{
+    (void)area; (void)address;
+
+    emuvdi_conterm_set(value);
 }
 
 /*
@@ -1123,7 +1153,14 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * memory the machine says it does not have. */
     add_ptr_memory_area("staticmem0", MEMORY_READWRITE | MEMORY_SUPERWRITE, 0x0, 0x200, te->staticmem0);
     add_fnct_memory_area("magicmem0", MEMORY_SUPERREAD, 0x200, 0x2, 0, magic_xbios_supexec_read, magic_xbios_supexec_write);
-    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x380, 0x600-0x380, te->staticmem1); /* TODO this will probably have to be read using a custom function */
+    /* The system variables, with conterm standing in the middle of them */
+    add_ptr_memory_area("staticmem1", MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                        0x380, SYSVAR_CONTERM - 0x380, te->staticmem1);
+    add_fnct_memory_area("conterm", MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                         SYSVAR_CONTERM, 1, 0, conterm_read, conterm_write);
+    add_ptr_memory_area("staticmem2", MEMORY_SUPERREAD | MEMORY_SUPERWRITE,
+                        SYSVAR_CONTERM + 1, 0x600 - (SYSVAR_CONTERM + 1),
+                        (uint8_t *)te->staticmem1 + (SYSVAR_CONTERM + 1 - 0x380));
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
     add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, screen_area, te->screenmem);

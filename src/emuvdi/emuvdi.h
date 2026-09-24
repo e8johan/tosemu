@@ -92,6 +92,15 @@ int16_t emuvdi_console_cursor(int16_t function, int16_t operand);
 unsigned long emuvdi_console_written(void);
 
 /*
+ * conterm, the byte at 0x484 a program sets the bell and the key repeat with.
+ * It is kept here because vt52.c reads it by name to decide whether to ring,
+ * and the address reaches it through these - see tossystem.c.
+ */
+#define EMUVDI_CONTERM_REPEAT (0x02)
+uint8_t emuvdi_conterm(void);
+void emuvdi_conterm_set(uint8_t value);
+
+/*
  * And reading it back, which is what makes the text on it selectable.
  *
  * The console draws pixels, and a cell holding an A is eight by sixteen bits
