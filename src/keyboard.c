@@ -196,3 +196,111 @@ uint16_t keyboard_word(uint16_t scancode, uint32_t codepoint, uint16_t held)
 
     return word_of(scancode, ch);
 }
+
+/* Repeat ********************************************************************/
+
+/* One tick of TOS's, which is what Kbrate counts in */
+#define TICK_MS (20)
+
+/*
+ * The two numbers, in ticks. They start where EmuTOS starts them, in
+ * include/sysconf.h: 300ms, then 25 a second.
+ */
+static struct {
+    int delay;
+    int rate;
+    int set_by_program;     /* After which the desktop is not asked again */
+
+    int holding;
+    uint32_t key;
+    long long due;
+} r = { 15, 2, 0, 0, 0, 0 };
+
+uint16_t keyboard_rate(int16_t delay, int16_t rate)
+{
+    uint16_t previous = (uint16_t)((r.delay << 8) | r.rate);
+
+    if (delay >= 0)
+    {
+        r.delay = delay & 0xff;
+        r.set_by_program = 1;
+    }
+    if (rate >= 0)
+    {
+        r.rate = rate & 0xff;
+        r.set_by_program = 1;
+    }
+
+    return previous;
+}
+
+static int ticks(long ms)
+{
+    long t = (ms + TICK_MS / 2) / TICK_MS;
+
+    return (t < 1) ? 1 : (t > 0xff) ? 0xff : (int)t;
+}
+
+void keyboard_rate_preferred(int32_t delay_ms, int32_t per_second)
+{
+    if (r.set_by_program)
+        return;
+
+    if (per_second <= 0)
+    {
+        r.delay = 0;
+        return;
+    }
+
+    r.delay = ticks(delay_ms);
+    r.rate = ticks((1000 + per_second / 2) / per_second);
+}
+
+/*
+ * Only the last key to go down repeats, and only that key coming up stops it:
+ * letting go of one pressed earlier leaves the newer one going, as it does on
+ * an ST.
+ */
+void keyboard_held(uint32_t key, long long now)
+{
+    r.holding = (r.delay > 0);
+    r.key = key;
+    r.due = now + (long long)r.delay * TICK_MS;
+}
+
+void keyboard_released(uint32_t key)
+{
+    if (r.holding && key == r.key)
+        r.holding = 0;
+}
+
+void keyboard_let_go(void)
+{
+    r.holding = 0;
+}
+
+int keyboard_repeat_due(long long now, uint32_t *key)
+{
+    if (!r.holding || now < r.due)
+        return 0;
+
+    *key = r.key;
+
+    /*
+     * From now rather than from when it was due. TOS counted ticks whether or
+     * not anybody read what it typed, and a program that was busy for a second
+     * came back to a buffer full of a key nobody was holding any longer.
+     */
+    r.holding = (r.rate > 0);
+    r.due = now + (long long)r.rate * TICK_MS;
+
+    return 1;
+}
+
+long keyboard_repeat_next(long long now)
+{
+    if (!r.holding)
+        return -1;
+
+    return (r.due <= now) ? 0 : (long)(r.due - now);
+}

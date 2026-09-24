@@ -891,6 +891,7 @@ static uint32_t screen_key(int wait)
         uint16_t key;
         uint32_t from_paste;
         struct pollfd waiting;
+        long limit, repeat;
         int fd;
 
         /* What was pasted comes first and comes before anything typed, being
@@ -940,8 +941,13 @@ static uint32_t screen_key(int wait)
 
         /* No longer than until a picture handed back is due to step aside,
          * which is what a debugger showing the program's screen is doing
-         * while it waits for a key */
-        if (poll(&waiting, 1, key_wait_ms(video_settle())) > 0)
+         * while it waits for a key, or until a key held down types again */
+        limit = video_settle();
+        repeat = gfx_key_due();
+        if (repeat >= 0 && (limit < 0 || repeat < limit))
+            limit = repeat;
+
+        if (poll(&waiting, 1, key_wait_ms(limit)) > 0)
             gfx_dispatch();
 
         interrupt_service();

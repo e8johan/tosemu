@@ -612,6 +612,17 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                 left = due;
         }
 
+        /* And for a key held down, which types again without the compositor
+         * saying anything. Only when a key is wanted: nothing else takes the
+         * repeat, so it would stay due and the sleep would be none at all. */
+        if (wanted & MU_KEYBD)
+        {
+            long due = gfx_key_due();
+
+            if (due >= 0 && (left < 0 || due < left))
+                left = due;
+        }
+
         /*
          * And no longer than it is until the machine interrupts itself.
          *

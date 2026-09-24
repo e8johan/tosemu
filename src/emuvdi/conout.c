@@ -85,9 +85,10 @@ UWORD v_fnt_wr;
  * line-A. con_state is the VT52's state machine - which of its handlers reads
  * the next byte - and it is what vt52.c drives itself through.
  *
- * conterm is the keyboard and console settings byte. Bit 2 is what says
- * whether the bell rings, and nothing here sets any of the others, so it
- * starts as an ST's does: key click, key repeat and the bell all on.
+ * conterm is the keyboard and console settings byte, which a program sets at
+ * 0x484 - see tossystem.c. Bit 2 is what says whether the bell rings and bit 1
+ * whether a key held down repeats; bit 0, the key click, is kept and nothing
+ * clicks. It starts as an ST's does, with all three on.
  */
 void (*con_state)(WORD);
 WORD save_row;

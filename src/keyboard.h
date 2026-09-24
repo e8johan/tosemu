@@ -44,4 +44,40 @@
  */
 uint16_t keyboard_word(uint16_t scancode, uint32_t codepoint, uint16_t held);
 
+/*
+ * A key held down, typing itself again.
+ *
+ * The keyboard only ever says that a key went down and that it came up. The
+ * repeating is TOS's, done on its 50Hz tick, and so are the two numbers it goes
+ * by: how many ticks before the first repeat and how many between the rest,
+ * which a program reads and sets with XBIOS Kbrate. A delay of nought is no
+ * repeat at all and a rate of nought is one repeat and no more, because that is
+ * what TOS's counter does with them.
+ *
+ * Which key is held is the host's number for it; the caller turns it into a
+ * word each time, so that a modifier pressed while it is held counts, the way
+ * it does in EmuTOS. Times are milliseconds on any clock that only goes
+ * forwards.
+ */
+
+/* XBIOS Kbrate: a negative leaves that one as it is, and what comes back is
+ * the two as they were, the delay in the top byte */
+uint16_t keyboard_rate(int16_t delay, int16_t rate);
+
+/* What the desktop would like, as it says it: milliseconds before the first
+ * repeat and repeats a second, nought being none. Taken only until a program
+ * sets its own. */
+void keyboard_rate_preferred(int32_t delay_ms, int32_t per_second);
+
+void keyboard_held(uint32_t key, long long now);
+void keyboard_released(uint32_t key);
+void keyboard_let_go(void);
+
+/* Whether the key held is due to type again, saying which it is. One repeat is
+ * answered however late this is asked, and the next is counted from then. */
+int keyboard_repeat_due(long long now, uint32_t *key);
+
+/* Milliseconds until it is, or -1 when nothing is going to repeat */
+long keyboard_repeat_next(long long now);
+
 #endif /* KEYBOARD_H */

@@ -183,6 +183,16 @@ unsigned long emuvdi_console_written(void)
     return (unsigned long)host_console_written;
 }
 
+uint8_t emuvdi_conterm(void)
+{
+    return conterm;
+}
+
+void emuvdi_conterm_set(uint8_t value)
+{
+    conterm = value;
+}
+
 void emuvdi_console_cells(int16_t *cols, int16_t *rows,
                           int16_t *width, int16_t *height)
 {

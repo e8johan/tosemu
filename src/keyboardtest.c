@@ -69,6 +69,67 @@ static void check(long got, long want, const char *name)
 #define KEY_TAB     (0x0f)
 #define KEY_RETURN  (0x1c)
 
+/*
+ * A key held down, with the clock handed over rather than waited for. The
+ * numbers are TOS's ticks of 20ms, so 15 and 2 are 300ms and then 40ms.
+ */
+static void repeat(void)
+{
+    uint32_t key = 0;
+
+    check(keyboard_rate(-1, -1), 0x0f02,
+          "the repeat starts where EmuTOS starts it");
+
+    /* What the desktop says, until a program says otherwise */
+    keyboard_rate_preferred(600, 0);
+    check(keyboard_rate(-1, -1), 0x0002,
+          "a desktop with no repeat is a delay of nought");
+    keyboard_rate_preferred(600, 25);
+    check(keyboard_rate(-1, -1), 0x1e02,
+          "and the desktop's milliseconds become ticks");
+
+    keyboard_held(KEY_A, 1000);
+    check(keyboard_repeat_next(1000), 600, "a key held waits the delay");
+    check(keyboard_repeat_due(1599, &key), 0, "and not a moment less");
+    check(keyboard_repeat_due(1600, &key), 1, "then types again");
+    check(key, KEY_A, "the key that is held");
+    check(keyboard_repeat_next(1600), 40, "and again at the rate");
+
+    /* A program busy for seconds comes back to one repeat, not to a queue
+     * full of a key */
+    check(keyboard_repeat_due(5000, &key), 1, "late is one repeat");
+    check(keyboard_repeat_due(5000, &key), 0, "and only one");
+    check(keyboard_repeat_next(5000), 40, "counted from then");
+
+    /* The last key down is the one that repeats */
+    keyboard_held(KEY_L, 6000);
+    keyboard_released(KEY_A);
+    check(keyboard_repeat_next(6000), 600,
+          "letting go of an older key leaves the newer one going");
+    keyboard_released(KEY_L);
+    check(keyboard_repeat_next(6000), -1, "letting go of that one stops it");
+
+    keyboard_held(KEY_L, 7000);
+    keyboard_let_go();
+    check(keyboard_repeat_next(7000), -1,
+          "and so does the keyboard going to another window");
+
+    /* A program's own numbers, which the desktop does not overrule */
+    check(keyboard_rate(0, -1), 0x1e02, "Kbrate answers what it was");
+    keyboard_rate_preferred(200, 50);
+    check(keyboard_rate(-1, -1), 0x0002,
+          "and the desktop is not asked again after a program has set it");
+
+    keyboard_held(KEY_A, 8000);
+    check(keyboard_repeat_next(8000), -1, "a delay of nought is no repeat");
+
+    keyboard_rate(5, 0);
+    keyboard_held(KEY_A, 9000);
+    check(keyboard_repeat_due(9100, &key), 1,
+          "a rate of nought is one repeat");
+    check(keyboard_repeat_next(9100), -1, "and no more");
+}
+
 int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
@@ -164,6 +225,8 @@ int main(int argc, char **argv)
      * about */
     check(keyboard_word(0, 0, 0), 0,
           "a press with no key and no character is nothing at all");
+
+    repeat();
 
     printf("1..%d\n", n);
 

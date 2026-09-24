@@ -76,6 +76,35 @@ static void check(long got, long want, const char *name)
     }
 }
 
+/*
+ * conterm, at 0x484, which is how a program turns the key repeat and the bell
+ * off. Looked at inside Supexec and reported afterwards, the system variables
+ * being out of reach of user mode.
+ */
+#define CONTERM (0x484)
+
+static unsigned char conterm_was, conterm_cleared;
+static unsigned short conterm_word;
+static unsigned char conterm_after;
+
+static void conterm_look(void)
+{
+    volatile unsigned char *at = (volatile unsigned char *)CONTERM;
+
+    conterm_was = at[0];
+    at[0] = conterm_was & ~2;
+    conterm_cleared = at[0];
+
+    /* The bytes either side are still memory, and a word across the edge
+     * reads both */
+    at[1] = 0x5a;
+    at[-1] = 0xa5;
+    conterm_word = *(volatile unsigned short *)CONTERM;
+    conterm_after = at[1];
+
+    at[0] = conterm_was;
+}
+
 static void survived(const char *name)
 {
     n++;
@@ -227,6 +256,12 @@ int main(int argc, char **argv)
     check(Kbrate(-1, -1), previous, "Kbrate -1 changes nothing");
     Kbrate(30, 4);
     check(Kbrate(-1, -1), (30 << 8) | 4, "Kbrate reports what was set");
+
+    Supexec(conterm_look);
+    check(conterm_was, 7, "conterm starts with click, repeat and bell on");
+    check(conterm_cleared, 5, "and the repeat can be turned off");
+    check(conterm_word, 0x055a, "a word at conterm reads the byte after it");
+    check(conterm_after, 0x5a, "which is still memory");
 
     /* An empty IOREC: a reader sees head equal to tail and stops */
     iorec = (_IOREC *)Iorec(0);

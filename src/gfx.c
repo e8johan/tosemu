@@ -784,9 +784,14 @@ static void keys_from_environment(void)
 
 static void clicks_from_environment(void);
 
+/* A key held down that is due to type again, which joins the queue when
+ * anybody looks at it - see keyboard.h */
+static void keys_repeating(void);
+
 int gfx_key_ready(void)
 {
     keys_from_environment();
+    keys_repeating();
 
     return w.key_count > 0;
 }
@@ -796,6 +801,7 @@ int gfx_key_take(uint16_t *key)
     int i;
 
     keys_from_environment();
+    keys_repeating();
 
     if (w.key_count == 0)
         return 0;
@@ -1302,32 +1308,31 @@ static void kb_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
                      struct wl_surface *s)
 {
     (void)data; (void)kb; (void)serial; (void)s;
+
+    /* The key coming up is something only the window with the keyboard hears,
+     * so a key held as it went would repeat for ever */
+    keyboard_let_go();
 }
 
-static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
-                   uint32_t time, uint32_t key, uint32_t state)
+/* Milliseconds on a clock that only goes forwards, which a key repeat is
+ * timed by */
+static long long now_ms(void)
+{
+    struct timespec t;
+
+    clock_gettime(CLOCK_MONOTONIC, &t);
+
+    return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+
+/* What a key typed, as the word an application is given, going by what is
+ * held down now */
+static uint16_t key_word(uint32_t key)
 {
     xkb_keycode_t code = key + 8;   /* Wayland counts from a different place */
     xkb_keysym_t sym;
-    uint16_t scan, word;
+    uint16_t scan;
     uint32_t cp;
-
-    (void)data; (void)kb; (void)time;
-
-    /*
-     * The last thing the person did, which taking the clipboard has to be
-     * answering. A copy is as often a key - a shortcut, or a menu walked with
-     * the cursor keys - as it is a click, and before this the only serials
-     * kept were the pointer's, so a copy nobody had clicked for was refused.
-     */
-    w.serial = serial;
-
-    if (state != WL_KEYBOARD_KEY_STATE_PRESSED || !w.xkb_state)
-        return;
-
-    /* A key going down is one of the things a grab may answer, the same way a
-     * button going down is */
-    w.press_serial = serial;
 
     sym = xkb_state_key_get_one_sym(w.xkb_state, code);
 
@@ -1364,12 +1369,82 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
      * an application is entitled to the answer TOS gave. Nought is a key GEM
      * has no way of describing.
      */
-    word = keyboard_word(scan, cp, gfx_kstate());
+    return keyboard_word(scan, cp, gfx_kstate());
+}
 
-    if (word == 0)
+static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
+                   uint32_t time, uint32_t key, uint32_t state)
+{
+    uint16_t word;
+
+    (void)data; (void)kb; (void)time;
+
+    /*
+     * The last thing the person did, which taking the clipboard has to be
+     * answering. A copy is as often a key - a shortcut, or a menu walked with
+     * the cursor keys - as it is a click, and before this the only serials
+     * kept were the pointer's, so a copy nobody had clicked for was refused.
+     */
+    w.serial = serial;
+
+    if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+    {
+        keyboard_released(key);
+        return;
+    }
+
+    if (!w.xkb_state)
         return;
 
-    key_post(word);
+    /* A key going down is one of the things a grab may answer, the same way a
+     * button going down is */
+    w.press_serial = serial;
+
+    word = key_word(key);
+
+    if (word)
+        key_post(word);
+
+    /* The keymap says which keys repeat, and a modifier is not one of them:
+     * Shift going down under a held key leaves that key repeating. A key that
+     * types nothing GEM can describe still stops the one before it. */
+    if (xkb_keymap_key_repeats(w.keymap, key + 8))
+        keyboard_held(key, now_ms());
+}
+
+/*
+ * Whether a program has turned the repeat off, which it does by clearing a bit
+ * of conterm. The key is still held while it is off, as it is on an ST, so
+ * turning it back on finds the key going again.
+ */
+static int repeat_off(void)
+{
+    return !(emuvdi_conterm() & EMUVDI_CONTERM_REPEAT);
+}
+
+static void keys_repeating(void)
+{
+    uint32_t key;
+    uint16_t word;
+
+    if (!w.xkb_state || repeat_off()
+        || !keyboard_repeat_due(now_ms(), &key))
+        return;
+
+    word = key_word(key);
+
+    if (word)
+        key_post(word);
+}
+
+long gfx_key_due(void)
+{
+    /* Nothing to wake for, and a repeat already due would otherwise stay due
+     * with nobody taking it, and every wait would be no wait at all */
+    if (repeat_off())
+        return -1;
+
+    return keyboard_repeat_next(now_ms());
 }
 
 static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
@@ -1383,10 +1458,14 @@ static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
                               0, 0, group);
 }
 
+/* The person's own repeat, from their desktop's settings, which is where the
+ * machine starts until a program sets its own with Kbrate */
 static void kb_repeat(void *data, struct wl_keyboard *kb, int32_t rate,
                       int32_t delay)
 {
-    (void)data; (void)kb; (void)rate; (void)delay;
+    (void)data; (void)kb;
+
+    keyboard_rate_preferred(delay, rate);
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
@@ -5145,6 +5224,15 @@ void gfx_window_delete(int16_t handle)
 }
 
 long gfx_settle(void)
+{
+    return -1;
+}
+
+static void keys_repeating(void)
+{
+}
+
+long gfx_key_due(void)
 {
     return -1;
 }
