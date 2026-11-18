@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "tossystem.h"
+#include "calltrace.h"
 #include "memory.h"
 #include "gfx.h"
 #include "emuvdi/emuvdi.h"
@@ -325,6 +326,8 @@ struct XBIOS_function {
     uint16_t id;
     uint8_t kind;
     int32_t ret;
+    const char *args;   /* What -vv shows it was called with - calltrace.h.
+                         * None of these say yet, so they show as (...) */
 };
 
 struct XBIOS_function XBIOS_functions[] = {
@@ -457,9 +460,14 @@ void xbios_trap()
     for(i=0; i<sizeof(XBIOS_functions)/sizeof(struct XBIOS_function); ++i) {
         struct XBIOS_function *f = &XBIOS_functions[i];
         uint32_t r;
+        char args[256];
 
         if (f->id != fnct)
             continue;
+
+        FUNC_TRACE_ARGS {
+            calltrace_args(args, sizeof args, f->args);
+        }
 
         if (f->fnct) {
             r = f->fnct();
@@ -475,7 +483,7 @@ void xbios_trap()
         }
 
         FUNC_TRACE_ARGS {
-            printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+            calltrace_line(f->name, args, f->args, r);
         }
         m68k_set_reg(M68K_REG_D0, r);
 

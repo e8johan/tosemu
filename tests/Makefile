@@ -287,6 +287,18 @@ check: all
 	grep -q '^1\.\.' out
 	grep -q '^# written to minus one while 1 was a file' out
 	grep -q '^# Cconws is on the console again' out
+	# And the same at -vv, for the trace: a line for each call, with what
+	# it was called with - a string as the string - and what it answered,
+	# an error by its name and a call that does not come back shown before
+	# it goes
+	printf 'xy' | $(TOSEMU) -vv test-c-redirect > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	grep -q '^Fopen("CON:", 0x0) = 65535$$' out
+	grep -q '^Cconws("ab") = 2$$' out
+	grep -q "^Cconout('c') = 0$$" out
+	grep -q '^Cconin() = 0x0000006b$$' out
+	grep -q '^Fwrite(-2, 1, 0x[0-9a-f]*) = -37 EIHNDL$$' out
+	grep -q '^Pterm(0)$$' out
 	# Supervisor mode, which is mostly a question about the stack: a 68000
 	# swaps stack pointers when the S bit moves, and a caller that came back
 	# from Super standing somewhere else has lost everything it had put on

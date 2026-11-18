@@ -906,7 +906,7 @@ in a function each. A row carrying `FN_STUB` and a value is the whole of that
 call's behaviour, and the trace says which ones an application relied on:
 
     Stubbed Blitmode (0x40)
-    Return from Blitmode: 0 = 0x0
+    Blitmode(...) = 0
 
 A row carrying `FN_HALT` with no implementation still stops the emulator, as
 does any function id that is not in the table at all. Both mean an application
@@ -1184,7 +1184,10 @@ added is the same run looked at closer.
   - `-vv` adds every OS call the program makes - GEMDOS, BIOS, XBIOS, AES and
     VDI, with their arguments on the way in and their answer on the way out.
     This is the story of what the program asked for, which is usually enough:
-    a program that has stopped has stopped after something
+    a program that has stopped has stopped after something. A GEMDOS, BIOS
+    or XBIOS call ends in one line saying what it was called with and what
+    it answered, the way strace does - `Fopen("NOSUCH.TXT", 0x0) = -33
+    EFILNF` - which is the line to search for; see `calltrace.h`
   - `-vvv` adds every instruction it runs, disassembled. Hundreds of thousands
     of lines for a program that prints one, so it is for when the story of
     what was asked for is not enough and the question is where it was asked
