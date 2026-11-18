@@ -151,9 +151,12 @@
   The chain is the work: each link is a plane count and up to four forms - the
   image and its mask, and the same again for the selected state - where a mono
   icon is two. Picking which link is the other half, and it is not aestree.c's
-  to decide from what the application handed over: rsrc_load fixes the chain
-  up for the screen it finds, so what arrives here should already be the right
-  one, and that wants checking against a resource file that has more than one.
+  to decide from what the application handed over. On TOS rsrc_load picks the
+  link for the screen it finds, turns it into the screen's own form and leaves
+  it as the only one; here rsrc_load fixes the chain's pointers up and stops,
+  because nothing reads the colour forms yet. EmuTOS's best_match and
+  transform_all_cicons, in aes/gemrslib.c, are the rest of it, and belong in
+  aesrsrc.c when the drawing does.
 - Investigate how to support non-planar modes (up to 16bpp currently) and 
   planar modes without having to rewrite the entire VDI stack.
 - Which window a piece of drawing belongs to is decided by aes_wind_owner, and

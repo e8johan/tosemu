@@ -44,6 +44,14 @@
  * resource editor stores them in characters and the AES stores them in pixels.
  * A resource is therefore worth nothing until a workstation is open, which is
  * why EmuTOS keeps that fixup separate and why rsrc_obfix exists at all.
+ *
+ * Colour icons arrived with TOS 4 and were added on after the end of the file
+ * rather than inside it, so that an older AES reading rsh_rssize bytes would
+ * still find a resource it understood. A file that has them says so in
+ * rsh_vrsn, and at rsh_rssize - where an old one ends - there is an array of
+ * longs whose first is how long the file really is and whose second is where
+ * the colour icons are. And a G_CICON's ob_spec is not an offset at all but a
+ * number, the colour icon's place in the table those longs lead to.
  */
 
 #include "aes_p.h"
@@ -81,6 +89,33 @@
 #define RSH_RSSIZE  (34)
 #define RSH_SIZE    (36)
 
+/* The bit in rsh_vrsn that says the file goes on past rsh_rssize, rsdefs.h */
+#define NEW_FORMAT_RSC (0x0004)
+
+/* The longs at rsh_rssize in a file that does, the last of them nought */
+#define EXT_FILESIZE (0)
+#define EXT_CICONS   (4)
+
+/*
+ * A CICONBLK is an ICONBLK with one more pointer after it, to the first of the
+ * colour versions; a CICON is one of those. In the file mainlist is how many
+ * colour versions follow rather than where, and next_res is one where another
+ * comes after this one and nought where it is the last.
+ */
+#define CIB_SIZE    (38)
+#define CIB_MAINLIST (34)
+
+#define CI_SIZE     (22)
+#define CI_PLANES    (0)
+#define CI_COL_DATA  (2)
+#define CI_COL_MASK  (6)
+#define CI_SEL_DATA (10)
+#define CI_SEL_MASK (14)
+#define CI_NEXT_RES (18)
+
+/* The text under an icon has twelve bytes of the file to itself */
+#define CIB_TEXT    (12)
+
 /*
  * How large each of these is in the machine, which is not how large it is
  * here: a pointer there is four bytes and here it is eight. The file was
@@ -105,6 +140,8 @@
 #define IB_PMASK     (0)
 #define IB_PDATA     (4)
 #define IB_PTEXT     (8)
+#define IB_WICON    (22)
+#define IB_HICON    (24)
 
 #define BI_PDATA     (0)
 
@@ -112,6 +149,9 @@
 #define G_BOX       (20)
 #define G_IBOX      (25)
 #define G_BOXCHAR   (27)
+
+/* And the one whose ob_spec is a number */
+#define G_CICON     (33)
 
 /* What rsrc_gaddr and rsrc_saddr call the parts of a resource, aesdefs.h */
 #define R_TREE       (0)
@@ -137,10 +177,17 @@
 
 /* The one loaded, because an application has one at a time */
 static uint32_t resource;
+static uint32_t resource_size;
+
+/* How many of its colour icons were fixed, which is how many an object may
+ * name */
+static uint32_t cicons;
 
 void aes_rsrc_reset()
 {
     resource = 0;
+    resource_size = 0;
+    cicons = 0;
 }
 
 /* A word of the header */
@@ -307,6 +354,125 @@ static void fix_coordinate(uint32_t at, int which,
     m68k_write_memory_16(at, (uint16_t)(chars + pixels));
 }
 
+/* Whether len bytes at an address are inside the file as it was read */
+static int inside(uint32_t at, uint32_t len)
+{
+    return at >= resource && len <= resource_size
+           && at - resource <= resource_size - len;
+}
+
+/*
+ * Where the table of colour icons is, or nought for a file without one. It is
+ * a long for each icon - nothing in the file, the AES writes them - and then
+ * minus one, and the icons themselves come straight after it.
+ */
+static uint32_t cicon_table()
+{
+    uint32_t offset;
+
+    if (!(header(RSH_VRSN) & NEW_FORMAT_RSC))
+        return 0;
+
+    offset = m68k_read_memory_32(resource + header(RSH_RSSIZE) + EXT_CICONS);
+    if (offset == 0 || offset == 0xffffffff || !inside(resource + offset, 4))
+        return 0;
+
+    return resource + offset;
+}
+
+/*
+ * The colour icons, which are laid end to end with nothing in the file to say
+ * where one stops: each is a CICONBLK, its mono form and mask, twelve bytes of
+ * text, and then each of its colour versions - a CICON, its planes and its
+ * mask, and the same again for the selected state when it has one. So finding
+ * the second means measuring the first, which is what this does, filling in
+ * the pointers as it goes and the table with where each icon starts. This is
+ * EmuTOS's fixup_all_ciconblks.
+ *
+ * Choosing the version for the screen and turning it into the screen's form is
+ * left to whoever draws them in colour, which nothing here does yet; what the
+ * AES draws of a G_CICON is its mono form, and that needs only the pointers.
+ */
+static void fix_colour_icons()
+{
+    uint32_t table = cicon_table();
+    uint32_t block, n, i;
+
+    cicons = 0;
+    if (!table)
+        return;
+
+    for (n = 0; inside(table + n*4, 4); n++)
+        if (m68k_read_memory_32(table + n*4) == 0xffffffff)
+            break;
+    if (!inside(table + n*4, 4))
+        return;                         /* no end to the table */
+
+    block = table + n*4 + 4;
+    for (i = 0; i < n; i++)
+    {
+        uint32_t versions, words, at, v;
+
+        if (!inside(block, CIB_SIZE))
+            return;
+
+        versions = m68k_read_memory_32(block + CIB_MAINLIST);
+        words = (uint32_t)(m68k_read_memory_16(block + IB_WICON) / 16)
+                * m68k_read_memory_16(block + IB_HICON);
+        if (words > resource_size)
+            return;                     /* larger than the file it is in */
+
+        at = block + CIB_SIZE;
+        m68k_write_memory_32(block + IB_PDATA, at);
+        at += words * 2;
+        m68k_write_memory_32(block + IB_PMASK, at);
+        at += words * 2;
+        m68k_write_memory_32(block + IB_PTEXT, at);
+        at += CIB_TEXT;
+
+        m68k_write_memory_32(block + CIB_MAINLIST, versions ? at : 0);
+
+        for (v = 0; v < versions; v++)
+        {
+            uint32_t version = at;
+            uint16_t planes;
+
+            if (!inside(version, CI_SIZE))
+                return;
+
+            planes = (uint16_t)m68k_read_memory_16(version + CI_PLANES);
+            if (planes == 0 || planes > 32)
+                return;                 /* not a colour icon */
+
+            at = version + CI_SIZE;
+            m68k_write_memory_32(version + CI_COL_DATA, at);
+            at += words * 2 * planes;
+            m68k_write_memory_32(version + CI_COL_MASK, at);
+            at += words * 2;
+
+            /* Nought for no selected state, and anything else for one */
+            if (m68k_read_memory_32(version + CI_SEL_DATA))
+            {
+                m68k_write_memory_32(version + CI_SEL_DATA, at);
+                at += words * 2 * planes;
+                m68k_write_memory_32(version + CI_SEL_MASK, at);
+                at += words * 2;
+            }
+
+            m68k_write_memory_32(version + CI_NEXT_RES,
+                m68k_read_memory_32(version + CI_NEXT_RES) == 1 ? at : 0);
+        }
+
+        /* The last of the icon has to be in the file, or it is not this one */
+        if (at > resource + resource_size)
+            return;
+
+        m68k_write_memory_32(table + i*4, block);
+        cicons = i + 1;
+        block = at;
+    }
+}
+
 /*
  * The objects, which are done apart from everything else.
  *
@@ -345,6 +511,15 @@ static void fix_objects()
             case G_IBOX:
             case G_BOXCHAR:
                 break;
+            case G_CICON:
+            {
+                uint32_t which = m68k_read_memory_32(object + OB_SPEC);
+
+                if (which < cicons)
+                    m68k_write_memory_32(object + OB_SPEC,
+                        m68k_read_memory_32(cicon_table() + which*4));
+                break;
+            }
             default:
                 fix_long(object + OB_SPEC);
                 break;
@@ -410,10 +585,13 @@ uint32_t AES_rsrc_load()
     /*
      * How large it is, which the file says itself rather than being however
      * large the file happens to be: what is after the end of a resource is not
-     * part of it.
+     * part of it. One with colour icons says it twice, rsh_rssize being where
+     * the part an older AES understands ends and the long after it the end of
+     * the file.
      */
     {
-        uint8_t head[RSH_SIZE];
+        uint8_t head[RSH_SIZE], ext[4];
+        uint32_t old_size;
 
         if (fread(head, 1, sizeof head, f) != sizeof head)
         {
@@ -422,6 +600,26 @@ uint32_t AES_rsrc_load()
         }
 
         size = (uint32_t)((head[RSH_RSSIZE] << 8) | head[RSH_RSSIZE + 1]);
+
+        if (head[RSH_VRSN + 1] & NEW_FORMAT_RSC)
+        {
+            old_size = size;
+            if (fseek(f, (long)old_size + EXT_FILESIZE, SEEK_SET) != 0
+                || fread(ext, 1, sizeof ext, f) != sizeof ext)
+            {
+                fclose(f);
+                printf("AES rsrc_load: %s has colour icons and stops before "
+                       "it says where they are\n", name);
+                return 0;
+            }
+
+            size = ((uint32_t)ext[0] << 24) | ((uint32_t)ext[1] << 16)
+                   | ((uint32_t)ext[2] << 8) | ext[3];
+
+            /* It has to have room for the longs that said so */
+            if (size < old_size + EXT_CICONS + 4)
+                size = 0;
+        }
     }
 
     if (size < RSH_SIZE || size > MAX_RESOURCE)
@@ -449,6 +647,7 @@ uint32_t AES_rsrc_load()
         return 0;
     }
     fclose(f);
+    resource_size = size;
 
     /*
      * And now the offsets become addresses, in the order EmuTOS does it. The
@@ -496,6 +695,8 @@ uint32_t AES_rsrc_load()
     for (i = 0; i < n; i++)
         fix_long(resource + header(RSH_FRIMG) + i*4);
 
+    /* Before the objects, whose ob_spec is looked up in what this makes */
+    fix_colour_icons();
     fix_objects();
 
     /*
@@ -522,6 +723,8 @@ uint32_t AES_rsrc_free()
 
     mem_free(resource);
     resource = 0;
+    resource_size = 0;
+    cicons = 0;
 
     m68k_write_memory_16(aes_global() + 5*2, 0);
     m68k_write_memory_16(aes_global() + 6*2, 0);
