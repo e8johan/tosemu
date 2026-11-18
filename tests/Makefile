@@ -19,12 +19,12 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-cicon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
           c-mintnet c-sting c-webgate c-dialogend c-evbutton c-scrmem
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
-GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
+GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-cicon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
             c-keyboard c-modal c-clock c-video c-rez c-dialogend c-evbutton c-scrmem
 
@@ -622,6 +622,11 @@ check: all
 	# with the colours, because an icon is a mask drawn in one and an image
 	# drawn over it in another, and telling them apart needs three.
 	TOSEMU_SCREEN=low $(TOSEMU) test-c-icon > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	# The colour icons in a resource file, which are past where an older
+	# AES thinks the file ends, and whose ob_spec is a number rather than
+	# an offset. Drawn on the same screen, for the same reason.
+	TOSEMU_SCREEN=low $(TOSEMU) test-c-cicon > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	# One character packed into the object itself rather than pointed at,
 	# which is every drive letter and every scroll bar arrow the AES draws
