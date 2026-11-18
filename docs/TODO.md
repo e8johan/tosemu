@@ -631,3 +631,10 @@
   to an AES 3.4 is entitled to call one, which stops the emulator. What would
   close it is writing them, and then the AES's number goes up because it has
   earned it.
+- The one line -vv ends each call with says what it was called with for GEMDOS
+  and the BIOS, and only what it answered for the XBIOS, whose hundred and nine
+  rows have no argument spec beside them yet and show as (...). Writing them
+  is a column in xbios.c and nothing else. The AES and the VDI do not have the
+  line at all: their arguments are arrays rather than words on the stack, so
+  the spec would have to say which array as well as what - which is what
+  oAESis's docalls.c does, with a count before each conversion.

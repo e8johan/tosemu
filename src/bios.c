@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include "tossystem.h"
+#include "calltrace.h"
 #include "console.h"
 #include "midi.h"
 #include "xbios.h"
@@ -316,25 +317,26 @@ struct BIOS_function {
     uint16_t id;
     uint8_t kind;
     int32_t ret;
+    const char *args;   /* What -vv shows it was called with - calltrace.h */
 };
 
 struct BIOS_function BIOS_functions[] = {
-    {"Bconin", BIOS_Bconin, 0x02, FN_HALT, 0},
-    {"Bconout", BIOS_Bconout, 0x03, FN_HALT, 0},
-    {"Bconstat", BIOS_Bconstat, 0x01, FN_HALT, 0},
-    {"Bcostat", BIOS_Bcostat, 0x08, FN_HALT, 0},
-    {"Drvmap", BIOS_Drvmap, 0x0A, FN_HALT, 0},
+    {"Bconin", BIOS_Bconin, 0x02, FN_HALT, 0, "w=k"},
+    {"Bconout", BIOS_Bconout, 0x03, FN_HALT, 0, "wc"},
+    {"Bconstat", BIOS_Bconstat, 0x01, FN_HALT, 0, "w"},
+    {"Bcostat", BIOS_Bcostat, 0x08, FN_HALT, 0, "w"},
+    {"Drvmap", BIOS_Drvmap, 0x0A, FN_HALT, 0, "=x"},
     /* No BIOS parameter block to hand out, there is no TOS file system here */
-    {"Getbpb", BIOS_Getbpb, 0x07, FN_STUB, 0},
-    {"Getmpb", BIOS_Getmpb, 0x00, FN_HALT, 0},
-    {"Kbshift", BIOS_Kbshift, 0x0B, FN_HALT, 0},
-    {"Mediach", BIOS_Mediach, 0x09, FN_HALT, 0},
+    {"Getbpb", BIOS_Getbpb, 0x07, FN_STUB, 0, "w=a"},
+    {"Getmpb", BIOS_Getmpb, 0x00, FN_HALT, 0, "p"},
+    {"Kbshift", BIOS_Kbshift, 0x0B, FN_HALT, 0, "w=x"},
+    {"Mediach", BIOS_Mediach, 0x09, FN_HALT, 0, "w"},
     /* Drives are backed by host directories, so there are no sectors to move.
      * Answering "drive not ready" is honest; a fake success would let an
      * application believe it had written something. */
-    {"Rwabs", BIOS_Rwabs, 0x04, FN_STUB, BIOS_EDRVNR},
-    {"Setexc", BIOS_Setexc, 0x05, FN_HALT, 0},
-    {"Tickcal", BIOS_Tickcal, 0x06, FN_HALT, 0}
+    {"Rwabs", BIOS_Rwabs, 0x04, FN_STUB, BIOS_EDRVNR, "wpwww"},
+    {"Setexc", BIOS_Setexc, 0x05, FN_HALT, 0, "wp=a"},
+    {"Tickcal", BIOS_Tickcal, 0x06, FN_HALT, 0, ""}
 };
 
 void bios_trap()
@@ -345,9 +347,14 @@ void bios_trap()
     for(i=0; i<sizeof(BIOS_functions)/sizeof(struct BIOS_function); ++i) {
         struct BIOS_function *f = &BIOS_functions[i];
         uint32_t r;
+        char args[256];
 
         if (f->id != fnct)
             continue;
+
+        FUNC_TRACE_ARGS {
+            calltrace_args(args, sizeof args, f->args);
+        }
 
         if (f->fnct) {
             r = f->fnct();
@@ -363,7 +370,7 @@ void bios_trap()
         }
 
         FUNC_TRACE_ARGS {
-            printf("Return from %s: %d = 0x%x\n", f->name, r, r);
+            calltrace_line(f->name, args, f->args, r);
         }
         m68k_set_reg(M68K_REG_D0, r);
 

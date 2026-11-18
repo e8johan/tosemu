@@ -24,7 +24,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               dongle.c net.c netgate.c netcache.c netpic.c sting.c gemdosnet.c \
               linea.c shifter.c video.c \
-              tossystem.c utils.c memory.c cpu.c musashi.c
+              tossystem.c calltrace.c utils.c memory.c cpu.c musashi.c
 
 # The 68000, which comes from Musashi. These are built as they stand, out of
 # the submodule, and everything that adapts them is in src/musashi.c and
