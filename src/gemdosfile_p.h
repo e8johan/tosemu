@@ -52,6 +52,14 @@ struct gemdos_files *gemdos_files_enter(uint32_t dta);
 void gemdos_files_leave(struct gemdos_files *saved, uint32_t basepage);
 void gemdos_files_drop(struct gemdos_files *saved);
 
+/* A handle for a host socket, or -1 when there is none free, which leaves
+ * the socket to the caller */
+int gemdos_socket_open(int fd);
+
+/* A handle's host socket, -1 for a handle that is a file, -2 for no handle.
+ * sflags, if not NULL, is pointed at what Fcntl set on it. */
+int gemdos_socket_fd(uint16_t h, uint32_t **sflags);
+
 uint32_t GEMDOS_Dgetdrv();
 uint32_t GEMDOS_Dsetdrv();
 uint32_t GEMDOS_Dfree();
@@ -73,6 +81,7 @@ uint32_t GEMDOS_Dsetpath();
 uint32_t GEMDOS_Dcreate();
 uint32_t GEMDOS_Fcreate();
 uint32_t GEMDOS_Fdelete();
+uint32_t GEMDOS_Frename();
 uint32_t GEMDOS_Fattrib();
 
 #endif /* GEMDOSFILE_H */

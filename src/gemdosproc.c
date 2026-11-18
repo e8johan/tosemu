@@ -584,6 +584,9 @@ static uint32_t pexec_go(uint32_t basepage, int release)
         return GEMDOS_ENSMEM;
     }
 
+    /* What the child finds free is what is left after its caller */
+    mem_program_starts();
+
     for (i = 0; i < 8; i++)
         c->d[i] = m68k_get_reg(0, M68K_REG_D0 + i);
     for (i = 0; i < 7; i++)

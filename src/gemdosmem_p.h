@@ -43,6 +43,11 @@ uint32_t GEMDOS_Mfree();
  * mem_alloc returns the base of the block, or 0 when there is no room for it.
  */
 uint32_t mem_largest_free(void);
+
+/* What was free the first time this was asked since the program running now
+ * began, and forgetting it for a program that is starting now */
+uint32_t mem_free_first_asked(void);
+void mem_program_starts(void);
 uint32_t mem_alloc(uint32_t size);
 int32_t mem_free(uint32_t block);
 

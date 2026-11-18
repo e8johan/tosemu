@@ -158,14 +158,22 @@ static int in_rectangle(int16_t x, int16_t y, const int16_t *r, int16_t leaving)
  * yes, at once, and getting that wrong is what made a click need two clicks -
  * the AES asks for the button to be up after it has already seen it come up,
  * and waiting for another change means waiting for another click.
+ *
+ * Or for the buttons not to be that way, which is what bit 8 of the clicks
+ * word asks: mask 3 and state 0 with it set is "either button down". EWeb
+ * waits for a click like that, and read as "both up" it was answered at
+ * once, with wherever the pointer was - so hovering over a link followed it.
+ * The test is EmuTOS's downorup.
  */
-static int buttons_are(int16_t buttons, int16_t mask, int16_t state)
+#define BUTTONS_NOT (0x100)
+
+static int buttons_are(int16_t buttons, int16_t mask, int16_t state, int negate)
 {
     /* A mask of nothing is a caller that does not care */
     if (mask == 0)
-        return 1;
+        return !negate;
 
-    return (buttons & mask) == (state & mask);
+    return ((buttons & mask) == (state & mask)) != negate;
 }
 
 /*
@@ -187,7 +195,7 @@ static int16_t answered_with;
 static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
                         const int16_t *m1, int16_t m1flags,
                         const int16_t *m2, int16_t m2flags,
-                        int16_t bmask, int16_t bstate,
+                        int16_t bmask, int16_t bstate, int bnot,
                         uint16_t *key, int16_t *mx, int16_t *my,
                         int16_t *buttons)
 {
@@ -355,16 +363,19 @@ static int16_t wait_for(int16_t wanted, long timeout, int16_t *message,
              * two look identical from anywhere else.
              */
             if (setting_flag("TOSEMU_TRACE_INPUT"))
-                printf("tosemu: wait for buttons %x to be %x, they are %x%s\n",
-                       bmask, bstate, now,
-                       (buttons_are(now, bmask, bstate)
+                printf("tosemu: wait for buttons %x to %sbe %x, they are %x%s\n",
+                       bmask, bnot ? "not " : "", bstate, now,
+                       (buttons_are(now, bmask, bstate, bnot)
                         && state_answered && now == answered_with
-                        && (bstate & bmask) != 0)
+                        && (now & bmask) != 0)
                        ? " - already answered with this press" : "");
 
-            if (buttons_are(now, bmask, bstate)
+            /* A press is a state with a button of the mask down in it, which
+             * is the same thing as a wanted state with one down in it when
+             * the wait is for the buttons to be that way */
+            if (buttons_are(now, bmask, bstate, bnot)
                 && !(state_answered && now == answered_with
-                     && (bstate & bmask) != 0))
+                     && (now & bmask) != 0))
             {
                 if (buttons)
                     *buttons = now;
@@ -698,7 +709,7 @@ int16_t host_event_wait(int16_t wanted, int32_t timeout, int16_t *message,
     gfx_mouse(mx, my, buttons);
 
     happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags,
-                        bmask, bstate, &k, mx, my, buttons);
+                        bmask, bstate, 0, &k, mx, my, buttons);
 
     *key = (int16_t)k;
     *kstate = (int16_t)gfx_kstate();
@@ -721,7 +732,7 @@ uint32_t AES_evnt_timer()
     /* Zero is not a wait at all, it is a way of asking whether anything else
      * is pending, and there is nothing else to be pending yet */
     if (ms > 0)
-        wait_for(MU_TIMER, ms, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        wait_for(MU_TIMER, ms, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     else
         gem_present();
 
@@ -763,7 +774,7 @@ uint32_t AES_evnt_mesag()
 
     FUNC_TRACE_ENTER
 
-    if (wait_for(MU_MESAG, -1, message, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) != MU_MESAG)
+    if (wait_for(MU_MESAG, -1, message, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) != MU_MESAG)
         return AES_ERROR;
 
     message_to_application(buffer, message);
@@ -818,6 +829,7 @@ uint32_t AES_evnt_multi()
 
     happened = wait_for(wanted, timeout, message, m1, m1flags, m2, m2flags,
                         aes_intin(2), aes_intin(3),
+                        (aes_intin(1) & BUTTONS_NOT) != 0,
                         &key, &mx, &my, &buttons);
 
     if (happened == MU_MESAG)
@@ -857,7 +869,7 @@ uint32_t AES_evnt_keybd()
     if (!gem_start())
         return AES_ERROR;
 
-    wait_for(MU_KEYBD, -1, 0, 0, 0, 0, 0, 0, 0, &key, &mx, &my, &buttons);
+    wait_for(MU_KEYBD, -1, 0, 0, 0, 0, 0, 0, 0, 0, &key, &mx, &my, &buttons);
 
     FUNC_TRACE_ARGS {
         printf("    key: 0x%x\n", key);
@@ -893,7 +905,7 @@ uint32_t AES_evnt_button()
     gfx_mouse(&mx, &my, &buttons);
 
     wait_for(MU_BUTTON, -1, 0, 0, 0, 0, 0, mask, state,
-             &key, &mx, &my, &buttons);
+             (clicks & BUTTONS_NOT) != 0, &key, &mx, &my, &buttons);
 
     aes_set_intout(1, mx);
     aes_set_intout(2, my);
@@ -925,7 +937,7 @@ uint32_t AES_evnt_mouse()
 
     gfx_mouse(&mx, &my, &buttons);
 
-    wait_for(MU_M1, -1, 0, rect, leaving, 0, 0, 0, 0,
+    wait_for(MU_M1, -1, 0, rect, leaving, 0, 0, 0, 0, 0,
              &key, &mx, &my, &buttons);
 
     gfx_mouse(&mx, &my, &buttons);

@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -207,7 +208,7 @@ const uint8_t *tos_mem_span(uint32_t address, uint32_t len)
 {
     struct _memarea *area = find_memarea(address);
 
-    if (!area || area->read != ptr_read
+    if (!area || (area->read != ptr_read && !(area->flags & MEMORY_PLAIN))
         || address - area->base + (uint64_t)len > area->len)
         return 0;
 

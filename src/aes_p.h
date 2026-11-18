@@ -148,6 +148,10 @@ void aes_wind_drawing_for(int16_t handle);
 void aes_wind_drawing_bar(int bar);
 int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
                        int reading);
+/* Something that changes whenever a window opens, closes, moves, changes size
+ * or is stacked differently - which changes the picture the windows make
+ * together without anything being drawn */
+unsigned long aes_wind_layout(void);
 int16_t aes_wind_from_back(int n, int16_t *x, int16_t *y, int16_t *w,
                            int16_t *h);
 

@@ -156,6 +156,28 @@ int surface_damage_take(struct surface *s, int16_t *x, int16_t *y,
 int surface_load_atari(struct surface *s, const uint8_t *bytes);
 
 /*
+ * Everything drawn in any surface since this was last asked, as one rectangle
+ * round it all, and forgetting it. Every surface is the screen's shape, so it
+ * is the screen's coordinates. This is how a copy of the screen kept
+ * somewhere else - the screen memory a program can read - knows how much of
+ * it is out of date. 0 when nothing was drawn.
+ */
+int surface_changed_take(int16_t *x, int16_t *y, int16_t *w, int16_t *h);
+
+/*
+ * A rectangle of a surface to or from the same rectangle of a picture in the
+ * machine's memory - see surface_load_atari - rounded out to whole groups of
+ * sixteen pixels. Loading damages what it loaded.
+ */
+void surface_store_atari_rect(const struct surface *s, uint8_t *bytes,
+                              int x, int y, int w, int h);
+void surface_load_atari_rect(struct surface *s, const uint8_t *bytes,
+                             int x, int y, int w, int h);
+
+/* How many bytes a surface's picture takes in the machine's memory */
+uint32_t surface_bytes(const struct surface *s);
+
+/*
  * Writes the surface out as a portable pixmap, for looking at what was drawn
  * without a compositor in the way. The colours come from the palette, so what
  * lands in the file is what would land on a screen.

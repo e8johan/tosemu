@@ -219,6 +219,12 @@ uint32_t bios_static_alloc(uint32_t len);
 uint32_t bios_device_alloc(uint32_t len);
 
 /*
+ * Adds a cookie to the jar, making the jar on the first one. A machine with
+ * nothing to put in one has no jar, which is what TOS before 1.06 had.
+ */
+void cookie_add(uint32_t id, uint32_t value);
+
+/*
  * Where the screen is in the machine, and how many bytes of it there are.
  *
  * This is what Physbase and Logbase answer with. Nothing is shown there - what

@@ -45,6 +45,10 @@ struct surface {
 
 static struct surface *selected;
 
+/* Every surface's damage together, in the one coordinate space they share,
+ * since it was last taken - see surface_changed_take. Empty when cw is 0. */
+static int cx, cy, cw, ch;
+
 struct surface *surface_create(uint16_t width, uint16_t height,
                                uint16_t planes)
 {
@@ -232,6 +236,23 @@ void surface_damage(struct surface *s, int x, int y, int w, int h)
     if (x >= x2 || y >= y2)
         return;
 
+    if (cw == 0)
+    {
+        cx = x;
+        cy = y;
+        cw = x2 - x;
+        ch = y2 - y;
+    }
+    else
+    {
+        int ux2 = cx + cw > x2 ? cx + cw : x2, uy2 = cy + ch > y2 ? cy + ch : y2;
+
+        cx = cx < x ? cx : x;
+        cy = cy < y ? cy : y;
+        cw = ux2 - cx;
+        ch = uy2 - cy;
+    }
+
     if (s->dw == 0)
     {
         s->dx = (int16_t)x;
@@ -276,6 +297,92 @@ int surface_damage_take(struct surface *s, int16_t *x, int16_t *y,
     s->dh = 0;
 
     return 1;
+}
+
+int surface_changed_take(int16_t *x, int16_t *y, int16_t *w, int16_t *h)
+{
+    if (cw == 0)
+        return 0;
+
+    *x = (int16_t)cx;
+    *y = (int16_t)cy;
+    *w = (int16_t)cw;
+    *h = (int16_t)ch;
+    cw = ch = 0;
+
+    return 1;
+}
+
+/* The plane words of a rectangle, rounded out to whole groups of sixteen
+ * pixels, as the first word and how many there are in a row */
+static int groups(const struct surface *s, int *x, int *y, int *w, int *h,
+                  int *first, int *count)
+{
+    int x2 = *x + *w, y2 = *y + *h;
+
+    if (*x < 0)
+        *x = 0;
+    if (*y < 0)
+        *y = 0;
+    if (x2 > s->width)
+        x2 = s->width;
+    if (y2 > s->height)
+        y2 = s->height;
+    if (*x >= x2 || *y >= y2)
+        return 0;
+
+    *first = (*x / 16) * s->planes;
+    *count = ((x2 - 1) / 16 - *x / 16 + 1) * s->planes;
+    *w = x2 - *x;
+    *h = y2 - *y;
+    return 1;
+}
+
+void surface_store_atari_rect(const struct surface *s, uint8_t *bytes,
+                              int x, int y, int w, int h)
+{
+    int first, count, i, row;
+
+    if (!s || !bytes || !groups(s, &x, &y, &w, &h, &first, &count))
+        return;
+
+    for (row = y; row < y + h; row++)
+    {
+        const uint16_t *from = s->data + (size_t)row * s->words_per_line + first;
+        uint8_t *to = bytes + ((size_t)row * s->words_per_line + first) * 2;
+
+        for (i = 0; i < count; i++)
+        {
+            to[2 * i] = (uint8_t)(from[i] >> 8);
+            to[2 * i + 1] = (uint8_t)from[i];
+        }
+    }
+}
+
+void surface_load_atari_rect(struct surface *s, const uint8_t *bytes,
+                             int x, int y, int w, int h)
+{
+    int first, count, i, row;
+
+    if (!s || !bytes || !groups(s, &x, &y, &w, &h, &first, &count))
+        return;
+
+    for (row = y; row < y + h; row++)
+    {
+        uint16_t *to = s->data + (size_t)row * s->words_per_line + first;
+        const uint8_t *from = bytes + ((size_t)row * s->words_per_line + first) * 2;
+
+        for (i = 0; i < count; i++)
+            to[i] = (uint16_t)((from[2 * i] << 8) | from[2 * i + 1]);
+    }
+
+    surface_damage(s, (x / 16) * 16, y, ((x + w - 1) / 16 + 1) * 16 - (x / 16) * 16, h);
+}
+
+/* How many bytes a surface's picture is in the machine's memory */
+uint32_t surface_bytes(const struct surface *s)
+{
+    return s ? (uint32_t)s->words_per_line * 2 * s->height : 0;
 }
 
 /*

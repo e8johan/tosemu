@@ -99,6 +99,8 @@ The table below summarizes the available options:
 | `[printer] command`    | `TOSEMU_PRINT_COMMAND` | The name of the print command, e.g. `lp`. |
 | `[midi] device`        | `TOSEMU_MIDI`        | What ALSA device the emulated midi port is directed to, e.g. `hw:1,0,0` (from `aplaymidi -l`) or `seq:20:0` (from `aconnect -l`). This can also be a pair of files, e.g. `file:incoming.bin,send.bin`. |
 | `[machine] interrupts` | `TOSEMU_INTERRUPTS`  | Turns on the MFP, timers and 200 Hz clock. Uses more CPU for emulation, but is required by some programs, e.g. Cubase. |
+| `[network] enable`     | `TOSEMU_NO_NETWORK`  | `yes` (the default) or `no`: STinG and MiNTnet TCP/IP over the host's sockets. |
+| `[network] gateway`    | `TOSEMU_NO_GATEWAY`  | `yes` (the default) or `no`: a built-in AERA gateway for EWeb's secure pages and pictures, at `webgate`. |
 | `[session] socket`     | `TOSEMU_AESD`        | Use if you want to provide a specific socket for `tosaesd`. You can run separate sessions for each instance. No need to set if you only plan on running once instance. |
 
 There are also a set of development options:
@@ -111,6 +113,7 @@ There are also a set of development options:
 | `[debug] screenshot`   | `TOSEMU_SCREENSHOT`  | Takes a path to where screenshots are written. |
 | `[debug] trace-input`  | `TOSEMU_TRACE_INPUT` | Traces mouse events, directory reads, and file selector reads. |
 | `[debug] trace-paths`  | `TOSEMU_TRACE_PATHS` | Traces paths as they are resolved. Great for debugging `TOS_BASE_PATH`-related issues. |
+| `[debug] trace-gateway` | `TOSEMU_TRACE_GATEWAY` | Traces the built-in gateway's requests and where their time went. |
 
 An example settings file:
 

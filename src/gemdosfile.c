@@ -20,6 +20,7 @@
  */
 
 #include "gemdosfile_p.h"
+#include "gemdosnet_p.h"
 #include "settings.h"
 
 #include <errno.h>
@@ -70,6 +71,8 @@ struct DTA
 struct openfile
 {
     FILE *f;
+    int sock;       /* A host socket in place of the stream, or -1 */
+    uint32_t sflags; /* What the program set on the socket with Fcntl */
     int refs;
 };
 
@@ -118,6 +121,8 @@ static struct openfile *open_stream(FILE *f)
         return NULL;
 
     of->f = f;
+    of->sock = -1;
+    of->sflags = 0;
     of->refs = 1;
 
     return of;
@@ -134,7 +139,9 @@ static void release_stream(struct openfile *of)
     if (of == NULL || --of->refs > 0)
         return;
 
-    if (of->f != stdin && of->f != stdout && of->f != stderr)
+    if (of->sock >= 0)
+        close(of->sock);
+    else if (of->f != stdin && of->f != stdout && of->f != stderr)
         fclose(of->f);
 
     free(of);
@@ -167,6 +174,9 @@ uint32_t GEMDOS_Fseek()
 
     if (invalid_handle(handle))
         return GEMDOS_EIHNDL;
+
+    if (handles[handle].of->sock >= 0)
+        return GEMDOS_ESPIPE;
 
     switch (seekmode)
     {
@@ -238,7 +248,8 @@ uint32_t GEMDOS_Fdatime()
     {
         /* Read time */
 
-        ret = fstat(fileno(handle_file(handle)), &buf);
+        ret = fstat(handles[handle].of->sock >= 0 ? handles[handle].of->sock
+                                                  : fileno(handle_file(handle)), &buf);
 
         if (!ret)
         {
@@ -795,6 +806,50 @@ uint32_t GEMDOS_Fdelete()
     return 0;
 }
 
+/*
+ * Renames a file, or moves it to another directory of the drive. TOS will not
+ * put it where a file already is, which rename(2) would.
+ */
+uint32_t GEMDOS_Frename()
+{
+    uint32_t from = peek_u32(4), to = peek_u32(8);
+    char buf[PATH_MAX+1];
+    char ubuf[PATH_MAX+1];
+    char nubuf[PATH_MAX+1];
+    int32_t err;
+
+    memset(buf, 0, PATH_MAX+1);
+    memset(ubuf, 0, PATH_MAX+1);
+    memset(nubuf, 0, PATH_MAX+1);
+
+    get_path(buf, from);
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    from: %s\n", buf);
+    }
+    err = path_from_tos(buf, ubuf);
+    if (err)
+        return err;
+
+    memset(buf, 0, PATH_MAX+1);
+    get_path(buf, to);
+    FUNC_TRACE_ARGS {
+        printf("    to: %s\n", buf);
+    }
+    err = path_from_tos(buf, nubuf);
+    if (err)
+        return err;
+
+    if (access(ubuf, F_OK) != 0)
+        return GEMDOS_EFILNF;
+    if (access(nubuf, F_OK) == 0)
+        return GEMDOS_EACCDN;
+
+    if (rename(ubuf, nubuf) != 0)
+        return errno == ENOENT ? GEMDOS_EPTHNF : GEMDOS_EACCDN;
+
+    return 0;
+}
+
 /* Opening a file never hands out one of the standard handles, so the search
  * starts past them even when the application has closed one. */
 static int get_handle(struct openfile *of)
@@ -810,6 +865,33 @@ static int get_handle(struct openfile *of)
         return i;
     }
     return -1;
+}
+
+int gemdos_socket_open(int fd)
+{
+    struct openfile *of = open_stream(NULL);
+    int h;
+
+    if (of == NULL)
+        return -1;
+    of->sock = fd;
+
+    h = get_handle(of);
+    if (h < 0)
+    {
+        of->sock = -1;
+        free(of);
+    }
+    return h;
+}
+
+int gemdos_socket_fd(uint16_t h, uint32_t **sflags)
+{
+    if (invalid_handle(h))
+        return -2;
+    if (sflags)
+        *sflags = &handles[h].of->sflags;
+    return handles[h].of->sock;
 }
 
 static void make_dirs(char *path)
@@ -1337,6 +1419,9 @@ uint32_t GEMDOS_Fread()
     if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
+    if (handles[h].of->sock >= 0)
+        return gemdos_socket_read(handles[h].of->sock, handles[h].of->sflags, buf, len);
+
     tmp = malloc(len);
     if (tmp == NULL)
         return GEMDOS_ENSMEM;
@@ -1378,6 +1463,9 @@ uint32_t GEMDOS_Fwrite()
 
     if (invalid_handle(h))
         return GEMDOS_EIHNDL;
+
+    if (handles[h].of->sock >= 0)
+        return gemdos_socket_write(handles[h].of->sock, handles[h].of->sflags, buf, len);
 
     tmp = malloc(len);
     if (tmp == NULL)

@@ -20,6 +20,7 @@
  */
 #include "tossystem.h"
 #include "settings.h"
+#include "sting.h"
 #include "config.h"
 
 #include <stdio.h>
@@ -496,6 +497,8 @@ static void conterm_write(struct _memarea *area, uint32_t address,
  * should have to depend on, so the host pointer is taken directly. interrupt.c
  * writes the two hundred hertz counter the same way and for the same reason.
  */
+static uint32_t cookie_jar;
+
 static void poke_system_long(uint32_t address, uint32_t value)
 {
     uint8_t *at = tos_mem_to_host_mem(address);
@@ -684,6 +687,34 @@ uint32_t bios_device_alloc(uint32_t len)
     biosdevice_free += len;
 
     return address;
+}
+
+/* Room for the cookies the machine has and for some a program adds */
+#define COOKIE_SLOTS (16)
+
+void cookie_add(uint32_t id, uint32_t value)
+{
+    uint32_t at;
+
+    if (!cookie_jar)
+    {
+        cookie_jar = bios_static_alloc(COOKIE_SLOTS * 8);
+        if (!cookie_jar)
+            return;
+        m68k_write_memory_32(cookie_jar, 0);
+        m68k_write_memory_32(cookie_jar + 4, COOKIE_SLOTS);
+        poke_system_long(0x5a0, cookie_jar);   /* _p_cookies */
+    }
+
+    for (at = cookie_jar; m68k_read_memory_32(at) != 0; at += 8)
+        ;
+    if ((at - cookie_jar) / 8 + 1 >= COOKIE_SLOTS)
+        return;
+
+    m68k_write_memory_32(at + 8, 0);
+    m68k_write_memory_32(at + 12, COOKIE_SLOTS);
+    m68k_write_memory_32(at, id);
+    m68k_write_memory_32(at + 4, value);
 }
 
 /*
@@ -981,6 +1012,7 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
     /* RAM for the structures the system hands out pointers to */
     te->biosram = calloc(1, BIOSRAMSIZE);
     biosram_free = BIOSRAMBASE;
+    cookie_jar = 0;
     biosdevice_free = BIOSRAMBASE + BIOSRAMSIZE - BIOSRAM_DEVICE_SIZE;
 
     /* And the machine's own stack, taken first so that it is always there:
@@ -1163,7 +1195,9 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
                         (uint8_t *)te->staticmem1 + (SYSVAR_CONTERM + 1 - 0x380));
     add_ptr_memory_area("basepage", MEMORY_READWRITE, 0x800, 0x100, te->bp);
     add_ptr_memory_area("userram", MEMORY_READWRITE, 0x900, te->size, te->appmem);
-    add_ptr_memory_area("screen", MEMORY_READWRITE, screen_base, screen_area, te->screenmem);
+    /* GEM's screen while GEM is up - see gem_screen_read */
+    add_fnct_memory_area("screen", MEMORY_READWRITE | MEMORY_PLAIN, screen_base, screen_area,
+                         te->screenmem, gem_screen_read, gem_screen_write);
     add_ptr_memory_area("superram", MEMORY_SUPERREAD | MEMORY_SUPERWRITE, 0x600, SUPERMEMSIZE, te->supermem);
     /* Short of the top by what the devices have, so that nothing registered
      * there is standing inside this */
@@ -1291,6 +1325,9 @@ static int load_tos_environment(struct tos_environment *te, void *binary,
      * - the header is in the BIOS RAM and _sysbase is a system variable, and
      * neither could be written before the areas above went up */
     build_os_header();
+
+    /* STinG, whose cookie is the first in the jar */
+    sting_init();
 
     /*
      * And where its memory begins and ends, which TOS kept in system variables

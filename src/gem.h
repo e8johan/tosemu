@@ -21,6 +21,8 @@
 #ifndef GEM_H
 #define GEM_H
 
+#include <stdint.h>
+
 /* GEM, which is the AES and the VDI together.
  *
  * Both halves arrive through trap #2, and which one is being called is told
@@ -31,6 +33,14 @@
 
 /* Serves a trap #2, dispatching to whichever half of GEM was asked for */
 void gem_trap();
+
+/*
+ * The screen memory's reads and writes, which are the screen GEM shows while
+ * GEM is up - see gem.c. tossystem.c puts them on the memory area.
+ */
+struct _memarea;
+uint8_t gem_screen_read(struct _memarea *area, uint32_t address);
+void gem_screen_write(struct _memarea *area, uint32_t address, uint8_t value);
 
 /* Drops everything both halves hold for the running application.
  *

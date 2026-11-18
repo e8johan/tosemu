@@ -122,6 +122,13 @@ void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height);
 void gem_dialog_end();
 
 /*
+ * wind_update's mouse control taken (1) and given back (0). A dialog begun
+ * while the mouse was taken ends when it is given back, if nothing ended it
+ * before - see gem.c.
+ */
+void gem_mouse_control(int take);
+
+/*
  * The same for a menu that has dropped down, and for the same reason. The
  * surface is asked for before the menu is drawn and let go of when it goes
  * away; the window it is shown in is gfx.c's, and gem_menu_surface is what
