@@ -21,6 +21,7 @@
 
 #include "gemdosfile_p.h"
 #include "gemdosnet_p.h"
+#include "console.h"
 #include "settings.h"
 
 #include <errno.h>
@@ -101,16 +102,47 @@ static struct tos_environment *tos_env;
 
 static struct fhandle handles[HANDLES];
 
+/*
+ * CON:, the console as a handle.
+ *
+ * On TOS the standard handles are not files to begin with. Handles 0 and 1 are
+ * the console - the device, which is minus one - and Cconout, Cconin and the
+ * rest are writes and reads on handles 1 and 0 rather than calls of their own.
+ * That is what makes Fforce reach them: a program that forces handle 1 onto a
+ * file has redirected Cconws into it, which is how a shell sends a program's
+ * output somewhere. And minus one itself is a handle wherever GEMDOS takes one,
+ * so a program can write to the console with Fwrite(-1) whatever its handle 1
+ * has been pointed at, or force it back with Fforce(1, -1).
+ *
+ * There is one console, so there is one of these, shared by every handle that
+ * refers to it and never closed.
+ *
+ * AUX: and PRN:, minus two and three, have nowhere to go - there is no serial
+ * port and the printer is a workstation rather than a port - so those are
+ * still refused, and handles 2 and 3 are not them: 2 is the host's standard
+ * error, where a program's complaints are more use than in a serial port that
+ * is not there.
+ */
+static struct openfile con = { NULL, -1, 0, 1 };
+
+#define CON_HANDLE ((uint16_t)0xffff)
+
 static int invalid_handle(uint16_t h)
 {
     return (h >= HANDLES) || !(handles[h].flags & HANDLE_ALLOCATED)
            || (handles[h].of == NULL);
 }
 
-/* The stream a handle refers to. Only call this once invalid_handle said no. */
-static FILE *handle_file(uint16_t h)
+/* What a handle refers to, or nothing for a handle that refers to nothing */
+static struct openfile *handle_of(uint16_t h)
 {
-    return handles[h].of->f;
+    if (h == CON_HANDLE)
+        return &con;
+
+    if (invalid_handle(h))
+        return NULL;
+
+    return handles[h].of;
 }
 
 static struct openfile *open_stream(FILE *f)
@@ -136,7 +168,7 @@ static struct openfile *open_stream(FILE *f)
  */
 static void release_stream(struct openfile *of)
 {
-    if (of == NULL || --of->refs > 0)
+    if (of == NULL || of == &con || --of->refs > 0)
         return;
 
     if (of->sock >= 0)
@@ -145,6 +177,14 @@ static void release_stream(struct openfile *of)
         fclose(of->f);
 
     free(of);
+}
+
+/* And one more handle referring to a file. The console is never let go of, so
+ * it is not counted either. */
+static void hold_stream(struct openfile *of)
+{
+    if (of != &con)
+        of->refs++;
 }
 
 /* File functions ************************************************************/
@@ -165,6 +205,8 @@ uint32_t GEMDOS_Fseek()
     uint16_t seekmode = peek_u16(8);
     uint16_t handle = peek_u16(6);
     int32_t offset = peek_s32(2);
+    struct openfile *of = handle_of(handle);
+    FILE *f;
     long ret;
     int whence;
 
@@ -172,11 +214,31 @@ uint32_t GEMDOS_Fseek()
         printf("    offset: 0x%x, handle: 0x%x, seekmode: 0x%x\n", offset, handle, seekmode);
     }
 
-    if (invalid_handle(handle))
+    if (!of)
         return GEMDOS_EIHNDL;
 
-    if (handles[handle].of->sock >= 0)
+    if (of->sock >= 0)
         return GEMDOS_ESPIPE;
+
+    /*
+     * A character device has no position, and TOS says so by answering nought
+     * to every seek - which is how a program tells a device from a file:
+     * MiNTLib's isatty seeks to one and takes nought for a terminal. So the
+     * console answers nought where it is somebody's keyboard and screen.
+     *
+     * Where it is a pipe or a file the emulator was handed, the seek is the
+     * host's, which is what it was when handles 0 and 1 were the host's own
+     * streams. That is not a detail: MiNTLib writes a file with carriage
+     * returns and a pipe without, and it tells which from this.
+     */
+    f = of->f;
+    if (of == &con)
+    {
+        if (console_interactive(handle != 0))
+            return 0;
+
+        f = (handle == 0) ? stdin : stdout;
+    }
 
     switch (seekmode)
     {
@@ -194,11 +256,11 @@ uint32_t GEMDOS_Fseek()
     }
 
     errno = 0;
-    if (fseek(handle_file(handle), offset, whence) != 0)
+    if (fseek(f, offset, whence) != 0)
     {
         /* A failed seek must not leave the error indicator set, or every
          * later read or write on the handle would be reported as failed. */
-        clearerr(handle_file(handle));
+        clearerr(f);
 
         switch(errno)
         {
@@ -219,7 +281,7 @@ uint32_t GEMDOS_Fseek()
     }
 
     /* Fseek returns the resulting absolute position in the file */
-    ret = ftell(handle_file(handle));
+    ret = ftell(f);
     if (ret < 0)
         return GEMDOS_EINTRN;
 
@@ -236,20 +298,25 @@ uint32_t GEMDOS_Fdatime()
     uint16_t wflag = peek_u16(8);
     uint16_t handle = peek_u16(6);
     uint32_t ptr = peek_u32(2);
+    struct openfile *of = handle_of(handle);
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    handle: 0x%x, wflag: %d, ptr: 0x%x\n", handle, wflag, ptr);
     }
 
-    if (invalid_handle(handle))
+    if (!of)
         return GEMDOS_EIHNDL;
+
+    /* The console has no date to give, and TOS answers for a device without
+     * touching what it was handed */
+    if (of == &con)
+        return GEMDOS_E_OK;
 
     if (wflag == 0)
     {
         /* Read time */
 
-        ret = fstat(handles[handle].of->sock >= 0 ? handles[handle].of->sock
-                                                  : fileno(handle_file(handle)), &buf);
+        ret = fstat(of->sock >= 0 ? of->sock : fileno(of->f), &buf);
 
         if (!ret)
         {
@@ -850,6 +917,17 @@ uint32_t GEMDOS_Frename()
     return 0;
 }
 
+/*
+ * Whether a name is the console's, which Fopen and Fcreate answer with the
+ * console's handle rather than by opening a file. TOS knows it in the two
+ * spellings EmuTOS's specname_table has; AUX: and PRN: are the others, and
+ * have nowhere to go here.
+ */
+static int console_name(const char *name)
+{
+    return strcmp(name, "CON:") == 0 || strcmp(name, "con:") == 0;
+}
+
 /* Opening a file never hands out one of the standard handles, so the search
  * starts past them even when the application has closed one. */
 static int get_handle(struct openfile *of)
@@ -887,11 +965,13 @@ int gemdos_socket_open(int fd)
 
 int gemdos_socket_fd(uint16_t h, uint32_t **sflags)
 {
-    if (invalid_handle(h))
+    struct openfile *of = handle_of(h);
+
+    if (!of)
         return -2;
     if (sflags)
-        *sflags = &handles[h].of->sflags;
-    return handles[h].of->sock;
+        *sflags = &of->sflags;
+    return of->sock;
 }
 
 static void make_dirs(char *path)
@@ -927,6 +1007,9 @@ uint32_t GEMDOS_Fcreate()
     memset(buf, 0, PATH_MAX+1);
     memset(ubuf, 0, PATH_MAX+1);
     get_path(buf, addr);
+
+    if (console_name(buf))
+        return CON_HANDLE;
 
     err = path_from_tos(buf, ubuf);
     if (err)
@@ -1252,6 +1335,9 @@ uint32_t GEMDOS_Fopen()
     
     get_path(buf, filename);
 
+    if (console_name(buf))
+        return CON_HANDLE;
+
     err = path_from_tos(buf, ubuf);
     if (err)
         return err;
@@ -1310,20 +1396,21 @@ uint32_t GEMDOS_Fopen()
 uint32_t GEMDOS_Fdup()
 {
     uint16_t h = peek_u16(2);
+    struct openfile *of = handle_of(h);
     int n;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    handle: %d\n", h);
     }
 
-    if (invalid_handle(h))
+    if (!of)
         return GEMDOS_EIHNDL;
 
-    n = get_handle(handles[h].of);
+    n = get_handle(of);
     if (n == -1)
         return GEMDOS_ENHNDL;
 
-    handles[h].of->refs++;
+    hold_stream(of);
 
     return n;
 }
@@ -1342,13 +1429,15 @@ uint32_t GEMDOS_Fforce()
     if (stdh >= STD_HANDLES)
         return GEMDOS_EIHNDL;
 
-    if (invalid_handle(h))
+    /* Minus one is the console, which is how a program puts a handle it
+     * redirected back */
+    of = handle_of(h);
+    if (!of)
         return GEMDOS_EIHNDL;
 
     /* Claim the new file before letting go of the old one, so that redirecting
      * a handle onto itself does not close the file in between */
-    of = handles[h].of;
-    of->refs++;
+    hold_stream(of);
 
     release_stream(handles[stdh].of);
 
@@ -1397,6 +1486,10 @@ uint32_t GEMDOS_Fclose()
         printf("    handle: %d\n", h);
     }
 
+    /* The console itself is not something that can be closed */
+    if (h == CON_HANDLE)
+        return GEMDOS_E_OK;
+
     if (invalid_handle(h))
         return GEMDOS_EIHNDL;
 
@@ -1407,39 +1500,132 @@ uint32_t GEMDOS_Fclose()
     return GEMDOS_E_OK;
 }
 
+/*
+ * Reading and writing a file or the console, into and out of a buffer on this
+ * side. A socket is not one of these: it is read straight into the machine,
+ * with flags of its own, by gemdosnet.c.
+ */
+/*
+ * Whether a handle on the console may be used the other way round from the
+ * standard handle it is: read where it is the output, written where it is the
+ * input.
+ *
+ * Where the console is a person, yes: CON: is one device, and TOS reads the
+ * keyboard through whichever handle a program has on it. Where it is a pipe
+ * or a file the emulator was handed, handle 0 is the host's standard input and
+ * the others are its standard output, as they were when they were the host's
+ * own streams, and those refused it. MiNTLib depends on the refusal: told its
+ * output is a file, it reads a couple of bytes of it at startup, and were that
+ * the console it would be the first few keys of the program's input. Minus
+ * one, the console by name, is whichever side it is used as.
+ */
+static int console_both_ways(uint16_t h, int reading)
+{
+    if (h == CON_HANDLE)
+        return 1;
+
+    if (reading)
+        return h == 0 || console_interactive(1);
+
+    return h != 0 || console_interactive(0);
+}
+
+static int32_t stream_read(struct openfile *of, uint16_t h, uint8_t *tmp,
+                           uint32_t len)
+{
+    size_t n;
+
+    if (of == &con)
+    {
+        if (!console_both_ways(h, 1))
+            return GEMDOS_EIHNDL;
+
+        return console_read((char *)tmp, (int)len);
+    }
+
+    if (of->sock >= 0)
+    {
+        ssize_t got = read(of->sock, tmp, len);
+
+        return got < 0 ? GEMDOS_EINTRN : (int32_t)got;
+    }
+
+    /* The error indicator is sticky, so clear it to make sure that what we
+     * look at afterwards was caused by this read alone. */
+    errno = 0;
+    clearerr(of->f);
+
+    n = fread(tmp, 1, len, of->f);
+    if (ferror(of->f))
+    {
+        int err = errno;
+
+        clearerr(of->f);
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
+    }
+
+    return (int32_t)n;
+}
+
+static int32_t stream_write(struct openfile *of, uint16_t h,
+                            const uint8_t *tmp, uint32_t len)
+{
+    uint32_t i;
+    size_t n;
+
+    if (of == &con)
+    {
+        if (!console_both_ways(h, 0))
+            return GEMDOS_EIHNDL;
+
+        for (i = 0; i < len; i++)
+            console_out(tmp[i]);
+        return (int32_t)len;
+    }
+
+    if (of->sock >= 0)
+    {
+        ssize_t put = write(of->sock, tmp, len);
+
+        return put < 0 ? GEMDOS_EINTRN : (int32_t)put;
+    }
+
+    errno = 0;
+    clearerr(of->f);
+
+    n = fwrite(tmp, 1, len, of->f);
+    if (ferror(of->f))
+    {
+        int err = errno;
+
+        clearerr(of->f);
+        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
+    }
+
+    return (int32_t)n;
+}
+
 uint32_t GEMDOS_Fread()
 {
     uint16_t h = peek_u16(2);
     uint32_t len = peek_u32(4);
     uint32_t buf = peek_u32(8);
+    struct openfile *of = handle_of(h);
     uint8_t *tmp;
-    size_t n;
+    int32_t n;
     int i;
 
-    if (invalid_handle(h))
+    if (!of)
         return GEMDOS_EIHNDL;
 
-    if (handles[h].of->sock >= 0)
-        return gemdos_socket_read(handles[h].of->sock, handles[h].of->sflags, buf, len);
+    if (of->sock >= 0)
+        return gemdos_socket_read(of->sock, of->sflags, buf, len);
 
-    tmp = malloc(len);
+    tmp = malloc(len ? len : 1);
     if (tmp == NULL)
         return GEMDOS_ENSMEM;
 
-    /* The error indicator is sticky, so clear it to make sure that what we
-     * look at afterwards was caused by this read alone. */
-    errno = 0;
-    clearerr(handle_file(h));
-
-    n = fread(tmp, 1, len, handle_file(h));
-    if (ferror(handle_file(h)))
-    {
-        int err = errno;
-
-        clearerr(handle_file(h));
-        free(tmp);
-        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
-    }
+    n = stream_read(of, h, tmp, len);
 
     for (i = 0; i < n; i++)
         m68k_write_memory_8(buf+i, tmp[i]);
@@ -1453,44 +1639,78 @@ uint32_t GEMDOS_Fwrite()
     uint16_t h = peek_u16(2);
     uint32_t len = peek_u32(4);
     uint32_t buf = peek_u32(8);
+    struct openfile *of = handle_of(h);
     uint8_t *tmp;
-    size_t n;
+    int32_t n;
     int i;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    handle: %d, len: %d, buf: %x\n", h, len , buf);
     }
 
-    if (invalid_handle(h))
+    if (!of)
         return GEMDOS_EIHNDL;
 
-    if (handles[h].of->sock >= 0)
-        return gemdos_socket_write(handles[h].of->sock, handles[h].of->sflags, buf, len);
+    if (of->sock >= 0)
+        return gemdos_socket_write(of->sock, of->sflags, buf, len);
 
-    tmp = malloc(len);
+    tmp = malloc(len ? len : 1);
     if (tmp == NULL)
         return GEMDOS_ENSMEM;
 
     for (i = 0; i < len; i++)
         tmp[i] = m68k_read_memory_8(buf+i);
 
-    /* The error indicator is sticky, so clear it to make sure that what we
-     * look at afterwards was caused by this write alone. */
-    errno = 0;
-    clearerr(handle_file(h));
-
-    n = fwrite(tmp, 1, len, handle_file(h));
-    if (ferror(handle_file(h)))
-    {
-        int err = errno;
-
-        clearerr(handle_file(h));
-        free(tmp);
-        return err == EBADF ? GEMDOS_EIHNDL : GEMDOS_EINTRN;
-    }
+    n = stream_write(of, h, tmp, len);
 
     free(tmp);
     return n;
+}
+
+/*
+ * What Cconout and the rest are, on TOS: a read or a write on a standard
+ * handle. Where that handle is the console - or is nothing, a closed standard
+ * handle being the console again on TOS - the console calls answer as they
+ * always did, with the waiting and echoing each of them has. Where a program
+ * has forced it somewhere else they are a byte through the handle, the way
+ * EmuTOS's bdosmain does it.
+ */
+int gemdos_std_redirected(int stdh)
+{
+    struct openfile *of = handles[stdh].of;
+
+    return of != NULL && of != &con;
+}
+
+int32_t gemdos_std_read(int stdh, uint8_t *buf, uint32_t len)
+{
+    return stream_read(handles[stdh].of, (uint16_t)stdh, buf, len);
+}
+
+int32_t gemdos_std_write(int stdh, const uint8_t *buf, uint32_t len)
+{
+    return stream_write(handles[stdh].of, (uint16_t)stdh, buf, len);
+}
+
+/* Whether a redirected handle has nothing more to read, for Cconis */
+int gemdos_std_at_end(int stdh)
+{
+    struct openfile *of = handles[stdh].of;
+    int ch;
+
+    if (of->sock >= 0)
+        return 0;
+
+    ch = getc(of->f);
+    if (ch == EOF)
+    {
+        clearerr(of->f);
+        return 1;
+    }
+
+    ungetc(ch, of->f);
+
+    return 0;
 }
 
 /*
@@ -1531,7 +1751,7 @@ struct gemdos_files *gemdos_files_enter(uint32_t dta)
     {
         saved->std[i] = handles[i];
         if (handles[i].of)
-            handles[i].of->refs++;
+            hold_stream(handles[i].of);
     }
 
     saved->dta = dta_addr;
@@ -1625,12 +1845,13 @@ void gemdos_file_init(struct tos_environment *te)
     drive_register(DRIVE_C, &host_volume);
 
     memset(handles, 0, sizeof handles);
-    /* Handles 0-5 are reserved. Only the three the host gave us refer to
-     * anything, the rest are allocated but have no file behind them. */
+    /* Handles 0-5 are reserved. The first two are the console, as on TOS, and
+     * the third is the host's standard error - see con above. The rest are
+     * allocated but have no file behind them. */
     for (i = 0; i < STD_HANDLES; i++)
         handles[i].flags = HANDLE_ALLOCATED;
-    handles[0].of = open_stream(stdin);
-    handles[1].of = open_stream(stdout);
+    handles[0].of = &con;
+    handles[1].of = &con;
     handles[2].of = open_stream(stderr);
 
     gemdos_file_reinit(te);

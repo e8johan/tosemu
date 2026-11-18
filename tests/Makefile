@@ -19,7 +19,7 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-cicon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-redirect c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-cicon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
           c-mintnet c-sting c-webgate c-dialogend c-evbutton c-scrmem
 
 # The ones that call the AES or the VDI, whose bindings live in their own
@@ -278,6 +278,15 @@ check: all
 	# There is no window here, so that was the console on a terminal. What
 	# it draws when it is on a screen instead is bin/vditest's to check: the
 	# surface is not something a program inside the emulator can read back.
+	# The console as a handle: the console calls following handles 0 and 1
+	# into a file and back, CON: and minus one being handles, and a key the
+	# console saw waiting being the one a read of handle 0 then gets - which
+	# is what the two bytes on its input are for. Two lines go to the
+	# console straight past a redirected handle 1, as comments.
+	printf 'xy' | $(TOSEMU) test-c-redirect > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	grep -q '^# written to minus one while 1 was a file' out
+	grep -q '^# Cconws is on the console again' out
 	# Supervisor mode, which is mostly a question about the stack: a 68000
 	# swaps stack pointers when the S bit moves, and a caller that came back
 	# from Super standing somewhere else has lost everything it had put on

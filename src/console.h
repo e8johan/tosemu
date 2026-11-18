@@ -66,6 +66,21 @@ uint32_t console_key(int wait);
  * characters were read. */
 int console_line(char *buffer, int max);
 
+/*
+ * What Fread on the console handle reads: keys, the way TOS read them, where
+ * the console is somebody's keyboard, and the bytes as they come where it is a
+ * pipe or a file the emulator was given. Answers how many were read.
+ */
+int console_read(char *buffer, int len);
+
+/*
+ * Whether the console is a person rather than a pipe or a file - the reading
+ * side of it, or the writing side when writing is set. A console on the screen
+ * always is, and one on the terminal is when the terminal is. This is what a
+ * program is told when it asks whether its standard handles are a terminal.
+ */
+int console_interactive(int writing);
+
 /* The cursor, which is XBIOS Cursconf */
 int16_t console_cursor(int16_t function, int16_t operand);
 

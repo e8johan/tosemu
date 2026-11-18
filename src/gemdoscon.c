@@ -30,6 +30,7 @@
 #include "m68k.h"
 
 #include "gemdos_p.h"
+#include "gemdosfile_p.h"
 
 /* Console I/O functions *****************************************************/
 
@@ -50,7 +51,39 @@
  * A program polling it goes round its loop until one arrives - GenST does
  * exactly this to wait for the keypress that dismisses its assembler output -
  * and the loop only ends because something else eventually puts a key in.
+ *
+ * And all of them are reads and writes on handles 0 and 1, which start out as
+ * the console and which a program can force onto a file. Where it has, none
+ * of the above applies: a character is a byte through the handle, a key read
+ * past the end of the file is 0xff1a - what EmuTOS and MiNT answer, there
+ * being no key to wait for - and a line ends at a carriage return, whose line
+ * feed is taken with it.
  */
+
+/* What a console read answers when the file it was forced onto has ended */
+#define EOF_INDICATOR (0x0000ff1a)
+
+/* One character to handle 1, wherever that is */
+static void std_out(int ch)
+{
+    uint8_t byte = (uint8_t)ch;
+
+    if (gemdos_std_redirected(1))
+        gemdos_std_write(1, &byte, 1);
+    else
+        console_out(ch);
+}
+
+/* One key from handle 0 where it is a file, or the end of the file */
+static uint32_t std_in(void)
+{
+    uint8_t byte;
+
+    if (gemdos_std_read(0, &byte, 1) != 1)
+        return EOF_INDICATOR;
+
+    return byte;
+}
 
 uint32_t GEMDOS_Cconin()
 {
@@ -58,12 +91,15 @@ uint32_t GEMDOS_Cconin()
 
     FUNC_TRACE_ENTER
 
+    if (gemdos_std_redirected(0))
+        return std_in();
+
     key = console_key(1);
 
     /* Cconin echoes what was typed and Cnecin does not, which is the whole
      * difference between the two */
     if (key & 0xff)
-        console_out(key & 0xff);
+        std_out(key & 0xff);
 
     return key;
 }
@@ -71,6 +107,9 @@ uint32_t GEMDOS_Cconin()
 uint32_t GEMDOS_Cnecin()
 {
     FUNC_TRACE_ENTER
+
+    if (gemdos_std_redirected(0))
+        return std_in();
 
     return console_key(1);
 }
@@ -81,13 +120,16 @@ uint32_t GEMDOS_Cconout()
         printf("    0x%x '%c'\n", peek_u16(2), peek_u16(2)&0xff);
     }
 
-    console_out(peek_u16(2)&0xff);
+    std_out(peek_u16(2)&0xff);
     return 0;
 }
 
 uint32_t GEMDOS_Cconis()
 {
     FUNC_TRACE_ENTER
+
+    if (gemdos_std_redirected(0))
+        return gemdos_std_at_end(0) ? 0 : -1;
 
     if (console_ready())
         return -1;
@@ -114,7 +156,7 @@ uint32_t GEMDOS_Cconws()
 
     while((ch=m68k_read_disassembler_8(adr++)))
     {
-        console_out(ch);
+        std_out(ch);
         res++;
     }
 
@@ -143,7 +185,27 @@ uint32_t GEMDOS_Cconrs()
     if (maxlen > (int)sizeof buf)
         maxlen = (int)sizeof buf;
 
-    len = console_line(buf, maxlen);
+    if (gemdos_std_redirected(0))
+    {
+        /* A line from the file, which ends at a carriage return and takes
+         * the line feed after it - and nothing is echoed, there being nobody
+         * to see it */
+        uint8_t byte;
+
+        for (len = 0; len < maxlen; )
+        {
+            if (gemdos_std_read(0, &byte, 1) != 1)
+                break;
+            if (byte == '\r')
+            {
+                gemdos_std_read(0, &byte, 1);
+                break;
+            }
+            buf[len++] = (char)byte;
+        }
+    }
+    else
+        len = console_line(buf, maxlen);
 
     m68k_write_memory_8(lineptr+1, len);
 
@@ -162,10 +224,10 @@ uint32_t GEMDOS_Crawio()
     }
 
     if (w == 0xff)
-        return console_key(0);
+        return gemdos_std_redirected(0) ? std_in() : console_key(0);
 
     /* Anything else is a character to write */
-    console_out(w & 0xff);
+    std_out(w & 0xff);
 
     return 0;
 }
@@ -173,6 +235,9 @@ uint32_t GEMDOS_Crawio()
 uint32_t GEMDOS_Crawcin()
 {
     /*FUNC_TRACE_ENTER*/
+
+    if (gemdos_std_redirected(0))
+        return std_in();
 
     return console_key(1);
 }
