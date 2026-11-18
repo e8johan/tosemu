@@ -61,6 +61,14 @@ void aes_client_screen(int16_t *width, int16_t *height, int16_t *planes);
  * is only this one, and it is not looking for itself. */
 int16_t aes_client_find(const char *name);
 
+/*
+ * The which-th application in the session, counting from nought, for
+ * appl_search: its identifier, with its name - eight characters, padded - and
+ * whether it is an accessory filled in. -1 past the last, and always without
+ * a daemon, there being nobody to ask.
+ */
+int16_t aes_client_search(int16_t which, char *name, int *accessory);
+
 /* Sends eight words to another application. Answers 0 when there is nobody to
  * send to, which is what appl_write reports as a failure. */
 int aes_client_send(int16_t to, const int16_t *message);

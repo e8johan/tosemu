@@ -183,6 +183,9 @@ const char *tos_program_dir(void);
  */
 void tos_load_as_accessory(int yes);
 
+/* And whether it was */
+int tos_is_accessory(void);
+
 int exec_tos_binary(const char *host_path, const char *cmdlin,
                     char *env, uint32_t env_len);
 

@@ -114,6 +114,19 @@ enum {
     AESD_NOTES_GET,
     AESD_NOTES_SET,
     AESD_NOTES_ARE,
+
+    /*
+     * Who is in the session, one at a time, which is appl_search.
+     *
+     * Asked with ap_id saying which - nought for the first - and answered
+     * with ap_id the application's, or -1 past the last, its name, and
+     * message[0] one when it is an accessory. The fields are borrowed rather
+     * than added so that the packet stays the size a daemon built before this
+     * expects; and one built before it ignores the question, which is why the
+     * asking end does not wait for ever for the answer.
+     */
+    AESD_SEARCH,
+    AESD_SEARCHED,
 };
 
 /* How much of it there is. An ST gave the desktop a kilobyte and nothing

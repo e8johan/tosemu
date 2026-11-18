@@ -19,12 +19,12 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-redirect c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-cicon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-redirect c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-cicon c-getinfo c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
           c-mintnet c-sting c-webgate c-dialogend c-evbutton c-scrmem
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
-GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-cicon c-boxchar \
+GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-cicon c-getinfo c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
             c-keyboard c-modal c-clock c-video c-rez c-dialogend c-evbutton c-scrmem
 
@@ -649,6 +649,30 @@ check: all
 	# an offset. Drawn on the same screen, for the same reason.
 	TOSEMU_SCREEN=low $(TOSEMU) test-c-cicon > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# What the AES says it can do, asked by appl_getinfo - which an AES
+	# reporting 1.4 has to say it has, through appl_find("?AGI") - and who
+	# is running, asked by appl_search. Alone, where the answer is this
+	# one; and against a daemon of its own with a second waiting, which the
+	# first finds in the list and sends a message to by the identifier it
+	# was given.
+	$(TOSEMU) test-c-getinfo > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.' out
+	TOSEMU_AESD=$(CURDIR)/getinfo.socket ../../bin/tosaesd --no-config & \
+	  echo $$! > getinfo.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/getinfo.socket $(TOSEMU_FOR_A_WHILE) \
+	    test-c-getinfo wait > out & \
+	  echo $$! > waiter.pid; \
+	  sleep 1; \
+	  TOSEMU_AESD=$(CURDIR)/getinfo.socket $(TOSEMU_FOR_A_WHILE) \
+	    test-c-getinfo find > out2; \
+	  wait `cat waiter.pid` || true; \
+	  kill `cat getinfo.pid`
+	! grep -q '^not ok' out
+	! grep -q '^not ok' out2
+	grep -q '^1\.\.1' out
+	grep -q '^1\.\.3' out2
+	$(RM) out2 getinfo.pid waiter.pid getinfo.socket
 	# One character packed into the object itself rather than pointed at,
 	# which is every drive letter and every scroll bar arrow the AES draws
 	$(TOSEMU) test-c-boxchar > out; ! grep -q '^not ok' out

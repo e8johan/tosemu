@@ -978,6 +978,11 @@ void tos_load_as_accessory(int yes)
     as_accessory = yes;
 }
 
+int tos_is_accessory(void)
+{
+    return as_accessory;
+}
+
 /* Builds the emulated machine around a binary, short of the subsystem setup,
  * which differs between the first application and one replacing another */
 static int load_tos_environment(struct tos_environment *te, void *binary,

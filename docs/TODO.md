@@ -626,10 +626,15 @@
   the header says TOS 3.06, Sversion answers the GEMDOS it always answered,
   and the AES reports 1.4. Each says what the layer under it implements, which
   is what a program asking one of them is asking. Making them agree upwards is
-  not a matter of changing the numbers - appl_getinfo, appl_search and
-  menu_popup are named and not written, and an application told it was talking
-  to an AES 3.4 is entitled to call one, which stops the emulator. What would
-  close it is writing them, and then the AES's number goes up because it has
+  not a matter of changing the numbers - menu_popup and menu_attach are named
+  and not written, and an application told it was talking to an AES 3.4 is
+  entitled to call them, which stops the emulator. appl_getinfo and
+  appl_search are written, and appl_getinfo is reached through
+  appl_find("?AGI") at 1.4 and says popups are not there, so a program that
+  asks first is told the truth. The two that are left are EmuTOS's
+  aes/gemmnext.c, which is not among the parts of its AES carried in
+  src/emuvdi/; hosting it, and a surface for the popup the way a pulled down
+  menu has one, is the work. Then the AES's number goes up because it has
   earned it.
 - The one line -vv ends each call with says what it was called with for GEMDOS
   and the BIOS, and only what it answered for the XBIOS, whose hundred and nine

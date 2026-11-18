@@ -119,12 +119,10 @@ int xbios_screen_named(uint32_t address)
  */
 #define REZ_NO_MACHINE (8)
 
-uint32_t XBIOS_Getrez()
+int16_t xbios_getrez(void)
 {
     struct surface *screen = gem_screen_surface();
     int16_t width, height, planes, rez;
-
-    FUNC_TRACE_ENTER
 
     if (screen)
     {
@@ -137,7 +135,14 @@ uint32_t XBIOS_Getrez()
 
     rez = screen_rez(width, height, planes);
 
-    return rez < 0 ? REZ_NO_MACHINE : (uint32_t)rez;
+    return rez < 0 ? REZ_NO_MACHINE : rez;
+}
+
+uint32_t XBIOS_Getrez()
+{
+    FUNC_TRACE_ENTER
+
+    return (uint32_t)xbios_getrez();
 }
 
 uint32_t XBIOS_Physbase()
