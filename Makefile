@@ -24,7 +24,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
               dongle.c net.c netgate.c netcache.c netpic.c sting.c gemdosnet.c \
               linea.c shifter.c video.c \
-              tossystem.c calltrace.c utils.c memory.c cpu.c musashi.c
+              tossystem.c calltrace.c vt52ansi.c utils.c memory.c cpu.c musashi.c
 
 # The 68000, which comes from Musashi. These are built as they stand, out of
 # the submodule, and everything that adapts them is in src/musashi.c and
@@ -300,7 +300,7 @@ all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check gdos-check screen-check surface-check settings-check scrap-check icon-check \
-        print-check keyboard-check midi-check netgate-check \
+        print-check keyboard-check midi-check netgate-check vt52-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -575,6 +575,17 @@ $(BIN)/keyboardtest: $(SRC)/keyboardtest.c $(OBJ)/keyboard.o $(OBJ)/scraptext.o
 keyboard-check: $(BIN)/keyboardtest
 	./$(BIN)/keyboardtest
 
+# What a TOS program's console output comes to on a terminal, checked without
+# a terminal. Host built for the same reason as the ones above: the suite's
+# output always goes into a file, which gets the bytes as they were written, so
+# the translation for a terminal is a function of its own and handed bytes here.
+$(BIN)/vt52test: $(SRC)/vt52test.c $(OBJ)/vt52ansi.o $(OBJ)/scraptext.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+vt52-check: $(BIN)/vt52test
+	./$(BIN)/vt52test
+
 # The picture on the windows, checked without a task bar to put it in. Host
 # built for the same reason as the two above, and it checks the one half of
 # this that can be checked: which picture came out of somebody else's resource
@@ -766,7 +777,7 @@ $(BIN)/m64kmake: $(MUSASHI)/m68kmake.c
 	$(CC) $(CFLAGS) -no-pie $< -o $@
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check surface-check settings-check scrap-check \
-       icon-check gdos-check print-check keyboard-check midi-check \
+       icon-check gdos-check print-check keyboard-check vt52-check midi-check \
        dongle-check netgate-check
 	$(MAKE) -C tests check
 

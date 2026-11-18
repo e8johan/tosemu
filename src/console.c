@@ -58,6 +58,7 @@
 #include "surface.h"
 #include "tossystem.h"
 #include "video.h"
+#include "vt52ansi.h"
 #include "emuvdi/emuvdi.h"
 
 /*
@@ -89,6 +90,9 @@ static struct {
     int stale;
 
     /* The terminal console */
+    int ansi;                   /* standard output is a terminal, so what is
+                                 * written is translated - see vt52ansi.h */
+    struct vt52_ansi vt;
     int raw;                    /* the tty has been put into cbreak */
     int ended;                  /* and has nothing more to give */
     int have;                   /* one key read ahead - see terminal_fill */
@@ -807,8 +811,21 @@ static int console_wanted_on_screen(void);
  */
 static void console_finish(void)
 {
+    char undo[VT52_ANSI_MAX];
+    size_t n;
+
     if (c.stale)
         screen_show(0);
+
+    /* A cursor the program hid, or wrapping it turned off, stays that way in
+     * the terminal after it has gone unless it is put back */
+    if (c.ansi)
+    {
+        n = vt52_ansi_restore(&c.vt, undo);
+        if (n)
+            fwrite(undo, 1, n, stdout);
+        fflush(stdout);
+    }
 
     terminal_restore();
 }
@@ -863,6 +880,31 @@ static void decide(void)
                "terminal it is\n");
         c.on_screen = 0;
     }
+
+    /*
+     * On a terminal somebody is looking at, the VT52 and the Atari character
+     * set are translated into what the terminal speaks. Into a pipe or a file
+     * they go as the program wrote them, which is what whatever is reading
+     * them is expecting - see vt52ansi.h.
+     */
+    c.ansi = !c.on_screen && isatty(STDOUT_FILENO);
+}
+
+/* A byte to the terminal console */
+static void terminal_out(int ch)
+{
+    char out[VT52_ANSI_MAX];
+    size_t n;
+
+    if (!c.ansi)
+    {
+        putchar(ch);
+        return;
+    }
+
+    n = vt52_ansi_byte(&c.vt, (unsigned char)ch, out);
+    if (n)
+        fwrite(out, 1, n, stdout);
 }
 
 /* What a console is for ****************************************************/
@@ -874,7 +916,7 @@ void console_out(int ch)
     if (c.on_screen)
         screen_out(ch & 0xff);
     else
-        putchar(ch & 0xff);
+        terminal_out(ch & 0xff);
 }
 
 /*
