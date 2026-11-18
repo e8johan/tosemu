@@ -44,9 +44,10 @@
  * 0x0140 is the AES of TOS 1.4. It is a deliberately modest claim: an
  * application reads this to decide whether the later calls exist, so
  * reporting more than is implemented moves applications onto paths that are
- * not there yet. This goes up as the rest of the AES is built, and
- * appl_getinfo, which is how an application asks in detail, stays out of
- * reach until it does.
+ * not there yet. This goes up as the rest of the AES is built. In the
+ * meantime an application asks in detail with appl_getinfo, which it finds
+ * by appl_find("?AGI") answering nought - the way made for an AES older than
+ * the call - and which answers for each feature separately.
  */
 #define AES_VERSION (0x0140)
 
@@ -194,6 +195,8 @@ uint32_t AES_appl_init();
 uint32_t AES_appl_write();
 uint32_t AES_appl_exit();
 uint32_t AES_appl_find();
+uint32_t AES_appl_search();
+uint32_t AES_appl_getinfo();
 void aes_appl_finished();
 
 /* Event functions, aesevnt.c */

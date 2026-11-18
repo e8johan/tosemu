@@ -382,6 +382,34 @@ static void app_find(int slot, const struct aesd_packet *in)
     send_to(apps[slot].fd, &out);
 }
 
+/* The which-th application there is, by slot, which is the order appl_search
+ * goes through them in */
+static void app_search(int slot, const struct aesd_packet *in)
+{
+    struct aesd_packet out;
+    int i, n = 0;
+
+    memset(&out, 0, sizeof out);
+    out.kind = AESD_SEARCHED;
+    out.ap_id = -1;
+
+    for (i = 0; i < MAX_APPS; i++)
+    {
+        if (!apps[i].used)
+            continue;
+
+        if (n++ == in->ap_id)
+        {
+            out.ap_id = apps[i].ap_id;
+            memcpy(out.name, apps[i].name, sizeof out.name);
+            out.message[0] = (int16_t)(apps[i].accessory != 0);
+            break;
+        }
+    }
+
+    send_to(apps[slot].fd, &out);
+}
+
 static void app_send(int slot, const struct aesd_packet *in)
 {
     struct aesd_packet out;
@@ -1322,6 +1350,10 @@ int main(int argc, char **argv)
             {
                 case AESD_FIND:
                     app_find(slots[i], &in);
+                    break;
+
+                case AESD_SEARCH:
+                    app_search(slots[i], &in);
                     break;
 
                 case AESD_SEND:

@@ -30,11 +30,14 @@
 
 #include "aes_p.h"
 
+#include <string.h>
+
 #include "aesclient.h"
 #include "aesproto.h"
 #include "gem_p.h"
 #include "tossystem.h"
 #include "emuvdi/emuvdi.h"
+#include "xbios.h"
 #include "m68k.h"
 
 /* The identifier of the running application, or -1 before it has asked for
@@ -250,6 +253,14 @@ uint32_t AES_appl_find()
         printf("    name: [%s]\n", name);
     }
 
+    /*
+     * "?AGI" is not an application. It is how a program asks an AES older
+     * than 4.0 whether it has appl_getinfo anyway, and nought is yes - which
+     * is the question this AES, reporting 1.4, is going to be asked.
+     */
+    if (strncmp(name, "?AGI", 5) == 0)
+        return 0;
+
     found = aes_client_find(name);
 
     FUNC_TRACE_ARGS {
@@ -258,6 +269,216 @@ uint32_t AES_appl_find()
 
     /* Not an error to report: not being there is an answer */
     return (uint32_t)(uint16_t)found;
+}
+
+/*
+ * appl_search - who else is here, one at a time
+ *
+ * Mode nought asks for the first and one for the next, and each answer is a
+ * name, a kind and an identifier, until there are none left; mode two asks
+ * for the shell, of which there is none. The list is the daemon's, which is
+ * the only thing that knows who is in the session. Without one there is this
+ * application and nobody else.
+ *
+ * http://toshyp.atari.org/en/00500c.html
+ */
+#define APP_FIRST       (0)
+#define APP_NEXT        (1)
+
+#define APP_APPLICATION (2)
+#define APP_ACCESSORY   (4)
+
+static int16_t search_next;
+
+uint32_t AES_appl_search()
+{
+    int16_t mode = aes_intin(0);
+    uint32_t buffer = aes_addrin(0);
+    char name[AESD_NAME_LEN];
+    int accessory = 0;
+    int16_t found;
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    mode: %d\n", mode);
+    }
+
+    if (mode == APP_FIRST)
+        search_next = 0;
+    else if (mode != APP_NEXT)
+        return AES_ERROR;
+
+    if (aes_client_connected())
+        found = aes_client_search(search_next, name, &accessory);
+    else if (search_next == 0)
+    {
+        found = ap_id;
+        memcpy(name, tos_program_name(), AESD_NAME_LEN);
+        accessory = tos_is_accessory();
+    }
+    else
+        found = -1;
+
+    if (found < 0)
+        return AES_ERROR;
+
+    search_next++;
+
+    for (i = 0; i < AESD_NAME_LEN; i++)
+        m68k_write_memory_8(buffer + i, (uint8_t)name[i]);
+    m68k_write_memory_8(buffer + AESD_NAME_LEN, 0);
+
+    aes_set_intout(1, accessory ? APP_ACCESSORY : APP_APPLICATION);
+    aes_set_intout(2, found);
+
+    return AES_E_OK;
+}
+
+/*
+ * appl_getinfo - what this AES can do, asked about one area at a time
+ *
+ * The AES of TOS 4 and after, which answers four words for each of fifteen
+ * questions, and which an older AES can have as well: an application finds
+ * out by appl_find("?AGI"), see above. The answers are what tosemu does, and
+ * most of them are no - which is the point of asking, since an application
+ * told no takes the path that is there instead of calling what is not.
+ *
+ * http://toshyp.atari.org/en/005001.html
+ */
+#define AES_LARGEFONT   (0)
+#define AES_SMALLFONT   (1)
+#define AES_SYSTEM      (2)
+#define AES_LANGUAGE    (3)
+#define AES_PROCESS     (4)
+#define AES_PCGEM       (5)
+#define AES_INQUIRE     (6)
+#define AES_WDIALOG     (7)
+#define AES_MOUSE       (8)
+#define AES_MENU        (9)
+#define AES_SHELL      (10)
+#define AES_WINDOW     (11)
+#define AES_MESSAGES   (12)
+#define AES_OBJECTS    (13)
+#define AES_FORM       (14)
+
+/* The one message of AES 4's that tosemu sends: tosaesd asks everyone to go
+ * with it when it ends */
+#define MSG_AP_TERM    (0x0008)
+
+/* The three system fonts, as emuvdi_system_font numbers them */
+#define FONT_6X6       (0)
+#define FONT_8X8       (1)
+#define FONT_8X16      (2)
+
+/*
+ * A font the AES draws with: its height as vst_height takes it, which is the
+ * top line of the font's header, and its identifier. The type is nought, a
+ * system font, there being no other kind the AES uses.
+ */
+static void font_answer(int which)
+{
+    struct emuvdi_font font;
+
+    if (!emuvdi_system_font(which, &font))
+        return;
+
+    aes_set_intout(1, (int16_t)font.words[2]);
+    aes_set_intout(2, font.id);
+    aes_set_intout(3, 0);
+}
+
+uint32_t AES_appl_getinfo()
+{
+    int16_t type = aes_intin(0);
+    int16_t handle, wchar, hchar, wbox, hbox;
+    int i;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    type: %d\n", type);
+    }
+
+    if (type < AES_LARGEFONT || type > AES_FORM)
+        return AES_ERROR;
+
+    /* Nought is no, and what most of the answers are */
+    for (i = 1; i <= 4; i++)
+        aes_set_intout(i, 0);
+
+    switch (type)
+    {
+    case AES_LARGEFONT:
+        /* Whichever the AES lays its dialogs out in, which depends on how
+         * tall the screen is */
+        emuvdi_graf_handle(&handle, &wchar, &hchar, &wbox, &hbox);
+        font_answer(hchar >= 16 ? FONT_8X16 : FONT_8X8);
+        break;
+
+    case AES_SMALLFONT:
+        font_answer(FONT_6X6);
+        break;
+
+    case AES_SYSTEM:
+        /*
+         * The resolution as the AES numbers it, which is Getrez's plus two;
+         * the sixteen colours an object can be drawn in; colour icons, which
+         * are loaded and drawn in black and white, so no; and the resource
+         * format that has them, which rsrc_load reads.
+         */
+        aes_set_intout(1, (int16_t)(xbios_getrez() + 2));
+        aes_set_intout(2, 16);
+        aes_set_intout(3, 0);
+        aes_set_intout(4, 1);
+        break;
+
+    case AES_LANGUAGE:
+        aes_set_intout(1, 0);           /* English */
+        break;
+
+    case AES_PROCESS:
+        /*
+         * Every application is a process of its own, running alongside the
+         * others whether or not anything yields, so the multitasking is
+         * real. appl_search is there; appl_find knows nothing of MiNT's
+         * process numbers, and rsrc_rcfix is not written.
+         */
+        aes_set_intout(1, 1);
+        aes_set_intout(3, 1);
+        break;
+
+    case AES_SHELL:
+        /*
+         * shel_write knows modes nought and one, and both start the program
+         * straight away - nought without stopping the caller, which is what
+         * the second word says, and one immediately, which is the third.
+         */
+        aes_set_intout(1, 1);
+        aes_set_intout(2, 1);
+        aes_set_intout(3, 0);
+        break;
+
+    case AES_MESSAGES:
+        aes_set_intout(1, MSG_AP_TERM);
+        break;
+
+    /*
+     * And the rest are no throughout: no PC-GEM calls, none of the -1
+     * inquiries, none of the dialog libraries, no saving and restoring of
+     * the mouse form, no popups or submenus or extra words in MN_SELECTED,
+     * none of the wind_get and wind_set extensions or the gadgets beyond
+     * GEM's own, no three dimensional objects and no flying dialogs.
+     */
+    case AES_PCGEM:
+    case AES_INQUIRE:
+    case AES_WDIALOG:
+    case AES_MOUSE:
+    case AES_MENU:
+    case AES_WINDOW:
+    case AES_OBJECTS:
+    case AES_FORM:
+        break;
+    }
+
+    return AES_E_OK;
 }
 
 /* And the other end of appl_init, which lets the daemon forget about us */

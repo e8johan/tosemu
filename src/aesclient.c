@@ -326,6 +326,67 @@ int16_t aes_client_find(const char *name)
     }
 }
 
+/*
+ * How long to wait for the daemon to answer appl_search, in milliseconds.
+ *
+ * It answers at once, so this is only ever reached by a daemon built before
+ * the question existed, which ignores it: a person keeps one running for the
+ * whole of a session, and an emulator built since will meet it. Not hearing
+ * then means there is nobody more to tell about, which is the answer an
+ * application can carry on from; waiting for ever is not.
+ */
+#define SEARCH_PATIENCE_MS (1000)
+
+int16_t aes_client_search(int16_t which, char *name, int *accessory)
+{
+    struct aesd_packet p;
+
+    if (d.fd < 0)
+        return -1;
+
+    memset(&p, 0, sizeof p);
+    p.kind = AESD_SEARCH;
+    p.ap_id = which;
+
+    if (!packet_write(&p))
+    {
+        daemon_gone();
+        return -1;
+    }
+
+    /* What arrives first is a message for us, as it is for appl_find */
+    for (;;)
+    {
+        struct pollfd waiting;
+
+        waiting.fd = d.fd;
+        waiting.events = POLLIN;
+        waiting.revents = 0;
+
+        if (poll(&waiting, 1, SEARCH_PATIENCE_MS) <= 0)
+            return -1;
+
+        if (!packet_read(&p))
+        {
+            daemon_gone();
+            return -1;
+        }
+
+        if (p.kind == AESD_SEARCHED)
+        {
+            memcpy(name, p.name, AESD_NAME_LEN);
+            *accessory = p.message[0] != 0;
+            return p.ap_id;
+        }
+
+        if (p.kind == AESD_DELIVER)
+            aes_message_post(p.message);
+
+        if (p.kind == AESD_ACCESSORIES)
+            accessories_are(&p);
+    }
+}
+
 int aes_client_send(int16_t to, const int16_t *message)
 {
     struct aesd_packet p;

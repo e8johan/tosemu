@@ -31,6 +31,9 @@ void xbios_trap();
  * one that reserved it */
 void xbios_reset();
 
+/* What Getrez answers, for the AES, which says the same thing in appl_getinfo */
+int16_t xbios_getrez(void);
+
 /*
  * Whether an address is the one Physbase or Logbase gave out as the screen.
  *
