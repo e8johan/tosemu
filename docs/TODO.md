@@ -553,19 +553,11 @@
   CUPS as text and letting the queue make what it can of them. The second is
   cheap and is probably what a program that does this wants.
 
-- The console on a terminal passes the VT52 through rather than interpreting
-  it. A program that clears the screen sends ESC E and the terminal, which
-  speaks ANSI, prints an E; GenST sets the wrap mode with ESC v and a stray v
-  is what starts its output. The Atari character set goes out raw as well, so
-  an accented letter is a byte no UTF-8 terminal has a glyph for.
-
-  Neither is worth fixing there, which is why this is written down rather than
-  done: the console on a screen has the VT52 and the Atari font and gets both
-  right, and the terminal one exists so that a program's output can be piped
-  into a file or read by a Makefile - which is a use that wants the bytes as
-  they were written. What would close it is translating the escapes a terminal
-  can express and dropping the rest, the way EmuTOS's CONF_SERIAL_CONSOLE_ANSI
-  does, and it would cost the pipe its transparency.
+- The console on a terminal translates the VT52 into ANSI, and drops what a
+  terminal has nothing for - the colours among them, an ST palette entry
+  saying nothing about somebody's terminal. A program that draws a screen of
+  its own with ESC Y and the erases gets it, but the terminal is whatever size
+  it is rather than eighty by twenty five, and nothing tells the program so.
 
 - A console window is taken away when the application next waits for a GEM
   event, which is where an ST redrew over the text. A program that writes a
