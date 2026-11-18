@@ -1075,9 +1075,21 @@ uint32_t AES_wind_calc()
 
 /* wind_update *************************************************************/
 
+#define END_MCTRL (2)
+#define BEG_MCTRL (3)
+
 uint32_t AES_wind_update()
 {
-    FUNC_TRACE_ENTER
+    /* The high byte asks for the lock not to be waited for, which it never
+     * is here */
+    int16_t mode = aes_intin(0) & 0xff;
+
+    FUNC_TRACE_ENTER_ARGS {
+        printf("    %d\n", mode);
+    }
+
+    if (mode == BEG_MCTRL || mode == END_MCTRL)
+        gem_mouse_control(mode == BEG_MCTRL);
 
     /*
      * Taking and giving back the right to draw outside one's own windows, and
@@ -1095,6 +1107,9 @@ uint32_t AES_wind_update()
      * It becomes real again when windows of different applications overlap and
      * have to be composed from one surface rather than shown side by side. See
      * the TODO.
+     *
+     * The mouse is the one thing kept count of, because a dialog can end
+     * with it - see gem_mouse_control.
      */
     return AES_E_OK;
 }
@@ -1620,6 +1635,24 @@ int16_t aes_wind_owner(int16_t x, int16_t y, int16_t w, int16_t h,
     }
 
     return 0;
+}
+
+unsigned long aes_wind_layout(void)
+{
+    unsigned long sum = (unsigned long)ordered;
+    int i;
+
+    for (i = 0; i < ordered; i++)
+    {
+        struct window *win = window_at(order[i]);
+
+        sum = sum * 31 + (unsigned long)order[i];
+        if (win)
+            sum = ((((sum * 31 + (uint16_t)win->x) * 31 + (uint16_t)win->y) * 31
+                    + (uint16_t)win->w) * 31 + (uint16_t)win->h) * 31 + (unsigned long)win->open;
+    }
+
+    return sum;
 }
 
 /*

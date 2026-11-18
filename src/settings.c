@@ -179,11 +179,27 @@ static const struct {
      */
     { "TOSEMU_INTERRUPTS",  "machine", "interrupts",  0 },
 
+    /*
+     * TCP/IP, as STinG and as MiNTnet's socket calls, over the host's own
+     * sockets. On unless turned off: only a program that looks for a stack
+     * ever finds one, and a program that looks wants it.
+     */
+    { "TOSEMU_NO_NETWORK",  "network", "enable",      1 },
+
+    /*
+     * The AERA gateway answered from inside the emulator, at the name
+     * webgate, port 8280 - see netgate.c. EWeb's ST edition reaches secure
+     * pages only through a gateway, and this one is there without a
+     * Raspberry Pi to run the real one on. Off to reach a real one at webgate.
+     */
+    { "TOSEMU_NO_GATEWAY",  "network", "gateway",     1 },
+
     { "TOSEMU_AESD",        "session", "socket",      0 },
 
     { "TOSEMU_SCREENSHOT",  "debug",   "screenshot",  0 },
     { "TOSEMU_TRACE_INPUT", "debug",   "trace-input", 0 },
     { "TOSEMU_TRACE_PATHS", "debug",   "trace-paths", 0 },
+    { "TOSEMU_TRACE_GATEWAY", "debug", "trace-gateway", 0 },
 };
 
 #define SETTINGS (int)(sizeof settings / sizeof settings[0])

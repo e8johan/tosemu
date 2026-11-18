@@ -34,6 +34,7 @@
 #include "musashi.h"
 #include "tossystem.h"
 #include "linea.h"
+#include "sting.h"
 
 #include "m68kcpu.h"
 #include "m68kops.h"
@@ -74,7 +75,7 @@ int musashi_trap(int trap)
  */
 static void linea(void)
 {
-    if (m68k_linea(REG_IR))
+    if (sting_linea(REG_IR) || m68k_linea(REG_IR))
         return;
 
     m68ki_exception_1010();

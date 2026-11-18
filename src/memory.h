@@ -1,6 +1,7 @@
 /*
  * TOSEMU - an emulated environment for TOS applications
  * Copyright (C) 2014 Johan Thelin <e8johan@gmail.com>
+ * Copyright (C) 2026 Johan Toverland Thelin <e8johan@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -29,6 +30,9 @@
 #define MEMORY_READWRITE  (0x03) /* Readable and writeable in all modes */
 #define MEMORY_SUPERREAD  (0x04) /* Readable in supervisor mode */
 #define MEMORY_SUPERWRITE (0x08) /* Writeable in supervisor mode */
+/* Plain bytes at ptr, though reads and writes go through functions that do
+ * something on the way - see tos_mem_span */
+#define MEMORY_PLAIN      (0x10)
 
 /* Memory area items 
  *
@@ -65,7 +69,7 @@ void *tos_mem_to_host_mem(uint32_t address);
 
 /* The same for a run of bytes, for reading a lot of memory at once - a screen
  * of it. Nought, and nothing said and nothing halted, when the run is not all
- * inside one area of plain memory. */
+ * inside one area of plain memory, or of one marked MEMORY_PLAIN. */
 const uint8_t *tos_mem_span(uint32_t address, uint32_t len);
 
 /* Remove memory areas, return 0 on success */

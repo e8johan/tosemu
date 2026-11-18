@@ -22,7 +22,7 @@ SOURCEFILES = main.c gemdos.c gemdosmem.c gemdoscon.c console.c gemdosfile.c gem
               gfx.c screen.c settings.c scrap.c scraptext.c scrapimg.c \
               keyboard.c \
               fontface.c printer.c midi.c mfp.c acia.c iorec.c interrupt.c \
-              dongle.c \
+              dongle.c net.c netgate.c netcache.c netpic.c sting.c gemdosnet.c \
               linea.c shifter.c video.c \
               tossystem.c utils.c memory.c cpu.c musashi.c
 
@@ -192,6 +192,36 @@ ALSAFLAGS =
 ALSALIBS =
 endif
 
+# And OpenSSL, for the TLS of the built-in gateway (src/netgate.c). Looked for
+# the same way: without it the gateway still passes plain HTTP on, and answers
+# a secure page with a page saying why it cannot.
+OPENSSLFLAGS = $(shell pkg-config --cflags openssl 2>/dev/null && echo -DHAVE_OPENSSL)
+OPENSSLLIBS  = $(shell pkg-config --libs openssl 2>/dev/null)
+
+ifdef NO_OPENSSL
+OPENSSLFLAGS =
+OPENSSLLIBS =
+endif
+
+# And libjpeg and libwebp, which the gateway reads pictures with to make them
+# smaller or into the screen's pens for EWeb (src/netpic.c), with libpng from
+# above. Looked for the same way: without them a picture of that kind goes
+# on as it came, and EWeb does what it can with it.
+JPEGFLAGS = $(shell pkg-config --cflags libjpeg 2>/dev/null && echo -DHAVE_JPEG)
+JPEGLIBS  = $(shell pkg-config --libs libjpeg 2>/dev/null)
+WEBPFLAGS = $(shell pkg-config --cflags libwebp libwebpdemux 2>/dev/null && echo -DHAVE_WEBP)
+WEBPLIBS  = $(shell pkg-config --libs libwebp libwebpdemux 2>/dev/null)
+
+ifdef NO_JPEG
+JPEGFLAGS =
+JPEGLIBS =
+endif
+
+ifdef NO_WEBP
+WEBPFLAGS =
+WEBPLIBS =
+endif
+
 # $(GEN) is on the include path for the same reason $(SRC) is: the generated
 # headers - Musashi's m68kops.h, the Wayland protocol headers and the tray icon
 # - are included by name, and where they were written is the build's business
@@ -200,12 +230,12 @@ endif
 # MUSASHI_CNF is how Musashi is told to read src/musashiconf.h in place of the
 # m68kconf.h beside it. Every source that includes m68k.h wants it.
 MUSASHICNF = -DMUSASHI_CNF='"musashiconf.h"'
-CFLAGS = $(OPT) -I$(GEN) -I$(MUSASHI) -I$(SRC) $(MUSASHICNF) -Wall -pedantic -fno-pie $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS)
+CFLAGS = $(OPT) -I$(GEN) -I$(MUSASHI) -I$(SRC) $(MUSASHICNF) -Wall -pedantic -fno-pie -pthread $(WAYLANDFLAGS) $(DBUSFLAGS) $(PNGFLAGS) $(FREETYPEFLAGS) $(ALSAFLAGS) $(OPENSSLFLAGS) $(JPEGFLAGS) $(WEBPFLAGS)
 LDFLAGS = -no-pie
 
 # Libraries go after the objects that want them, which is where the linker
 # looks for them
-LIBS = -lc -lm $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS)
+LIBS = -lc -lm -pthread $(WAYLANDLIBS) $(PNGLIBS) $(FREETYPELIBS) $(ALSALIBS) $(OPENSSLLIBS) $(JPEGLIBS) $(WEBPLIBS)
 
 # Musashi has its own idea of what compiles cleanly too - the opcode handlers
 # m68kmake writes declare variables some of them never use - so it gets flags
@@ -270,7 +300,7 @@ all: $(BIN)/tosemu $(BIN)/tosaesd
 
 .PHONY: all tests check devpac-tests devpac-check lattice-tests lattice-check \
         emuvdi-check gdos-check screen-check surface-check settings-check scrap-check icon-check \
-        print-check keyboard-check midi-check \
+        print-check keyboard-check midi-check netgate-check \
         demos clean
 
 # A checkout without --recurse-submodules leaves the submodule an empty
@@ -598,6 +628,30 @@ $(BIN)/dongletest: $(SRC)/dongletest.c $(OBJ)/dongle.o
 dongle-check: $(BIN)/dongletest
 	./$(BIN)/dongletest
 
+# The gateway's reading of a request and its rewriting of the two heads,
+# checked without a network. The serving half needs one and is checked from
+# inside the machine by tests/c-webgate.c.
+$(BIN)/netgatetest: $(SRC)/netgatetest.c $(OBJ)/netgate.o $(OBJ)/netcache.o $(OBJ)/netpic.o \
+                    $(OBJ)/settings.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -pthread $(OPENSSLLIBS) $(PNGLIBS) $(JPEGLIBS) $(WEBPLIBS) -o $@
+
+# And the pictures it makes for EWeb: read, made smaller, written, and turned
+# into the screen's pens, from pictures made here rather than fetched.
+$(BIN)/netpictest: $(SRC)/netpictest.c $(OBJ)/netpic.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -pthread $(PNGLIBS) $(JPEGLIBS) $(WEBPLIBS) -o $@
+
+# And the pictures it keeps, which several threads share
+$(BIN)/netcachetest: $(SRC)/netcachetest.c $(OBJ)/netcache.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -pthread -o $@
+
+netgate-check: $(BIN)/netgatetest $(BIN)/netpictest $(BIN)/netcachetest
+	./$(BIN)/netgatetest
+	./$(BIN)/netpictest
+	./$(BIN)/netcachetest
+
 print-check: $(BIN)/printtest
 	./$(BIN)/printtest
 
@@ -713,7 +767,7 @@ $(BIN)/m64kmake: $(MUSASHI)/m68kmake.c
 
 check: $(BIN)/tosemu $(BIN)/tosaesd screen-check surface-check settings-check scrap-check \
        icon-check gdos-check print-check keyboard-check midi-check \
-       dongle-check
+       dongle-check netgate-check
 	$(MAKE) -C tests check
 
 devpac-check: $(BIN)/tosemu

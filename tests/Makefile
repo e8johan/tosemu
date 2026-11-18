@@ -19,13 +19,14 @@
 STESTNAME=Pterm Pterm0 Cconout Cconws Bconout Fstraversal \
           Fopen Fclose Fread Supexec Dcreate Fcreate Fwrite Fdelete Fattrib \
           cmdline Malloc
-CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez
+CTESTNAME=c-helloworld c-drives c-bios c-xbios c-console c-super c-linea c-mxalloc c-memory c-pexec c-pexchild c-pexgo c-pexgochild c-overlay c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-acc c-userdef c-icon c-boxchar c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-scrap c-poll c-keyboard c-modal c-keytbl c-tsr c-usetsr c-midi c-mfp c-clock c-timer c-dongle c-sysbase c-acia c-shifter c-traphook c-video c-rez \
+          c-mintnet c-sting c-webgate c-dialogend c-evbutton c-scrmem
 
 # The ones that call the AES or the VDI, whose bindings live in their own
 # library rather than in the C one
 GEMTESTNAME=c-gem c-vdi c-gdos c-print c-prnchild c-aesd c-scrap c-acc c-userdef c-icon c-boxchar \
             c-fsel c-watchbox c-mkstate c-screen c-menu c-frame c-overlap c-resize c-poll \
-            c-keyboard c-modal c-clock c-video c-rez
+            c-keyboard c-modal c-clock c-video c-rez c-dialogend c-evbutton c-scrmem
 
 # Where the sources are, found through the makefile that was read rather than
 # from the directory make happens to be standing in, since it is standing in
@@ -683,6 +684,22 @@ check: all
 	TOSEMU_CLICKS='@32,8 @96,8 @100,27 100,27 120,152 120,152' \
 	  $(TOSEMU) test-c-modal > out; ! grep -q '^not ok' out
 	grep -q '^1\.\.' out
+	# A dialog ended by giving the mouse back rather than by FMD_FINISH,
+	# which is how EWeb's alerts end
+	$(TOSEMU) test-c-dialogend > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.5' out
+	# A wait for the buttons not to be some way, bit 8 of the clicks word,
+	# which is how EWeb waits for a click: with nothing pressed, and with a
+	# press held down
+	$(TOSEMU) test-c-evbutton > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.2' out
+	TOSEMU_CLICKS='!200,100' $(TOSEMU) test-c-evbutton held > out; \
+	  ! grep -q '^not ok' out
+	grep -q '^1\.\.4' out
+	# The screen memory as GEM's screen, both ways round, which is how EWeb
+	# scrolls a line
+	$(TOSEMU) test-c-scrmem > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.6' out
 	# The keyboard table, which is how a key becomes a letter again: a menu
 	# shortcut on Alternate and a letter arrives as a scan code with nothing
 	# typed, so an application turns it back into a letter through this. The
@@ -990,6 +1007,21 @@ check: all
 	! grep -q '^not ok' out
 	grep -q '^1\.\.' out
 	$(RM) -r out code scrapdir
+	#
+	# TCP/IP, both of the stacks a program can look for and the gateway
+	# EWeb reaches secure pages through. Each is its own far end over the
+	# host's loopback, so none of it needs a network beyond this machine.
+	timeout 30 env $(TOSEMU) test-c-mintnet > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.34' out
+	timeout 30 env $(TOSEMU) test-c-sting > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.39' out
+	timeout 30 env $(TOSEMU) test-c-webgate > out; ! grep -q '^not ok' out
+	grep -q '^1\.\.38' out
+	# And none of it with the network turned off: there is no STiK cookie to
+	# find, and Fsocket is not a call
+	timeout 30 env TOSEMU_NO_NETWORK=1 $(TOSEMU) test-c-sting > out; test "$$?" = 1
+	grep -q '^not ok 1 - there is a STiK cookie' out
+	$(RM) out
 
 # Reached only by a make standing in the build directory, which is the one
 # place where deleting the directory itself is not an option

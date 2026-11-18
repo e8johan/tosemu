@@ -41,6 +41,8 @@
 #include "midi.h"
 #include "gem_p.h"
 #include "tossystem.h"
+#include "memory.h"
+#include "video.h"
 #include "surface.h"
 #include "aes_p.h"
 #include "aesclient.h"
@@ -112,6 +114,9 @@ static struct surface *menu;
  * Indexed by handle, which runs from 1; the first slot is never used.
  */
 static struct surface *windows[AES_WINDOWS + 1];
+
+/* The screen memory showing something else from now on - see carry_out */
+static void screen_memory_moves(void);
 
 static int started;
 
@@ -249,9 +254,13 @@ int gem_start()
 static struct {
     struct surface *shows;
     int16_t x, y, w, h;
+    int mctrl;      /* How deep in BEG_MCTRL the program was when it began */
 } stack[DIALOGS];
 
 static int depth;
+
+/* The program's BEG_MCTRL less its END_MCTRL */
+static int mctrl;
 
 void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
 {
@@ -290,7 +299,11 @@ void gem_dialog_begin(int16_t x, int16_t y, int16_t width, int16_t height)
     stack[depth].y = y;
     stack[depth].w = width;
     stack[depth].h = height;
+    stack[depth].mctrl = mctrl;
     depth++;
+
+    /* The memory shows the dialog from now on, not the windows */
+    screen_memory_moves();
 
     dialog = shows;
     surface_select(dialog);
@@ -302,6 +315,8 @@ void gem_dialog_end()
 {
     if (depth <= 0)
         return;
+
+    screen_memory_moves();
 
     gfx_dialog_close();
 
@@ -323,6 +338,34 @@ void gem_dialog_end()
         dialog = 0;
         surface_select(screen);
     }
+}
+
+/*
+ * A dialog ends when the mouse it was put up under is given back.
+ *
+ * FMD_FINISH is how a program says a dialog is done, but it is only a request
+ * to have the screen redrawn, and a program that saved what was under the box
+ * and puts it back itself has no reason to make it. EWeb's alerts are like
+ * that: BEG_MCTRL, FMD_START, its own loop, its own copy back, END_MCTRL.
+ * Here the dialog is a window of the compositor's, and without this it stays
+ * up, in front of the program, for good.
+ *
+ * Only a dialog begun inside the bracket is ended by its close. One the
+ * program put up before taking the mouse is not the bracket's to end.
+ */
+void gem_mouse_control(int take)
+{
+    if (take)
+    {
+        mctrl++;
+        return;
+    }
+
+    if (mctrl > 0)
+        mctrl--;
+
+    while (depth > 0 && stack[depth-1].mctrl > mctrl)
+        gem_dialog_end();
 }
 
 /*
@@ -459,6 +502,230 @@ void gem_composite(struct surface *into)
     for (n = 0; (handle = aes_wind_from_back(n, &x, &y, &w, &h)) != 0; n++)
         if (handle <= AES_WINDOWS && windows[handle])
             surface_copy_rect(into, windows[handle], x, y, w, h);
+}
+
+/* Screen memory ************************************************************/
+
+/*
+ * The memory Logbase hands out, kept as the screen GEM shows.
+ *
+ * On an ST they were one memory, and programs lean on it: EWeb scrolls a
+ * line by moving the rows already on the screen and drawing only the new
+ * one, and moves them itself, because the CPU moves all of a pixel's planes
+ * at once where the VDI moves a plane at a time. Here GEM's screen is
+ * surfaces of the host's - the screen, each window's own, a dialog's - and
+ * the memory was a block nothing drew in and nothing showed. So the move read
+ * nothing, wrote where nobody looked, and the new line came out on its own.
+ *
+ * So the memory is kept as what an Atari would have shown, and what is
+ * written in it is shown. Read, the part something drew in since it was last
+ * brought across is brought across first - see surface_changed_take. Written,
+ * the part written is noted and carried to the surfaces that show it before
+ * GEM next does anything, so that the VDI draws over what the program drew
+ * rather than under it.
+ *
+ * Only while GEM is up, and GEM's screen is what is shown. Before it, and
+ * while a program has the video hardware to itself, the memory is the video
+ * hardware's alone, shown by video.c as the picture the program drew for
+ * itself - and when that picture steps aside, the memory is GEM's screen
+ * again as GEM has it, not as the program left it.
+ */
+static struct {
+    uint8_t *bytes;
+    uint32_t len;
+    int known;              /* bytes are the screen as of layout */
+    unsigned long layout;
+    int written;            /* x0, y0 to x1, y1 written since */
+    int x0, y0, x1, y1;
+    struct surface *seen;   /* the windows laid together, to read from */
+    int on;                 /* mirroring, as of the last look */
+} mem;
+
+static int mirroring(void)
+{
+    int on = started && screen && mem.bytes && surface_bytes(screen) <= mem.len
+             && !video_showing();
+
+    if (on != mem.on)
+    {
+        mem.on = on;
+        mem.known = 0;
+        mem.written = 0;
+    }
+
+    return on;
+}
+
+/* The windows laid on the screen, in one rectangle of it */
+static void composite_rect(struct surface *into, int x, int y, int w, int h)
+{
+    int16_t wx, wy, ww, wh, handle;
+    int n;
+
+    surface_copy_rect(into, screen, x, y, w, h);
+
+    for (n = 0; (handle = aes_wind_from_back(n, &wx, &wy, &ww, &wh)) != 0; n++)
+    {
+        int ix = wx > x ? wx : x, iy = wy > y ? wy : y;
+        int ix2 = wx + ww < x + w ? wx + ww : x + w, iy2 = wy + wh < y + h ? wy + wh : y + h;
+
+        if (handle <= AES_WINDOWS && windows[handle] && ix < ix2 && iy < iy2)
+            surface_copy_rect(into, windows[handle], ix, iy, ix2 - ix, iy2 - iy);
+    }
+}
+
+/* What was drawn since the memory was last brought up to date, brought */
+static void bring_in(void)
+{
+    int16_t x, y, w, h;
+    unsigned long layout;
+    struct surface *from;
+
+    if (mem.known && !surface_changed_take(&x, &y, &w, &h))
+        return;
+
+    layout = aes_wind_layout();
+    if (!mem.known || layout != mem.layout)
+    {
+        x = 0;
+        y = 0;
+        w = (int16_t)surface_width(screen);
+        h = (int16_t)surface_height(screen);
+    }
+
+    if (dialog)
+        from = dialog;
+    else
+    {
+        if (!mem.seen)
+            mem.seen = surface_create(surface_width(screen), surface_height(screen),
+                                      surface_planes(screen));
+        if (!mem.seen)
+            return;
+        composite_rect(mem.seen, x, y, w, h);
+        from = mem.seen;
+    }
+
+    surface_store_atari_rect(from, mem.bytes, x, y, w, h);
+
+    /* What was just laid together here is not anything drawn */
+    surface_changed_take(&x, &y, &w, &h);
+    mem.known = 1;
+    mem.layout = layout;
+}
+
+static void note_written(uint32_t offset)
+{
+    uint32_t line = surface_bytes(screen) / surface_height(screen);
+    int y = (int)(offset / line);
+    int x = (int)((offset % line) / (2u * surface_planes(screen))) * 16;
+
+    if (!mem.written)
+    {
+        mem.x0 = x;
+        mem.y0 = y;
+        mem.x1 = x + 16;
+        mem.y1 = y + 1;
+        mem.written = 1;
+        return;
+    }
+
+    if (x < mem.x0)
+        mem.x0 = x;
+    if (y < mem.y0)
+        mem.y0 = y;
+    if (x + 16 > mem.x1)
+        mem.x1 = x + 16;
+    if (y + 1 > mem.y1)
+        mem.y1 = y + 1;
+}
+
+/* The block an area of plain memory holds, which may have been made again
+ * along with the machine */
+static void use_bytes(struct _memarea *area)
+{
+    if (mem.bytes != area->ptr)
+    {
+        mem.bytes = area->ptr;
+        mem.len = area->len;
+        mem.known = 0;
+        mem.written = 0;
+    }
+}
+
+uint8_t gem_screen_read(struct _memarea *area, uint32_t address)
+{
+    uint32_t offset = address - area->base;
+
+    use_bytes(area);
+    if (mirroring() && offset < surface_bytes(screen))
+        bring_in();
+
+    return mem.bytes[offset];
+}
+
+void gem_screen_write(struct _memarea *area, uint32_t address, uint8_t value)
+{
+    uint32_t offset = address - area->base;
+
+    use_bytes(area);
+    if (mirroring() && offset < surface_bytes(screen))
+    {
+        bring_in();
+        note_written(offset);
+    }
+
+    mem.bytes[offset] = value;
+}
+
+/*
+ * What the program wrote, to the surfaces that show it: a dialog's while one
+ * is up, and otherwise the screen's and each window's it reaches. A window
+ * behind another is given what is in front of it there too, which nobody
+ * sees, and which its own redraw replaces when it comes forward.
+ */
+static void carry_out(void)
+{
+    int16_t wx, wy, ww, wh, handle, x, y, w, h;
+    int n;
+
+    if (!mem.written)
+        return;
+    mem.written = 0;
+
+    if (!mirroring())
+        return;
+
+    x = (int16_t)mem.x0;
+    y = (int16_t)mem.y0;
+    w = (int16_t)(mem.x1 - mem.x0);
+    h = (int16_t)(mem.y1 - mem.y0);
+
+    if (dialog)
+        surface_load_atari_rect(dialog, mem.bytes, x, y, w, h);
+    else
+    {
+        surface_load_atari_rect(screen, mem.bytes, x, y, w, h);
+
+        for (n = 0; (handle = aes_wind_from_back(n, &wx, &wy, &ww, &wh)) != 0; n++)
+        {
+            int ix = wx > x ? wx : x, iy = wy > y ? wy : y;
+            int ix2 = wx + ww < x + w ? wx + ww : x + w, iy2 = wy + wh < y + h ? wy + wh : y + h;
+
+            if (ix < ix2 && iy < iy2)
+                surface_load_atari_rect(gem_window_surface(handle), mem.bytes,
+                                        ix, iy, ix2 - ix, iy2 - iy);
+        }
+    }
+
+    /* The memory is what was carried, so none of that is news to it */
+    surface_changed_take(&x, &y, &w, &h);
+}
+
+static void screen_memory_moves(void)
+{
+    carry_out();
+    mem.known = 0;
 }
 
 /*
@@ -628,6 +895,10 @@ void gem_trap()
 {
     int16_t which = (int16_t)(m68k_get_reg(0, M68K_REG_D0) & 0xffff);
 
+    /* What the program drew in the screen memory itself, before GEM draws
+     * anything over it or shows it - see carry_out */
+    carry_out();
+
     switch (which)
     {
         case GEM_AES:
@@ -667,6 +938,7 @@ void gem_reset()
 
     gem_menu_end();
     gem_dialog_end();
+    mctrl = 0;
     console_close();
     gfx_close();
 
@@ -686,6 +958,11 @@ void gem_reset()
     surface_free(screen);
     screen = 0;
     started = 0;
+
+    surface_free(mem.seen);
+    mem.seen = 0;
+    mem.known = 0;
+    mem.written = 0;
 }
 
 /* Parameter block arrays ***************************************************/

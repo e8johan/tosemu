@@ -35,6 +35,8 @@
 #include "utils.h"
 
 #include "gemdos_p.h"
+#include "gemdosnet_p.h"
+#include "sting.h"
 
 /* GEMDOS functions */
 
@@ -220,6 +222,11 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fstat64 GEMDOS_Unknown
 #define GEMDOS_Psysctl GEMDOS_Unknown
 
+/* The parts of MiNTnet's sockets that gemdosnet.c leaves out */
+#define GEMDOS_Fsocketpair GEMDOS_Unknown
+#define GEMDOS_Frecvmsg GEMDOS_Unknown
+#define GEMDOS_Fsendmsg GEMDOS_Unknown
+
 #define GEMDOS_Cauxin NULL
 #define GEMDOS_Cauxos NULL
 #define GEMDOS_Cauxis NULL
@@ -237,7 +244,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Drewinddir NULL
 #define GEMDOS_Fchmod NULL
 #define GEMDOS_Fchown NULL
-#define GEMDOS_Fcntl GEMDOS_Unknown
 #define GEMDOS_Fgetchar NULL
 #define GEMDOS_Finstat NULL
 #define GEMDOS_Flink NULL
@@ -247,8 +253,6 @@ uint32_t GEMDOS_Unknown();
 #define GEMDOS_Fpipe NULL
 #define GEMDOS_Fputchar NULL
 #define GEMDOS_Freadlink NULL
-#define GEMDOS_Frename NULL
-#define GEMDOS_Fselect NULL
 #define GEMDOS_Fsymlink NULL
 #define GEMDOS_Fxattr GEMDOS_Unknown
 #define GEMDOS_Maddalt NULL
@@ -416,7 +420,22 @@ struct GEMDOS_function GEMDOS_functions[] = {
     {"Ffstat64",    GEMDOS_Ffstat64, 0x15D},
     {"Tgettimeofday", GEMDOS_Tgettimeofday, 0x155},
     {"Fstat64",     GEMDOS_Fstat64, 0x14B},
-    {"Psysctl",     GEMDOS_Psysctl, 0x15E}
+    {"Psysctl",     GEMDOS_Psysctl, 0x15E},
+    {"Fsocket",     GEMDOS_Fsocket, 0x160},
+    {"Fsocketpair", GEMDOS_Fsocketpair, 0x161},
+    {"Faccept",     GEMDOS_Faccept, 0x162},
+    {"Fconnect",    GEMDOS_Fconnect, 0x163},
+    {"Fbind",       GEMDOS_Fbind, 0x164},
+    {"Flisten",     GEMDOS_Flisten, 0x165},
+    {"Frecvmsg",    GEMDOS_Frecvmsg, 0x166},
+    {"Fsendmsg",    GEMDOS_Fsendmsg, 0x167},
+    {"Frecvfrom",   GEMDOS_Frecvfrom, 0x168},
+    {"Fsendto",     GEMDOS_Fsendto, 0x169},
+    {"Fsetsockopt", GEMDOS_Fsetsockopt, 0x16A},
+    {"Fgetsockopt", GEMDOS_Fgetsockopt, 0x16B},
+    {"Fgetpeername", GEMDOS_Fgetpeername, 0x16C},
+    {"Fgetsockname", GEMDOS_Fgetsockname, 0x16D},
+    {"Fshutdown",   GEMDOS_Fshutdown, 0x16E}
 };
 
 void gemdos_init(struct tos_environment *te)
@@ -434,6 +453,9 @@ void gemdos_reinit(struct tos_environment *te)
      * was waiting for it to end went with the machine they were waiting in */
     gemdos_mem_init(te);
     gemdos_proc_forget();
+
+    /* STinG's connections were the machine's, and the machine is new */
+    sting_reset();
 
     gemdos_file_reinit(te);
 }

@@ -97,6 +97,38 @@ static struct mem_area * find_mem_area(uint32_t base, struct mem_area **prevptr)
     return ptr;
 }
 
+/*
+ * What was free the first time anybody asked, since the program running now
+ * began.
+ *
+ * A program sizes itself by what it finds free when it starts - EWeb takes a
+ * thirty-second of it for a picture - and the gateway making its pictures
+ * wants to know how much that was (see netpic_budget). Its first request is
+ * the page it opens with, which comes just after it has looked and before
+ * the page has taken any of it: under tosemu a few KB under what EWeb saw,
+ * and far over what is free once a page is up.
+ *
+ * Not the most that was ever free: EWeb frees more than it had when it
+ * looked, and that is an answer it would refuse pictures by.
+ */
+static uint32_t first_free;
+static int first_known;
+
+uint32_t mem_free_first_asked(void)
+{
+    if (!first_known)
+    {
+        first_free = mem_largest_free();
+        first_known = 1;
+    }
+    return first_free;
+}
+
+void mem_program_starts(void)
+{
+    first_known = 0;
+}
+
 uint32_t GEMDOS_Mshrink()
 {
     struct mem_area *ma;
@@ -341,12 +373,14 @@ int32_t mem_free(uint32_t block)
 uint32_t GEMDOS_Mfree()
 {
     uint32_t block = peek_u32(2);
+    uint32_t r;
 
     FUNC_TRACE_ENTER_ARGS {
         printf("    0x%x\n", block);
     }
 
-    return mem_free(block);
+    r = mem_free(block);
+    return r;
 }
 
 
@@ -551,6 +585,7 @@ void gemdos_mem_init(struct tos_environment *te)
     mem_allocatable_top = 0x900 + (uint32_t)te->size;
 
     mem_list = ma;
+    first_known = 0;
 }
 
 void gemdos_mem_free()
