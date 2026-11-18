@@ -60,6 +60,19 @@ int gemdos_socket_open(int fd);
  * sflags, if not NULL, is pointed at what Fcntl set on it. */
 int gemdos_socket_fd(uint16_t h, uint32_t **sflags);
 
+/*
+ * The standard handles, as the console calls see them. On TOS Cconout is a
+ * write on handle 1 and Cconin a read on handle 0, so a program that has
+ * forced one of them onto a file has redirected the console calls into it.
+ * gemdos_std_redirected says whether that has happened - a handle that is
+ * still the console, or has been closed, has not - and the other three are a
+ * read, a write and the end of the file through the handle when it has.
+ */
+int gemdos_std_redirected(int stdh);
+int32_t gemdos_std_read(int stdh, uint8_t *buf, uint32_t len);
+int32_t gemdos_std_write(int stdh, const uint8_t *buf, uint32_t len);
+int gemdos_std_at_end(int stdh);
+
 uint32_t GEMDOS_Dgetdrv();
 uint32_t GEMDOS_Dsetdrv();
 uint32_t GEMDOS_Dfree();

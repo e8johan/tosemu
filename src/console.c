@@ -1090,6 +1090,77 @@ int console_line(char *buffer, int max)
     return length;
 }
 
+int console_interactive(int writing)
+{
+    decide();
+
+    if (c.on_screen)
+        return 1;
+
+    return isatty(writing ? STDOUT_FILENO : STDIN_FILENO);
+}
+
+/*
+ * Fread on the console.
+ *
+ * Where it is a keyboard, TOS's: one key, echoed, when one byte is asked for,
+ * and otherwise a line with the editing Cconrs has, without the Return that
+ * ended it - EmuTOS's conin and cgets. A program reading a terminal a byte at
+ * a time is asking for keys, and MiNTLib, which knows the console is a
+ * terminal, reads it that way and does its own editing.
+ *
+ * Where it is a pipe or a file the emulator was handed, the bytes as they come
+ * and as many as were asked for, with nought at the end - which is what
+ * reading handle 0 was when it was the host's stdin, and what a program a
+ * Makefile feeds its input to wants. It comes through the same read-ahead the
+ * console keys do, so a program that asks whether a key is waiting and then
+ * reads handle 0 gets the byte it was told was there.
+ */
+int console_read(char *buffer, int len)
+{
+    int n = 0;
+
+    if (len <= 0)
+        return 0;
+
+    if (console_interactive(0))
+    {
+        uint32_t key;
+
+        if (len > 1)
+            return console_line(buffer, len);
+
+        key = console_key(1);
+        buffer[0] = (char)(key & 0xff);
+        console_out(key & 0xff);
+
+        return 1;
+    }
+
+    if (c.have)
+    {
+        buffer[n++] = (char)c.ahead;
+        c.have = 0;
+    }
+
+    /* Whatever was written goes out before the read waits, as for a key */
+    fflush(stdout);
+
+    while (n < len && !c.ended)
+    {
+        ssize_t got = read(STDIN_FILENO, buffer + n, (size_t)(len - n));
+
+        if (got > 0)
+            n += (int)got;
+        else if (got < 0 && errno == EINTR)
+            continue;
+        else
+            c.ended = 1;
+    }
+
+    return n;
+}
+
 int16_t console_cursor(int16_t function, int16_t operand)
 {
     decide();

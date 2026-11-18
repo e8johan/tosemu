@@ -28,14 +28,13 @@
 - Only sixteen children of the asynchronous Pexec modes can be waited for at
   once, and Pwait3 ignores the resource usage it is handed, which tosemu has
   nothing to fill in.
-- The BIOS device handles, -1 CON:, -2 AUX: and -3 PRN:, which GEMDOS accepts
-  everywhere a handle is taken. Lattice's startup code calls Fforce(4, -2).
-  tosemu has a console but no serial port or printer, so -1 is the one with an
-  answer to give, and the other two keep reporting EIHNDL.
-- Console output goes to the console rather than through handle 1, so Cconout
-  and Cconws ignore an Fforce that redirected it. Everything a program writes
-  now passes through one place - console.c - which is what makes this doable at
-  all; before it there was no single point to redirect.
+- AUX: and PRN:, the device handles -2 and -3, which GEMDOS accepts everywhere
+  a handle is taken and tosemu refuses with EIHNDL. Lattice's startup code
+  calls Fforce(4, -2). CON:, minus one, is a handle now and handles 0 and 1
+  start out as it; these two have no serial port or printer port to be. And
+  handles 2 to 5 are not what TOS makes them - AUX:, PRN: and the console
+  twice - but the host's standard error and then nothing, since a program's
+  complaints are more use there than in a port that is not there.
 - Ptermres, which has nowhere to stay resident in. Cubase is the case that
   wants it: MROS, the MIDI kernel it loads before it will start, is a TSR, and
   Pexec of it ends on this call. Implementing it alone would not be enough -
@@ -575,12 +574,6 @@
   stays there until it is finished - and the alternative is a rule about how
   long a console stays up, which is the same kind of guess the drawing
   heuristics above are.
-
-- The console reads standard input and so does Fread on handle 0, and neither
-  knows about the other. Asking whether a key is waiting reads one and keeps
-  it, so a program that mixes the two can have a byte taken by the console that
-  it meant to read as a file. It is the same seam as the handle 1 item above
-  and closes with it.
 
 - Nothing in make check reaches the pointer half of selecting text on the
   console: the drag that makes a selection, the release that copies it and the
